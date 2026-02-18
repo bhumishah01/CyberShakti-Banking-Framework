@@ -13,8 +13,11 @@ A software prototype reducing fraud incidents by 20% in rural banking, with a si
 
 Technical Feasibility:
 Utilizes open-source encryption libraries and machine learning for anomaly detection, optimized for low-resource devices.
+
 Organization: Government of Odisha
+
 Department:	E & IT Department
+
 Category	Software: Theme	Blockchain & Cybersecurity
 
 # CyberShakti – Banking Security Framework
