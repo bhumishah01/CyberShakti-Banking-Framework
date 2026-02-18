@@ -3,6 +3,7 @@
 ##  Problem Statement Details
 
 Problem Statement ID: 25205
+
 Problem Statement Title: Cybersecurity Framework for Rural Digital Banking
 Description:
 Develop a lightweight cybersecurity framework to secure digital banking transactions for rural users, focusing on fraud detection and user authentication. The solution should be compatible with low-end smartphones and limited internet connectivity.
