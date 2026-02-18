@@ -368,9 +368,6 @@ Project developed as part of academic cybersecurity research and hackathon innov
 
 ---
 
-## 18. License
-
-MIT License (Proposed)
 
 ---
 
