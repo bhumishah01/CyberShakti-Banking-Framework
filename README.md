@@ -1,10 +1,10 @@
 # CyberShakti — Cybersecurity Framework for Rural Digital Banking
 
-## 📌 Project Overview
+##  Project Overview
 
 This project focuses on designing and developing a cybersecurity framework tailored for rural digital banking systems. The objective is to create a secure, resilient, and privacy-preserving infrastructure that protects financial transactions and user data in low-connectivity environments.
 
-## 🎯 Key Objectives
+##  Key Objectives
 
 * Secure rural digital banking workflows
 * Protect user identity and transaction data
@@ -12,7 +12,7 @@ This project focuses on designing and developing a cybersecurity framework tailo
 * Enable delayed encrypted synchronization
 * Strengthen fraud detection and access control
 
-## 🔐 Security Innovation
+##  Security Innovation
 
 The framework integrates an **Offline-First Data Architecture**:
 
@@ -20,7 +20,7 @@ The framework integrates an **Offline-First Data Architecture**:
 * Prevents real-time interception risks
 * Secure cloud synchronization during low-activity periods
 
-## 🛠️ Planned Tech Stack
+##  Planned Tech Stack
 
 * Backend: Python / Flask
 * Database: SQLite + Cloud DB
