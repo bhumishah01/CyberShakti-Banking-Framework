@@ -234,6 +234,85 @@ def read_secure_transaction(
     }
 
 
+def list_secure_transactions(
+    user_id: str,
+    pin: str,
+    db_path: Path = DB_PATH,
+    limit: int = 20,
+) -> list[dict]:
+    """List and decrypt recent user transactions with integrity checks."""
+    init_db(db_path)
+    session_key = derive_session_key(user_id=user_id, pin=pin, db_path=db_path)
+    enc_key, sig_key = derive_crypto_keys(session_key)
+
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT tx_id, amount_enc, recipient_enc, timestamp, risk_score, risk_level, status, signature
+            FROM transactions
+            WHERE user_id = ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+            """,
+            (user_id, limit),
+        )
+        rows = cursor.fetchall()
+
+    transactions: list[dict] = []
+    for row in rows:
+        (
+            tx_id,
+            amount_enc,
+            recipient_enc,
+            tx_time,
+            risk_score,
+            risk_level,
+            status,
+            signature,
+        ) = row
+        signable = {
+            "tx_id": tx_id,
+            "user_id": user_id,
+            "amount_enc": amount_enc,
+            "recipient_enc": recipient_enc,
+            "timestamp": tx_time,
+            "risk_score": risk_score,
+            "risk_level": risk_level,
+            "status": status,
+        }
+        integrity_ok = verify_signature(canonical_json(signable), signature, sig_key)
+        if not integrity_ok:
+            transactions.append(
+                {
+                    "tx_id": tx_id,
+                    "timestamp": tx_time,
+                    "status": "REJECTED_INTEGRITY_FAIL",
+                    "risk_score": risk_score,
+                    "risk_level": risk_level,
+                    "amount": None,
+                    "recipient": None,
+                }
+            )
+            continue
+
+        amount = decrypt_payload(json.loads(amount_enc), enc_key)
+        recipient = decrypt_payload(json.loads(recipient_enc), enc_key)
+        transactions.append(
+            {
+                "tx_id": tx_id,
+                "timestamp": tx_time,
+                "status": status,
+                "risk_score": risk_score,
+                "risk_level": risk_level,
+                "amount": amount,
+                "recipient": recipient,
+            }
+        )
+
+    return transactions
+
+
 def _load_user_history(user_id: str, enc_key: bytes, db_path: Path) -> list[dict]:
     """Load and decrypt recent transaction metadata for local fraud scoring."""
     with sqlite3.connect(db_path) as conn:
