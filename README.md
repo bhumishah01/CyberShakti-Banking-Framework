@@ -1,6 +1,12 @@
 
 # CyberShakti — Cybersecurity Framework for Rural Digital Banking
 
+## Quick Start Navigation
+
+- Project index: `docs/REPO_MAP.md`
+- Blueprint (human + JSON): `docs/PROJECT_BLUEPRINT.md`
+- Stepwise progress docs: `docs/STEP_01_FOUNDATION.md`, `docs/STEP_02_AUTH_AND_KEYS.md`, `docs/STEP_03_ENCRYPTED_TRANSACTION_PIPELINE.md`
+
 ##  Problem Statement Details
 
 Problem Statement ID: 25205
@@ -373,4 +379,3 @@ Project developed as part of academic cybersecurity research and hackathon innov
 ---
 
 End of Document
-
