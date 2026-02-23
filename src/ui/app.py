@@ -17,6 +17,7 @@ from src.database.transaction_store import (
     create_secure_transaction,
     get_dashboard_stats,
     list_secure_transactions,
+    release_held_transaction,
 )
 from src.sync.client import make_http_sender
 from src.sync.manager import sync_outbox
@@ -89,8 +90,9 @@ def add_transaction(
         msg = (
             "Secure transaction saved successfully. "
             f"Risk is {_friendly_risk(stored.risk_level)} ({stored.risk_score}/100). "
+            f"Decision: {_friendly_action(stored.action_decision)}. "
             f"Reason: {reason_text}. "
-            "Next step: open Transaction List to review, then Sync Pending Transactions."
+            f"Guidance: {' '.join(stored.intervention_guidance)}"
         )
         return templates.TemplateResponse("index.html", _ctx(request, message=msg))
     except Exception as exc:
@@ -115,6 +117,9 @@ def list_transactions(request: Request, user_id: str, pin: str, limit: int = 10)
                     "display_risk": f"{_friendly_risk(row['risk_level'])} ({row['risk_score']}/100)",
                     "display_reasons": [_friendly_reason(code) for code in row.get("reason_codes", [])],
                     "display_status": _friendly_status(row["status"]),
+                    "display_action": _friendly_action(row.get("action_decision", "ALLOW")),
+                    "display_intervention_title": row.get("intervention", {}).get("title", ""),
+                    "display_intervention_guidance": row.get("intervention", {}).get("guidance", []),
                 }
             )
 
@@ -213,6 +218,34 @@ def export_report():
     return JSONResponse(payload)
 
 
+@app.post("/transactions/release")
+def release_transaction(
+    request: Request,
+    tx_id: str = Form(...),
+    user_id: str = Form(...),
+    pin: str = Form(...),
+):
+    try:
+        released = release_held_transaction(
+            tx_id=tx_id.strip(),
+            user_id=user_id.strip(),
+            pin=pin.strip(),
+            db_path=DEFAULT_DB,
+        )
+        if released:
+            return templates.TemplateResponse(
+                "index.html",
+                _ctx(request, message="Held transaction released and queued for sync."),
+            )
+        return templates.TemplateResponse(
+            "index.html",
+            _ctx(request, error="Release failed: transaction not found or not in HOLD state."),
+            status_code=400,
+        )
+    except Exception as exc:
+        return templates.TemplateResponse("index.html", _ctx(request, error=str(exc)), status_code=400)
+
+
 def _friendly_risk(level: str) -> str:
     mapping = {"LOW": "Low", "MEDIUM": "Medium", "HIGH": "High"}
     return mapping.get(level, level.title())
@@ -246,3 +279,13 @@ def _friendly_time(iso_ts: str) -> str:
         return dt.strftime("%d %b %Y, %I:%M %p")
     except Exception:
         return iso_ts
+
+
+def _friendly_action(action: str) -> str:
+    mapping = {
+        "ALLOW": "Allow",
+        "STEP_UP": "Step-up Verification",
+        "HOLD": "Hold for Review",
+        "BLOCK": "Block for Protection",
+    }
+    return mapping.get(action, action.replace("_", " ").title())

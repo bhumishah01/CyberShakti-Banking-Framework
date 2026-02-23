@@ -37,7 +37,9 @@
               <th>Amount</th>
               <th>Recipient</th>
               <th>Risk</th>
+              <th>Action</th>
               <th>Reasons</th>
+              <th>Guidance</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -49,7 +51,18 @@
               <td>{{ row.amount if row.amount else '-' }}</td>
               <td>{{ row.recipient if row.recipient else '-' }}</td>
               <td><span class="pill pill-risk">{{ row.display_risk }}</span></td>
+              <td><span class="pill pill-action">{{ row.display_action }}</span></td>
               <td>{{ ', '.join(row.display_reasons) if row.display_reasons else '-' }}</td>
+              <td>
+                <strong>{{ row.display_intervention_title }}</strong>
+                {% if row.display_intervention_guidance %}
+                <ul class="guidance-list">
+                  {% for g in row.display_intervention_guidance %}
+                  <li>{{ g }}</li>
+                  {% endfor %}
+                </ul>
+                {% endif %}
+              </td>
               <td><span class="pill pill-status">{{ row.display_status }}</span></td>
             </tr>
             {% endfor %}

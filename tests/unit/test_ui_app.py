@@ -56,3 +56,12 @@ def test_ui_seed_and_export_report() -> None:
     assert "stats" in payload
     assert "audit" in payload
     assert payload["stats"]["tx_count"] >= 1
+
+
+def test_ui_release_held_transaction_endpoint_exists() -> None:
+    response = client.post(
+        "/transactions/release",
+        data={"tx_id": "missing", "user_id": "missing", "pin": "1234"},
+    )
+    assert response.status_code in {200, 400}
+    assert "Release" in response.text or "failed" in response.text.lower()

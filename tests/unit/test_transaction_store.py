@@ -9,6 +9,7 @@ from src.database.transaction_store import (
     create_secure_transaction,
     list_secure_transactions,
     read_secure_transaction,
+    release_held_transaction,
 )
 
 
@@ -92,3 +93,29 @@ def test_transaction_tampering_is_detected(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="integrity"):
         read_secure_transaction(stored.tx_id, "u200", "5678", db_path=db_path)
+
+
+def test_high_risk_transaction_can_be_held_and_released(tmp_path) -> None:
+    db_path = tmp_path / "tx.db"
+    init_db(db_path)
+    create_user("u300", "+919000111222", "1234", db_path=db_path)
+
+    stored = create_secure_transaction(
+        user_id="u300",
+        pin="1234",
+        amount=9000.00,
+        recipient="Unknown Receiver",
+        db_path=db_path,
+        timestamp=datetime(2026, 2, 23, 23, 15, tzinfo=UTC),
+    )
+
+    assert stored.action_decision in {"HOLD", "BLOCK"}
+
+    listed = list_secure_transactions("u300", "1234", db_path=db_path, limit=5)
+    assert listed
+
+    if stored.action_decision == "HOLD":
+        assert listed[0]["status"] == "HOLD_FOR_REVIEW"
+        assert release_held_transaction(stored.tx_id, "u300", "1234", db_path=db_path) is True
+        listed_after = list_secure_transactions("u300", "1234", db_path=db_path, limit=5)
+        assert listed_after[0]["status"] == "PENDING"

@@ -21,7 +21,7 @@ from src.crypto.service import (
     verify_signature,
 )
 from src.database.init_db import DB_PATH, init_db
-from src.fraud.engine import score_transaction
+from src.fraud.engine import decide_intervention, score_transaction
 
 
 @dataclass(frozen=True)
@@ -34,6 +34,9 @@ class StoredTransaction:
     risk_score: int
     risk_level: str
     reason_codes: list[str]
+    action_decision: str
+    intervention_title: str
+    intervention_guidance: list[str]
 
 
 def create_secure_transaction(
@@ -76,6 +79,17 @@ def create_secure_transaction(
     risk_score = risk_score_override if risk_score_override is not None else risk["risk_score"]
     risk_level = risk_level_override if risk_level_override is not None else risk["risk_level"]
     reason_codes = risk["reason_codes"]
+    intervention = decide_intervention(risk_score=risk_score, risk_level=risk_level, reason_codes=reason_codes)
+    action_decision = intervention["action"]
+    intervention_title = intervention["title"]
+    intervention_guidance = intervention["guidance"]
+
+    if action_decision == "HOLD":
+        status = "HOLD_FOR_REVIEW"
+        sync_state = "HOLD"
+    elif action_decision == "BLOCK":
+        status = "BLOCKED_LOCAL"
+        sync_state = "BLOCKED"
 
     amount_payload = encrypt_payload(f"{amount:.2f}", enc_key)
     recipient_payload = encrypt_payload(recipient.strip(), enc_key)
@@ -114,8 +128,8 @@ def create_secure_transaction(
             """
             INSERT INTO transactions (
                 tx_id, user_id, amount_enc, recipient_enc, timestamp,
-                risk_score, risk_level, reason_codes, status, signature, nonce
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                risk_score, risk_level, reason_codes, action_decision, intervention_data, status, signature, nonce
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 tx_id,
@@ -126,20 +140,24 @@ def create_secure_transaction(
                 risk_score,
                 risk_level,
                 canonical_json({"reason_codes": reason_codes}),
+                action_decision,
+                canonical_json(
+                    {"title": intervention_title, "guidance": intervention_guidance}
+                ),
                 status,
                 signature,
                 amount_payload["nonce"],
             ),
         )
-
-        cursor.execute(
-            """
-            INSERT INTO outbox (
-                outbox_id, tx_id, idempotency_key, payload_enc, retry_count, next_retry_at, last_error, sync_state
-            ) VALUES (?, ?, ?, ?, 0, NULL, NULL, ?)
-            """,
-            (outbox_id, tx_id, idempotency_key, canonical_json(outbox_payload), sync_state),
-        )
+        if action_decision != "BLOCK":
+            cursor.execute(
+                """
+                INSERT INTO outbox (
+                    outbox_id, tx_id, idempotency_key, payload_enc, retry_count, next_retry_at, last_error, sync_state
+                ) VALUES (?, ?, ?, ?, 0, NULL, NULL, ?)
+                """,
+                (outbox_id, tx_id, idempotency_key, canonical_json(outbox_payload), sync_state),
+            )
         conn.commit()
 
     append_audit_event(
@@ -165,6 +183,9 @@ def create_secure_transaction(
         risk_score=risk_score,
         risk_level=risk_level,
         reason_codes=reason_codes,
+        action_decision=action_decision,
+        intervention_title=intervention_title,
+        intervention_guidance=intervention_guidance,
     )
 
 
@@ -184,7 +205,7 @@ def read_secure_transaction(
         cursor.execute(
             """
             SELECT tx_id, user_id, amount_enc, recipient_enc, timestamp,
-                   risk_score, risk_level, reason_codes, status, signature
+                   risk_score, risk_level, reason_codes, action_decision, intervention_data, status, signature
             FROM transactions
             WHERE tx_id = ? AND user_id = ?
             """,
@@ -204,6 +225,8 @@ def read_secure_transaction(
         risk_score,
         risk_level,
         reason_codes_raw,
+        action_decision,
+        intervention_raw,
         status,
         signature,
     ) = row
@@ -233,6 +256,8 @@ def read_secure_transaction(
         "risk_score": risk_score,
         "risk_level": risk_level,
         "reason_codes": _parse_reason_codes(reason_codes_raw),
+        "action_decision": action_decision or "ALLOW",
+        "intervention": _parse_intervention(intervention_raw),
         "status": status,
     }
 
@@ -253,7 +278,7 @@ def list_secure_transactions(
         cursor.execute(
             """
             SELECT tx_id, amount_enc, recipient_enc, timestamp, risk_score, risk_level, status, signature
-                   ,reason_codes
+                   ,reason_codes, action_decision, intervention_data
             FROM transactions
             WHERE user_id = ?
             ORDER BY timestamp DESC
@@ -275,6 +300,8 @@ def list_secure_transactions(
             status,
             signature,
             reason_codes_raw,
+            action_decision,
+            intervention_raw,
         ) = row
         signable = {
             "tx_id": tx_id,
@@ -296,6 +323,8 @@ def list_secure_transactions(
                     "risk_score": risk_score,
                     "risk_level": risk_level,
                     "reason_codes": _parse_reason_codes(reason_codes_raw),
+                    "action_decision": action_decision or "ALLOW",
+                    "intervention": _parse_intervention(intervention_raw),
                     "amount": None,
                     "recipient": None,
                 }
@@ -312,6 +341,8 @@ def list_secure_transactions(
                 "risk_score": risk_score,
                 "risk_level": risk_level,
                 "reason_codes": _parse_reason_codes(reason_codes_raw),
+                "action_decision": action_decision or "ALLOW",
+                "intervention": _parse_intervention(intervention_raw),
                 "amount": amount,
                 "recipient": recipient,
             }
@@ -408,3 +439,75 @@ def _parse_reason_codes(raw: str | None) -> list[str]:
     except Exception:
         return []
     return []
+
+
+def _parse_intervention(raw: str | None) -> dict:
+    if not raw:
+        return {"title": "", "guidance": []}
+    try:
+        payload = json.loads(raw)
+        title = str(payload.get("title", ""))
+        guidance = payload.get("guidance", [])
+        if not isinstance(guidance, list):
+            guidance = []
+        return {"title": title, "guidance": [str(x) for x in guidance]}
+    except Exception:
+        return {"title": "", "guidance": []}
+
+
+def release_held_transaction(
+    tx_id: str,
+    user_id: str,
+    pin: str,
+    db_path: Path = DB_PATH,
+) -> bool:
+    """Release one held transaction after successful user authentication."""
+    init_db(db_path)
+    session_key = derive_session_key(user_id=user_id, pin=pin, db_path=db_path)
+    _, sig_key = derive_crypto_keys(session_key)
+
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT amount_enc, recipient_enc, timestamp, risk_score, risk_level, status
+            FROM transactions WHERE tx_id = ? AND user_id = ?
+            """,
+            (tx_id, user_id),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return False
+        amount_enc, recipient_enc, tx_time, risk_score, risk_level, status = row
+        if status != "HOLD_FOR_REVIEW":
+            return False
+
+        new_status = "PENDING"
+        signable = {
+            "tx_id": tx_id,
+            "user_id": user_id,
+            "amount_enc": amount_enc,
+            "recipient_enc": recipient_enc,
+            "timestamp": tx_time,
+            "risk_score": risk_score,
+            "risk_level": risk_level,
+            "status": new_status,
+        }
+        new_signature = sign_payload(canonical_json(signable), sig_key)
+
+        cursor.execute(
+            "UPDATE transactions SET status = ?, signature = ? WHERE tx_id = ?",
+            (new_status, new_signature, tx_id),
+        )
+        cursor.execute(
+            "UPDATE outbox SET sync_state = 'PENDING' WHERE tx_id = ?",
+            (tx_id,),
+        )
+        conn.commit()
+
+    append_audit_event(
+        event_type="TRANSACTION_RELEASED",
+        event_data_enc=canonical_json({"tx_id": tx_id, "user_id": user_id}),
+        db_path=db_path,
+    )
+    return True

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from src.fraud.engine import score_transaction
+from src.fraud.engine import decide_intervention, score_transaction
 
 
 def test_score_transaction_new_recipient_only() -> None:
@@ -46,3 +46,14 @@ def test_score_transaction_high_risk_combination() -> None:
         "RAPID_BURST",
         "AUTH_FAILURES",
     }
+
+
+def test_decide_intervention_hold_for_high_amount_new_recipient() -> None:
+    decision = decide_intervention(
+        risk_score=75,
+        risk_level="HIGH",
+        reason_codes=["HIGH_AMOUNT", "NEW_RECIPIENT"],
+    )
+    assert decision["action"] == "HOLD"
+    assert decision["title"]
+    assert decision["guidance"]

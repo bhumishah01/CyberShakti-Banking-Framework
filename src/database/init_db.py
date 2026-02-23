@@ -55,6 +55,8 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 risk_score INTEGER NOT NULL,
                 risk_level TEXT NOT NULL,
                 reason_codes TEXT,
+                action_decision TEXT,
+                intervention_data TEXT,
                 status TEXT NOT NULL,
                 signature TEXT NOT NULL,
                 nonce TEXT NOT NULL,
@@ -142,6 +144,10 @@ def _ensure_transactions_columns(cursor: sqlite3.Cursor) -> None:
 
     if "reason_codes" not in columns:
         cursor.execute("ALTER TABLE transactions ADD COLUMN reason_codes TEXT")
+    if "action_decision" not in columns:
+        cursor.execute("ALTER TABLE transactions ADD COLUMN action_decision TEXT")
+    if "intervention_data" not in columns:
+        cursor.execute("ALTER TABLE transactions ADD COLUMN intervention_data TEXT")
 
 
 if __name__ == "__main__":

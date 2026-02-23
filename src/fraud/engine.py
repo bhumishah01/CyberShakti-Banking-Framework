@@ -69,6 +69,72 @@ def score_transaction(
     }
 
 
+def decide_intervention(risk_score: int, risk_level: str, reason_codes: list[str]) -> dict:
+    """
+    Convert risk output into an operational safety action.
+
+    Actions:
+    - ALLOW: normal flow
+    - STEP_UP: proceed after additional user caution/verification
+    - HOLD: store and require manual release before sync
+    - BLOCK: locally block transaction to prevent immediate loss
+    """
+    reasons = set(reason_codes)
+
+    if "AUTH_FAILURES" in reasons and risk_score >= 70:
+        return {
+            "action": "BLOCK",
+            "title": "Blocked for your protection",
+            "guidance": [
+                "Recent failed login attempts were detected.",
+                "Do not proceed until you verify account ownership.",
+                "Contact bank support or trusted agent.",
+            ],
+        }
+
+    if {"HIGH_AMOUNT", "NEW_RECIPIENT"}.issubset(reasons):
+        return {
+            "action": "HOLD",
+            "title": "Transaction held for safety review",
+            "guidance": [
+                "Large transfer to a first-time recipient is risky.",
+                "Verify recipient identity by phone or in person.",
+                "Use 'Release Held Transaction' only after verification.",
+            ],
+        }
+
+    if risk_level == "HIGH":
+        return {
+            "action": "HOLD",
+            "title": "High-risk transaction held",
+            "guidance": [
+                "Risk is high for this transaction pattern.",
+                "Wait 30 minutes and re-check request authenticity.",
+                "Proceed only after trusted confirmation.",
+            ],
+        }
+
+    if risk_level == "MEDIUM":
+        return {
+            "action": "STEP_UP",
+            "title": "Additional verification recommended",
+            "guidance": [
+                "This transaction needs extra caution.",
+                "Re-confirm recipient and amount carefully.",
+                "Proceed only if this request is expected.",
+            ],
+        }
+
+    return {
+        "action": "ALLOW",
+        "title": "Transaction safe to proceed",
+        "guidance": [
+            "No major scam pattern detected.",
+            "Transaction will stay queued until synced.",
+        ],
+    }
+
+
 def _risk_level(score: int) -> str:
     if score >= 70:
         return "HIGH"

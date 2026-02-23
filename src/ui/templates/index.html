@@ -67,6 +67,12 @@
         <input name="server_url" placeholder="http://localhost:8000" value="http://localhost:8000" required>
         <button type="submit">Sync Pending Transactions</button>
       </form>
+      <form action="/transactions/release" method="post" class="grid release-grid">
+        <input name="tx_id" placeholder="Held Transaction ID">
+        <input name="user_id" placeholder="User ID">
+        <input name="pin" placeholder="PIN" maxlength="4">
+        <button type="submit">Release Held Transaction</button>
+      </form>
       <div class="actions">
         <a href="/audit" class="button secondary">Check Audit Integrity</a>
         <form action="/seed-demo" method="post"><button type="submit" class="button secondary">Seed Demo Data</button></form>

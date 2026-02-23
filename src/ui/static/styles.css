@@ -77,6 +77,9 @@ header p {
 .inline {
   grid-template-columns: 1fr auto;
 }
+.release-grid {
+  margin-top: 10px;
+}
 input, button, .button {
   border-radius: 10px;
   border: 1px solid var(--border);
@@ -167,6 +170,18 @@ tbody tr:nth-child(odd) {
 .pill-status {
   background: #eaf8f1;
   color: #17674b;
+}
+.pill-action {
+  background: #fff4e6;
+  color: #8a4b0f;
+}
+.guidance-list {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  color: var(--muted);
+}
+.guidance-list li {
+  margin: 2px 0;
 }
 
 @media (max-width: 620px) {
