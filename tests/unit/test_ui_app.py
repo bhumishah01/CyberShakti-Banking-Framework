@@ -36,11 +36,12 @@ def test_ui_user_create_and_tx_list_flow() -> None:
         },
     )
     assert r2.status_code == 200
-    assert "Transaction created" in r2.text
+    assert "Secure transaction saved successfully" in r2.text
 
     r3 = client.get("/transactions", params={"user_id": "ui-user", "pin": "1234", "limit": 5})
     assert r3.status_code == 200
     assert "Village Shop" in r3.text
+    assert "Pending Sync" in r3.text
 
 
 def test_ui_seed_and_export_report() -> None:

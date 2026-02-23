@@ -20,6 +20,13 @@
       <section class="alert error">{{ error }}</section>
     {% endif %}
 
+    <section class="card note">
+      <h2>How To Read This</h2>
+      <p><strong>Pending Sync</strong> means saved securely on this device, waiting to send to server.</p>
+      <p><strong>Blocked (Integrity Check Failed)</strong> means a tampered record was detected and protected.</p>
+      <p><strong>Risk</strong> explains fraud likelihood and why an alert was triggered.</p>
+    </section>
+
     <section class="card">
       <div class="table-wrap">
         <table>
@@ -37,13 +44,13 @@
           <tbody>
             {% for row in transactions %}
             <tr>
-              <td>{{ row.timestamp }}</td>
+              <td>{{ row.display_time }}</td>
               <td class="mono">{{ row.tx_id }}</td>
               <td>{{ row.amount if row.amount else '-' }}</td>
               <td>{{ row.recipient if row.recipient else '-' }}</td>
-              <td>{{ row.risk_score }} ({{ row.risk_level }})</td>
-              <td>{{ ', '.join(row.reason_codes) if row.reason_codes else '-' }}</td>
-              <td>{{ row.status }}</td>
+              <td><span class="pill pill-risk">{{ row.display_risk }}</span></td>
+              <td>{{ ', '.join(row.display_reasons) if row.display_reasons else '-' }}</td>
+              <td><span class="pill pill-status">{{ row.display_status }}</span></td>
             </tr>
             {% endfor %}
           </tbody>

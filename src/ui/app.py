@@ -85,10 +85,12 @@ def add_transaction(
             recipient=recipient.strip(),
             db_path=DEFAULT_DB,
         )
+        reason_text = ", ".join(_friendly_reason(code) for code in stored.reason_codes) or "No alert triggers"
         msg = (
-            f"Transaction created: {stored.tx_id} | "
-            f"risk={stored.risk_score} ({stored.risk_level}) | "
-            f"reasons={','.join(stored.reason_codes) if stored.reason_codes else 'NONE'}"
+            "Secure transaction saved successfully. "
+            f"Risk is {_friendly_risk(stored.risk_level)} ({stored.risk_score}/100). "
+            f"Reason: {reason_text}. "
+            "Next step: open Transaction List to review, then Sync Pending Transactions."
         )
         return templates.TemplateResponse("index.html", _ctx(request, message=msg))
     except Exception as exc:
@@ -104,8 +106,20 @@ def list_transactions(request: Request, user_id: str, pin: str, limit: int = 10)
             db_path=DEFAULT_DB,
             limit=limit,
         )
+        formatted = []
+        for row in items:
+            formatted.append(
+                {
+                    **row,
+                    "display_time": _friendly_time(row["timestamp"]),
+                    "display_risk": f"{_friendly_risk(row['risk_level'])} ({row['risk_score']}/100)",
+                    "display_reasons": [_friendly_reason(code) for code in row.get("reason_codes", [])],
+                    "display_status": _friendly_status(row["status"]),
+                }
+            )
+
         context = _ctx(request)
-        context["transactions"] = items
+        context["transactions"] = formatted
         context["active_user"] = user_id.strip()
         return templates.TemplateResponse("transactions.html", context)
     except Exception as exc:
@@ -197,3 +211,38 @@ def export_report():
         },
     }
     return JSONResponse(payload)
+
+
+def _friendly_risk(level: str) -> str:
+    mapping = {"LOW": "Low", "MEDIUM": "Medium", "HIGH": "High"}
+    return mapping.get(level, level.title())
+
+
+def _friendly_status(status: str) -> str:
+    mapping = {
+        "PENDING": "Pending Sync",
+        "SYNCED": "Synced to Server",
+        "SYNCED_DUPLICATE_ACK": "Synced (Duplicate Acknowledged)",
+        "RETRYING_SYNC": "Retrying Sync",
+        "REJECTED_INTEGRITY_FAIL": "Blocked (Integrity Check Failed)",
+    }
+    return mapping.get(status, status.replace("_", " ").title())
+
+
+def _friendly_reason(code: str) -> str:
+    mapping = {
+        "NEW_RECIPIENT": "New recipient not seen before",
+        "HIGH_AMOUNT": "Unusually high amount",
+        "ODD_HOUR": "Transaction at unusual hour",
+        "RAPID_BURST": "Multiple rapid transactions",
+        "AUTH_FAILURES": "Recent failed login attempts",
+    }
+    return mapping.get(code, code.replace("_", " ").title())
+
+
+def _friendly_time(iso_ts: str) -> str:
+    try:
+        dt = datetime.fromisoformat(iso_ts)
+        return dt.strftime("%d %b %Y, %I:%M %p")
+    except Exception:
+        return iso_ts
