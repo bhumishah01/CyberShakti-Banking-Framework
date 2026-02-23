@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-02-23T06:48:49.781238+00:00",
+  "simulation": {
+    "total_cases": 200,
+    "fraud_cases": 72,
+    "baseline_successful_fraud": 72,
+    "protected_successful_fraud": 19,
+    "fraud_reduction_percent": 73.61,
+    "true_positive_rate_percent": 73.61,
+    "false_positive_rate_percent": 17.19
+  },
+  "performance": {
+    "scoring_avg_ms": 0.0018,
+    "scoring_p95_ms": 0.0021
+  }
+}
