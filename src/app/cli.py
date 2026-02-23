@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 
@@ -19,6 +20,11 @@ def build_parser() -> argparse.ArgumentParser:
     add_user.add_argument("--user-id", required=True)
     add_user.add_argument("--phone", required=True)
     add_user.add_argument("--pin", required=True)
+    add_user.add_argument(
+        "--replace",
+        action="store_true",
+        help="Replace existing user credentials if user_id already exists",
+    )
     add_user.set_defaults(func=cmd_add_user)
 
     add_tx = subparsers.add_parser("add-tx", help="Create secure offline transaction")
@@ -56,13 +62,26 @@ def cmd_add_user(args: argparse.Namespace) -> None:
     from src.auth.service import create_user
 
     db_path = Path(args.db)
-    create_user(
-        user_id=args.user_id,
-        phone_number=args.phone,
-        pin=args.pin,
-        db_path=db_path,
-    )
-    print(f"User created: {args.user_id}")
+    replace_existing = bool(getattr(args, "replace", False))
+    try:
+        create_user(
+            user_id=args.user_id,
+            phone_number=args.phone,
+            pin=args.pin,
+            db_path=db_path,
+            replace_existing=replace_existing,
+        )
+        mode = "replaced" if replace_existing else "created"
+        print(f"User {mode}: {args.user_id}")
+    except ValueError as exc:
+        if str(exc).startswith("user_exists:"):
+            print(
+                f"User already exists: {args.user_id}. "
+                "Use `add-user ... --replace` to reset this user.",
+                file=sys.stderr,
+            )
+            raise SystemExit(2) from exc
+        raise
 
 
 def cmd_add_tx(args: argparse.Namespace) -> None:

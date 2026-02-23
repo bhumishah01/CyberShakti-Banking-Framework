@@ -60,3 +60,16 @@ def test_derive_session_key_requires_valid_auth(tmp_path) -> None:
 
     with pytest.raises(PermissionError):
         derive_session_key("u3", "0000", db_path=db_path)
+
+
+def test_create_user_duplicate_requires_replace_flag(tmp_path) -> None:
+    db_path = tmp_path / "auth.db"
+    init_db(db_path)
+    create_user("u4", "+919666666666", "1234", db_path=db_path)
+
+    with pytest.raises(ValueError, match="user_exists:u4"):
+        create_user("u4", "+919666666666", "4321", db_path=db_path)
+
+    # replace should allow user credential reset
+    create_user("u4", "+919666666666", "4321", db_path=db_path, replace_existing=True)
+    assert authenticate_user("u4", "4321", db_path=db_path).is_authenticated is True

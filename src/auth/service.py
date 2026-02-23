@@ -30,7 +30,13 @@ class AuthResult:
     lockout_until: str | None
 
 
-def create_user(user_id: str, phone_number: str, pin: str, db_path: Path = DB_PATH) -> None:
+def create_user(
+    user_id: str,
+    phone_number: str,
+    pin: str,
+    db_path: Path = DB_PATH,
+    replace_existing: bool = False,
+) -> None:
     """Create a user record with securely hashed PIN credentials."""
     init_db(db_path)
     _validate_pin(pin)
@@ -41,22 +47,46 @@ def create_user(user_id: str, phone_number: str, pin: str, db_path: Path = DB_PA
 
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO users (
-                user_id, phone_hash, pin_salt, pin_hash,
-                failed_attempts, lockout_until, last_auth_at, auth_config, created_at
-            ) VALUES (?, ?, ?, ?, 0, NULL, NULL, ?, ?)
-            """,
-            (
-                user_id,
-                phone_hash,
-                pin_salt.hex(),
-                pin_hash.hex(),
-                json.dumps({"step_up_enabled": True}),
-                now_iso,
-            ),
-        )
+        cursor.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,))
+        exists = cursor.fetchone() is not None
+        if exists and not replace_existing:
+            raise ValueError(f"user_exists:{user_id}")
+
+        if exists and replace_existing:
+            cursor.execute(
+                """
+                UPDATE users
+                SET phone_hash = ?, pin_salt = ?, pin_hash = ?,
+                    failed_attempts = 0, lockout_until = NULL, last_auth_at = NULL,
+                    auth_config = ?, created_at = ?
+                WHERE user_id = ?
+                """,
+                (
+                    phone_hash,
+                    pin_salt.hex(),
+                    pin_hash.hex(),
+                    json.dumps({"step_up_enabled": True}),
+                    now_iso,
+                    user_id,
+                ),
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO users (
+                    user_id, phone_hash, pin_salt, pin_hash,
+                    failed_attempts, lockout_until, last_auth_at, auth_config, created_at
+                ) VALUES (?, ?, ?, ?, 0, NULL, NULL, ?, ?)
+                """,
+                (
+                    user_id,
+                    phone_hash,
+                    pin_salt.hex(),
+                    pin_hash.hex(),
+                    json.dumps({"step_up_enabled": True}),
+                    now_iso,
+                ),
+            )
         conn.commit()
 
 
