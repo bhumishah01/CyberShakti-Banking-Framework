@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transactions - RuralShield</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>Transaction List</h1>
+      <p>User: {{ active_user }}</p>
+    </header>
+
+    {% if message %}
+      <section class="alert success">{{ message }}</section>
+    {% endif %}
+    {% if error %}
+      <section class="alert error">{{ error }}</section>
+    {% endif %}
+
+    <section class="card">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Tx ID</th>
+              <th>Amount</th>
+              <th>Recipient</th>
+              <th>Risk</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in transactions %}
+            <tr>
+              <td>{{ row.timestamp }}</td>
+              <td class="mono">{{ row.tx_id }}</td>
+              <td>{{ row.amount if row.amount else '-' }}</td>
+              <td>{{ row.recipient if row.recipient else '-' }}</td>
+              <td>{{ row.risk_score }} ({{ row.risk_level }})</td>
+              <td>{{ row.status }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="actions">
+      <a href="/" class="button secondary">Back to Dashboard</a>
+    </section>
+  </main>
+</body>
+</html>

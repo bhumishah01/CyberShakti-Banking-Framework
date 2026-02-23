@@ -12,6 +12,7 @@ Use this file to quickly locate any part of the project.
 - Step 7 minimal backend: `docs/STEPWISE PROGRESS/STEP_07_MINIMAL_BACKEND.md`
 - Step 8 evaluation and demo: `docs/STEPWISE PROGRESS/STEP_08_EVALUATION_AND_DEMO.md`
 - Step 9 runtime prototype: `docs/STEPWISE PROGRESS/STEP_09_RUNTIME_PROTOTYPE.md`
+- Step 10 web interface: `docs/STEPWISE PROGRESS/STEP_10_WEB_INTERFACE.md`
 - Architecture: `docs/ARCHITECTURE.md`
 - Threat model: `docs/THREAT_MODEL.md`
 - Roadmap: `docs/ROADMAP.md`
@@ -30,6 +31,9 @@ Use this file to quickly locate any part of the project.
 - Backend API: `src/backend/app.py`
 - Evaluation simulation: `src/evaluation/simulation.py`
 - CLI runtime prototype: `src/app/cli.py`
+- Web UI app: `src/ui/app.py`
+- Web UI templates: `src/ui/templates/`
+- Web UI styles: `src/ui/static/styles.css`
 
 ## Tests
 - DB init test: `tests/unit/test_init_db.py`
@@ -42,6 +46,7 @@ Use this file to quickly locate any part of the project.
 - Sync client tests: `tests/unit/test_sync_client.py`
 - Evaluation tests: `tests/unit/test_simulation.py`
 - CLI smoke test: `tests/unit/test_cli_basic.py`
+- Web UI tests: `tests/unit/test_ui_app.py`
 
 ## Scripts and Reports
 - Metrics generator: `scripts/generate_metrics.py`

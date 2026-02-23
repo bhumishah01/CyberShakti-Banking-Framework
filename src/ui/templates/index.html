@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RuralShield Demo</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>RuralShield</h1>
+      <p>Offline-First Security Prototype for Rural Digital Banking</p>
+    </header>
+
+    {% if message %}
+      <section class="alert success">{{ message }}</section>
+    {% endif %}
+    {% if error %}
+      <section class="alert error">{{ error }}</section>
+    {% endif %}
+
+    <section class="card">
+      <h2>1. Register / Replace User</h2>
+      <form action="/users" method="post" class="grid">
+        <input name="user_id" placeholder="User ID (e.g., u1)" required>
+        <input name="phone" placeholder="Phone (e.g., +919999999999)" required>
+        <input name="pin" placeholder="4-digit PIN" maxlength="4" required>
+        <label class="checkbox"><input type="checkbox" name="replace" value="1"> Replace existing user</label>
+        <button type="submit">Save User</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>2. Create Secure Transaction</h2>
+      <form action="/transactions" method="post" class="grid">
+        <input name="user_id" placeholder="User ID" required>
+        <input name="pin" placeholder="PIN" maxlength="4" required>
+        <input name="amount" placeholder="Amount" type="number" step="0.01" min="1" required>
+        <input name="recipient" placeholder="Recipient name" required>
+        <button type="submit">Create Transaction</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>3. View Transactions</h2>
+      <form action="/transactions" method="get" class="grid">
+        <input name="user_id" placeholder="User ID" required>
+        <input name="pin" placeholder="PIN" maxlength="4" required>
+        <input name="limit" placeholder="Limit" type="number" value="10" min="1" max="100" required>
+        <button type="submit">Open Transaction List</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>4. Sync and Audit</h2>
+      <form action="/sync" method="post" class="grid inline">
+        <input name="server_url" placeholder="http://localhost:8000" value="http://localhost:8000" required>
+        <button type="submit">Sync Pending Transactions</button>
+      </form>
+      <div class="actions">
+        <a href="/audit" class="button secondary">Check Audit Integrity</a>
+        <a href="/reset" class="button secondary">Clear Messages</a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
