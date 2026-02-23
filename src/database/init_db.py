@@ -54,6 +54,7 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 timestamp TEXT NOT NULL,
                 risk_score INTEGER NOT NULL,
                 risk_level TEXT NOT NULL,
+                reason_codes TEXT,
                 status TEXT NOT NULL,
                 signature TEXT NOT NULL,
                 nonce TEXT NOT NULL,
@@ -104,6 +105,7 @@ def init_db(db_path: Path = DB_PATH) -> None:
 
         _ensure_users_auth_columns(cursor)
         _ensure_outbox_sync_columns(cursor)
+        _ensure_transactions_columns(cursor)
         conn.commit()
 
 
@@ -131,6 +133,15 @@ def _ensure_outbox_sync_columns(cursor: sqlite3.Cursor) -> None:
         cursor.execute("ALTER TABLE outbox ADD COLUMN idempotency_key TEXT")
     if "last_error" not in columns:
         cursor.execute("ALTER TABLE outbox ADD COLUMN last_error TEXT")
+
+
+def _ensure_transactions_columns(cursor: sqlite3.Cursor) -> None:
+    """Backfill transaction columns added after initial schema."""
+    cursor.execute("PRAGMA table_info(transactions)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "reason_codes" not in columns:
+        cursor.execute("ALTER TABLE transactions ADD COLUMN reason_codes TEXT")
 
 
 if __name__ == "__main__":

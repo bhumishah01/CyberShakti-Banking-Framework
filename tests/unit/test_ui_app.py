@@ -41,3 +41,17 @@ def test_ui_user_create_and_tx_list_flow() -> None:
     r3 = client.get("/transactions", params={"user_id": "ui-user", "pin": "1234", "limit": 5})
     assert r3.status_code == 200
     assert "Village Shop" in r3.text
+
+
+def test_ui_seed_and_export_report() -> None:
+    seed = client.post("/seed-demo")
+    assert seed.status_code == 200
+    assert "Demo data seeded" in seed.text
+
+    report = client.get("/export/report")
+    assert report.status_code == 200
+    payload = report.json()
+    assert "generated_at" in payload
+    assert "stats" in payload
+    assert "audit" in payload
+    assert payload["stats"]["tx_count"] >= 1

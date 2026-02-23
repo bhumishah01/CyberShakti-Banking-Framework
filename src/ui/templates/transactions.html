@@ -30,6 +30,7 @@
               <th>Amount</th>
               <th>Recipient</th>
               <th>Risk</th>
+              <th>Reasons</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -41,6 +42,7 @@
               <td>{{ row.amount if row.amount else '-' }}</td>
               <td>{{ row.recipient if row.recipient else '-' }}</td>
               <td>{{ row.risk_score }} ({{ row.risk_level }})</td>
+              <td>{{ ', '.join(row.reason_codes) if row.reason_codes else '-' }}</td>
               <td>{{ row.status }}</td>
             </tr>
             {% endfor %}

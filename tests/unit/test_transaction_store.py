@@ -5,7 +5,11 @@ import pytest
 
 from src.auth.service import create_user
 from src.database.init_db import init_db
-from src.database.transaction_store import create_secure_transaction, read_secure_transaction
+from src.database.transaction_store import (
+    create_secure_transaction,
+    list_secure_transactions,
+    read_secure_transaction,
+)
 
 
 def test_secure_transaction_is_encrypted_and_retrievable(tmp_path) -> None:
@@ -57,6 +61,11 @@ def test_secure_transaction_is_encrypted_and_retrievable(tmp_path) -> None:
     decrypted = read_secure_transaction(stored.tx_id, "u100", "1234", db_path=db_path)
     assert decrypted["amount"] == "2500.75"
     assert decrypted["recipient"] == "Ravi Kumar"
+    assert "NEW_RECIPIENT" in decrypted["reason_codes"]
+
+    listed = list_secure_transactions("u100", "1234", db_path=db_path, limit=5)
+    assert listed
+    assert "NEW_RECIPIENT" in listed[0]["reason_codes"]
 
 
 def test_transaction_tampering_is_detected(tmp_path) -> None:

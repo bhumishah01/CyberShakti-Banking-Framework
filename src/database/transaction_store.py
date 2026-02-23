@@ -114,8 +114,8 @@ def create_secure_transaction(
             """
             INSERT INTO transactions (
                 tx_id, user_id, amount_enc, recipient_enc, timestamp,
-                risk_score, risk_level, status, signature, nonce
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                risk_score, risk_level, reason_codes, status, signature, nonce
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 tx_id,
@@ -125,6 +125,7 @@ def create_secure_transaction(
                 tx_time,
                 risk_score,
                 risk_level,
+                canonical_json({"reason_codes": reason_codes}),
                 status,
                 signature,
                 amount_payload["nonce"],
@@ -183,7 +184,7 @@ def read_secure_transaction(
         cursor.execute(
             """
             SELECT tx_id, user_id, amount_enc, recipient_enc, timestamp,
-                   risk_score, risk_level, status, signature
+                   risk_score, risk_level, reason_codes, status, signature
             FROM transactions
             WHERE tx_id = ? AND user_id = ?
             """,
@@ -202,6 +203,7 @@ def read_secure_transaction(
         tx_time,
         risk_score,
         risk_level,
+        reason_codes_raw,
         status,
         signature,
     ) = row
@@ -230,6 +232,7 @@ def read_secure_transaction(
         "timestamp": tx_time,
         "risk_score": risk_score,
         "risk_level": risk_level,
+        "reason_codes": _parse_reason_codes(reason_codes_raw),
         "status": status,
     }
 
@@ -250,6 +253,7 @@ def list_secure_transactions(
         cursor.execute(
             """
             SELECT tx_id, amount_enc, recipient_enc, timestamp, risk_score, risk_level, status, signature
+                   ,reason_codes
             FROM transactions
             WHERE user_id = ?
             ORDER BY timestamp DESC
@@ -270,6 +274,7 @@ def list_secure_transactions(
             risk_level,
             status,
             signature,
+            reason_codes_raw,
         ) = row
         signable = {
             "tx_id": tx_id,
@@ -290,6 +295,7 @@ def list_secure_transactions(
                     "status": "REJECTED_INTEGRITY_FAIL",
                     "risk_score": risk_score,
                     "risk_level": risk_level,
+                    "reason_codes": _parse_reason_codes(reason_codes_raw),
                     "amount": None,
                     "recipient": None,
                 }
@@ -305,6 +311,7 @@ def list_secure_transactions(
                 "status": status,
                 "risk_score": risk_score,
                 "risk_level": risk_level,
+                "reason_codes": _parse_reason_codes(reason_codes_raw),
                 "amount": amount,
                 "recipient": recipient,
             }
@@ -352,3 +359,52 @@ def _load_failed_attempts(user_id: str, db_path: Path) -> int:
         cursor.execute("SELECT failed_attempts FROM users WHERE user_id = ?", (user_id,))
         row = cursor.fetchone()
     return int(row[0]) if row else 0
+
+
+def get_dashboard_stats(db_path: Path = DB_PATH) -> dict:
+    """Return aggregate counters for UI dashboard cards."""
+    init_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM users")
+        user_count = int(cursor.fetchone()[0])
+
+        cursor.execute("SELECT COUNT(*) FROM transactions")
+        tx_count = int(cursor.fetchone()[0])
+
+        cursor.execute("SELECT COUNT(*) FROM transactions WHERE status = 'PENDING'")
+        pending_count = int(cursor.fetchone()[0])
+
+        cursor.execute("SELECT COUNT(*) FROM transactions WHERE status = 'SYNCED'")
+        synced_count = int(cursor.fetchone()[0])
+
+        cursor.execute(
+            "SELECT COUNT(*) FROM transactions WHERE risk_level = 'HIGH' OR risk_score >= 70"
+        )
+        high_risk_count = int(cursor.fetchone()[0])
+
+        cursor.execute("SELECT COUNT(*) FROM audit_log")
+        audit_events = int(cursor.fetchone()[0])
+
+    return {
+        "user_count": user_count,
+        "tx_count": tx_count,
+        "pending_count": pending_count,
+        "synced_count": synced_count,
+        "high_risk_count": high_risk_count,
+        "audit_events": audit_events,
+    }
+
+
+def _parse_reason_codes(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    try:
+        payload = json.loads(raw)
+        if isinstance(payload, dict):
+            codes = payload.get("reason_codes", [])
+            if isinstance(codes, list):
+                return [str(x) for x in codes]
+    except Exception:
+        return []
+    return []

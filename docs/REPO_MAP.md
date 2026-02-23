@@ -13,6 +13,7 @@ Use this file to quickly locate any part of the project.
 - Step 8 evaluation and demo: `docs/STEPWISE PROGRESS/STEP_08_EVALUATION_AND_DEMO.md`
 - Step 9 runtime prototype: `docs/STEPWISE PROGRESS/STEP_09_RUNTIME_PROTOTYPE.md`
 - Step 10 web interface: `docs/STEPWISE PROGRESS/STEP_10_WEB_INTERFACE.md`
+- Step 11 product demo upgrade: `docs/STEPWISE PROGRESS/STEP_11_PRODUCT_DEMO_UPGRADE.md`
 - Architecture: `docs/ARCHITECTURE.md`
 - Threat model: `docs/THREAT_MODEL.md`
 - Roadmap: `docs/ROADMAP.md`
@@ -52,6 +53,7 @@ Use this file to quickly locate any part of the project.
 - Metrics generator: `scripts/generate_metrics.py`
 - Metrics JSON output: `reports/metrics/step8_metrics.json`
 - Metrics summary output: `reports/metrics/step8_metrics_summary.md`
+- Demo/task shortcuts: `Makefile`
 
 ## Progress Tracking
 - Current branch: `main`

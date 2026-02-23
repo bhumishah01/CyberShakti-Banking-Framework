@@ -13,6 +13,15 @@
       <p>Offline-First Security Prototype for Rural Digital Banking</p>
     </header>
 
+    <section class="stats-grid">
+      <article class="stat-card"><h3>Users</h3><p>{{ stats.user_count }}</p></article>
+      <article class="stat-card"><h3>Transactions</h3><p>{{ stats.tx_count }}</p></article>
+      <article class="stat-card"><h3>Pending Sync</h3><p>{{ stats.pending_count }}</p></article>
+      <article class="stat-card"><h3>Synced</h3><p>{{ stats.synced_count }}</p></article>
+      <article class="stat-card"><h3>High Risk</h3><p>{{ stats.high_risk_count }}</p></article>
+      <article class="stat-card"><h3>Audit Events</h3><p>{{ stats.audit_events }}</p></article>
+    </section>
+
     {% if message %}
       <section class="alert success">{{ message }}</section>
     {% endif %}
@@ -60,6 +69,8 @@
       </form>
       <div class="actions">
         <a href="/audit" class="button secondary">Check Audit Integrity</a>
+        <form action="/seed-demo" method="post"><button type="submit" class="button secondary">Seed Demo Data</button></form>
+        <a href="/export/report" class="button secondary" target="_blank">Export Security Report</a>
         <a href="/reset" class="button secondary">Clear Messages</a>
       </div>
     </section>

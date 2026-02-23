@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from src.audit.chain import verify_audit_chain
 from src.auth.service import create_user
 from src.database.init_db import init_db
-from src.database.transaction_store import create_secure_transaction, list_secure_transactions
+from src.database.transaction_store import (
+    create_secure_transaction,
+    get_dashboard_stats,
+    list_secure_transactions,
+)
 from src.sync.client import make_http_sender
 from src.sync.manager import sync_outbox
 
@@ -26,11 +31,13 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 
 def _ctx(request: Request, message: str = "", error: str = "") -> dict:
+    stats = get_dashboard_stats(db_path=DEFAULT_DB)
     return {
         "request": request,
         "message": message,
         "error": error,
         "db_path": str(DEFAULT_DB),
+        "stats": stats,
     }
 
 
@@ -137,3 +144,56 @@ def audit_status(request: Request):
 @app.get("/reset")
 def reset_to_home():
     return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/seed-demo")
+def seed_demo_data(request: Request):
+    """Insert a realistic demo user + transactions for live presentation."""
+    try:
+        user_id = "demo_user"
+        pin = "1234"
+        create_user(
+            user_id=user_id,
+            phone_number="+919000000001",
+            pin=pin,
+            db_path=DEFAULT_DB,
+            replace_existing=True,
+        )
+
+        now = datetime.now(UTC)
+        samples = [
+            (450.0, "Local Merchant", now - timedelta(minutes=24)),
+            (1100.0, "Family Member", now - timedelta(minutes=16)),
+            (3650.0, "Unknown Receiver", now - timedelta(minutes=8)),
+        ]
+        for amount, recipient, tx_time in samples:
+            create_secure_transaction(
+                user_id=user_id,
+                pin=pin,
+                amount=amount,
+                recipient=recipient,
+                db_path=DEFAULT_DB,
+                timestamp=tx_time,
+            )
+
+        msg = "Demo data seeded. Use user_id=demo_user and pin=1234."
+        return templates.TemplateResponse("index.html", _ctx(request, message=msg))
+    except Exception as exc:
+        return templates.TemplateResponse("index.html", _ctx(request, error=str(exc)), status_code=400)
+
+
+@app.get("/export/report")
+def export_report():
+    """Export current system snapshot for faculty review."""
+    stats = get_dashboard_stats(db_path=DEFAULT_DB)
+    audit = verify_audit_chain(db_path=DEFAULT_DB)
+    payload = {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "stats": stats,
+        "audit": {
+            "is_valid": audit.is_valid,
+            "checked_entries": audit.checked_entries,
+            "error": audit.error,
+        },
+    }
+    return JSONResponse(payload)
