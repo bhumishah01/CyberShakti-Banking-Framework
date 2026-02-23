@@ -20,7 +20,7 @@ Generated files:
 - `reports/metrics/step8_metrics.json`
 - `reports/metrics/step8_metrics_summary.md`
 
-## 3. (Optional) Start Minimal Backend
+## 3. Start Minimal Backend (required for sync demo)
 
 ```bash
 uvicorn src.backend.app:app --host 0.0.0.0 --port 8000 --reload
@@ -31,7 +31,23 @@ Health check:
 curl http://localhost:8000/health
 ```
 
-## 4. Explain Core Security Flow
+## 4. Start Web Dashboard (main demo UI)
+
+```bash
+uvicorn src.ui.app:app --host 0.0.0.0 --port 8501 --reload
+```
+
+Open:
+- `http://localhost:8501`
+
+UI flow:
+1. Register/replace user.
+2. Create secure transaction.
+3. View transaction list.
+4. Sync pending transactions.
+5. Check audit integrity.
+
+## 5. Explain Core Security Flow
 
 - PIN auth + lockout (`src/auth/service.py`)
 - Encryption + signature (`src/crypto/service.py`)
@@ -40,7 +56,7 @@ curl http://localhost:8000/health
 - Delayed sync + idempotency (`src/sync/manager.py`)
 - Tamper-evident audit chain (`src/audit/chain.py`)
 
-## 5. Show Stepwise Progress
+## 6. Show Stepwise Progress
 
 Open folder:
 - `docs/STEPWISE PROGRESS/`
@@ -48,7 +64,7 @@ Open folder:
 Then walk through:
 - Step 1 to Step 8 docs in order.
 
-## 6. Show Outcome Claim
+## 7. Show Outcome Claim
 
 Use `reports/metrics/step8_metrics_summary.md` to present:
 - Fraud reduction percentage
