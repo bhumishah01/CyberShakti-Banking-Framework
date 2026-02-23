@@ -8,6 +8,7 @@ Use this file to quickly locate any part of the project.
 - Step 3 encrypted storage pipeline: `docs/STEPWISE PROGRESS/STEP_03_ENCRYPTED_TRANSACTION_PIPELINE.md`
 - Step 4 fraud rule engine: `docs/STEPWISE PROGRESS/STEP_04_FRAUD_RULE_ENGINE.md`
 - Step 5 sync manager: `docs/STEPWISE PROGRESS/STEP_05_SYNC_MANAGER.md`
+- Step 6 audit chain: `docs/STEPWISE PROGRESS/STEP_06_AUDIT_CHAIN.md`
 - Architecture: `docs/ARCHITECTURE.md`
 - Threat model: `docs/THREAT_MODEL.md`
 - Roadmap: `docs/ROADMAP.md`
@@ -20,7 +21,7 @@ Use this file to quickly locate any part of the project.
 - Secure transaction store: `src/database/transaction_store.py`
 - Fraud engine: `src/fraud/engine.py`
 - Sync manager: `src/sync/manager.py`
-- Audit chain (upcoming): `src/audit/chain.py`
+- Audit chain: `src/audit/chain.py`
 
 ## Tests
 - DB init test: `tests/unit/test_init_db.py`
@@ -28,6 +29,7 @@ Use this file to quickly locate any part of the project.
 - Fraud rules tests: `tests/unit/test_fraud_engine.py`
 - Secure transaction tests: `tests/unit/test_transaction_store.py`
 - Sync manager tests: `tests/unit/test_sync_manager.py`
+- Audit chain tests: `tests/unit/test_audit_chain.py`
 
 ## Progress Tracking
 - Current branch: `main`

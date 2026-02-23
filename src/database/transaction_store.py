@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from src.audit.chain import append_audit_event
 from src.auth.service import derive_session_key
 from src.crypto.service import (
     canonical_json,
@@ -139,6 +140,20 @@ def create_secure_transaction(
             (outbox_id, tx_id, idempotency_key, canonical_json(outbox_payload), sync_state),
         )
         conn.commit()
+
+    append_audit_event(
+        event_type="TRANSACTION_CREATED",
+        event_data_enc=canonical_json(
+            {
+                "tx_id": tx_id,
+                "user_id": user_id,
+                "risk_score": risk_score,
+                "risk_level": risk_level,
+                "status": status,
+            }
+        ),
+        db_path=db_path,
+    )
 
     return StoredTransaction(
         tx_id=tx_id,

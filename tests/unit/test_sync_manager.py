@@ -41,6 +41,10 @@ def test_sync_outbox_success_marks_transaction_synced(tmp_path) -> None:
         tx_status = cursor.fetchone()[0]
         assert tx_status == "SYNCED"
 
+        cursor.execute("SELECT event_type FROM audit_log ORDER BY created_at ASC, rowid ASC")
+        event_types = [row[0] for row in cursor.fetchall()]
+        assert "SYNC_RESULT" in event_types
+
 
 def test_sync_outbox_duplicate_ack_marks_duplicate_state(tmp_path) -> None:
     db_path = tmp_path / "sync.db"
@@ -74,6 +78,10 @@ def test_sync_outbox_duplicate_ack_marks_duplicate_state(tmp_path) -> None:
         cursor.execute("SELECT status FROM transactions WHERE tx_id = ?", (stored.tx_id,))
         tx_status = cursor.fetchone()[0]
         assert tx_status == "SYNCED_DUPLICATE_ACK"
+
+        cursor.execute("SELECT event_type FROM audit_log ORDER BY created_at ASC, rowid ASC")
+        event_types = [row[0] for row in cursor.fetchall()]
+        assert "SYNC_RESULT" in event_types
 
 
 def test_sync_outbox_failure_sets_retry_and_backoff(tmp_path) -> None:
@@ -116,3 +124,7 @@ def test_sync_outbox_failure_sets_retry_and_backoff(tmp_path) -> None:
         cursor.execute("SELECT status FROM transactions WHERE tx_id = ?", (stored.tx_id,))
         tx_status = cursor.fetchone()[0]
         assert tx_status == "RETRYING_SYNC"
+
+        cursor.execute("SELECT event_type FROM audit_log ORDER BY created_at ASC, rowid ASC")
+        event_types = [row[0] for row in cursor.fetchall()]
+        assert "SYNC_RETRY_SCHEDULED" in event_types

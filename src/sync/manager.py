@@ -9,6 +9,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
+from src.audit.chain import append_audit_event
+from src.crypto.service import canonical_json
 from src.database.init_db import DB_PATH, init_db
 
 MAX_BACKOFF_MINUTES = 60
@@ -91,6 +93,19 @@ def sync_outbox(
                     "UPDATE transactions SET status = ? WHERE tx_id = ?",
                     (tx_state, tx_id),
                 )
+                append_audit_event(
+                    event_type="SYNC_RESULT",
+                    event_data_enc=canonical_json(
+                        {
+                            "tx_id": tx_id,
+                            "outbox_id": outbox_id,
+                            "result": outbox_state,
+                            "retry_count": retry_count,
+                        }
+                    ),
+                    db_path=db_path,
+                    conn=conn,
+                )
             except Exception as exc:
                 retried += 1
                 next_retry_count = int(retry_count) + 1
@@ -109,6 +124,20 @@ def sync_outbox(
                 cursor.execute(
                     "UPDATE transactions SET status = 'RETRYING_SYNC' WHERE tx_id = ?",
                     (tx_id,),
+                )
+                append_audit_event(
+                    event_type="SYNC_RETRY_SCHEDULED",
+                    event_data_enc=canonical_json(
+                        {
+                            "tx_id": tx_id,
+                            "outbox_id": outbox_id,
+                            "retry_count": next_retry_count,
+                            "next_retry_at": next_retry_at,
+                            "error": str(exc),
+                        }
+                    ),
+                    db_path=db_path,
+                    conn=conn,
                 )
 
         conn.commit()

@@ -49,6 +49,11 @@ def test_secure_transaction_is_encrypted_and_retrievable(tmp_path) -> None:
         assert "Ravi Kumar" not in payload_enc
         assert sync_state == "PENDING"
 
+        cursor.execute("SELECT event_type FROM audit_log ORDER BY created_at ASC, rowid ASC")
+        audit_rows = cursor.fetchall()
+        assert audit_rows
+        assert audit_rows[-1][0] == "TRANSACTION_CREATED"
+
     decrypted = read_secure_transaction(stored.tx_id, "u100", "1234", db_path=db_path)
     assert decrypted["amount"] == "2500.75"
     assert decrypted["recipient"] == "Ravi Kumar"
