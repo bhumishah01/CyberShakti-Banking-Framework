@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
+import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -104,6 +105,7 @@ def create_secure_transaction(
         "signature": signature,
     }
     outbox_payload = encrypt_payload(canonical_json(outbox_packet), enc_key)
+    idempotency_key = hashlib.sha256(tx_id.encode("utf-8")).hexdigest()
 
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
@@ -131,10 +133,10 @@ def create_secure_transaction(
         cursor.execute(
             """
             INSERT INTO outbox (
-                outbox_id, tx_id, payload_enc, retry_count, next_retry_at, sync_state
-            ) VALUES (?, ?, ?, 0, NULL, ?)
+                outbox_id, tx_id, idempotency_key, payload_enc, retry_count, next_retry_at, last_error, sync_state
+            ) VALUES (?, ?, ?, ?, 0, NULL, NULL, ?)
             """,
-            (outbox_id, tx_id, canonical_json(outbox_payload), sync_state),
+            (outbox_id, tx_id, idempotency_key, canonical_json(outbox_payload), sync_state),
         )
         conn.commit()
 
