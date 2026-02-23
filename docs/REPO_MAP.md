@@ -3,9 +3,9 @@
 Use this file to quickly locate any part of the project.
 
 ## Core Docs
-- Foundation lock: `docs/steps/STEP_01_FOUNDATION.md`
-- Step 2 auth and keys: `docs/steps/STEP_02_AUTH_AND_KEYS.md`
-- Step 3 encrypted storage pipeline: `docs/steps/STEP_03_ENCRYPTED_TRANSACTION_PIPELINE.md`
+- Foundation lock: `docs/STEPWISE PROGRESS/STEP_01_FOUNDATION.md`
+- Step 2 auth and keys: `docs/STEPWISE PROGRESS/STEP_02_AUTH_AND_KEYS.md`
+- Step 3 encrypted storage pipeline: `docs/STEPWISE PROGRESS/STEP_03_ENCRYPTED_TRANSACTION_PIPELINE.md`
 - Architecture: `docs/ARCHITECTURE.md`
 - Threat model: `docs/THREAT_MODEL.md`
 - Roadmap: `docs/ROADMAP.md`

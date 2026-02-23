@@ -5,7 +5,7 @@
 
 - Project index: `docs/REPO_MAP.md`
 - Blueprint (human + JSON): `docs/PROJECT_BLUEPRINT.md`
-- Stepwise progress docs: `docs/steps/STEP_01_FOUNDATION.md`, `docs/steps/STEP_02_AUTH_AND_KEYS.md`, `docs/steps/STEP_03_ENCRYPTED_TRANSACTION_PIPELINE.md`
+- Stepwise progress docs: `docs/STEPWISE PROGRESS/STEP_01_FOUNDATION.md`, `docs/STEPWISE PROGRESS/STEP_02_AUTH_AND_KEYS.md`, `docs/STEPWISE PROGRESS/STEP_03_ENCRYPTED_TRANSACTION_PIPELINE.md`
 
 ##  Problem Statement Details
 
