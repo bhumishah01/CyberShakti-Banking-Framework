@@ -6,6 +6,7 @@ Use this file to quickly locate any part of the project.
 - Foundation lock: `docs/STEPWISE PROGRESS/STEP_01_FOUNDATION.md`
 - Step 2 auth and keys: `docs/STEPWISE PROGRESS/STEP_02_AUTH_AND_KEYS.md`
 - Step 3 encrypted storage pipeline: `docs/STEPWISE PROGRESS/STEP_03_ENCRYPTED_TRANSACTION_PIPELINE.md`
+- Step 4 fraud rule engine: `docs/STEPWISE PROGRESS/STEP_04_FRAUD_RULE_ENGINE.md`
 - Architecture: `docs/ARCHITECTURE.md`
 - Threat model: `docs/THREAT_MODEL.md`
 - Roadmap: `docs/ROADMAP.md`
@@ -16,7 +17,7 @@ Use this file to quickly locate any part of the project.
 - Cryptography: `src/crypto/service.py`
 - Database init/schema: `src/database/init_db.py`
 - Secure transaction store: `src/database/transaction_store.py`
-- Fraud engine (upcoming): `src/fraud/engine.py`
+- Fraud engine: `src/fraud/engine.py`
 - Sync manager (upcoming): `src/sync/manager.py`
 - Audit chain (upcoming): `src/audit/chain.py`
 

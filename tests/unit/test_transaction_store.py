@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import UTC, datetime
 
 import pytest
 
@@ -18,7 +19,11 @@ def test_secure_transaction_is_encrypted_and_retrievable(tmp_path) -> None:
         amount=2500.75,
         recipient="Ravi Kumar",
         db_path=db_path,
+        timestamp=datetime(2026, 2, 23, 13, 0, tzinfo=UTC),
     )
+    assert stored.risk_score == 20
+    assert stored.risk_level == "LOW"
+    assert "NEW_RECIPIENT" in stored.reason_codes
 
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
@@ -60,6 +65,7 @@ def test_transaction_tampering_is_detected(tmp_path) -> None:
         amount=99.00,
         recipient="Asha",
         db_path=db_path,
+        timestamp=datetime(2026, 2, 23, 13, 0, tzinfo=UTC),
     )
 
     with sqlite3.connect(db_path) as conn:

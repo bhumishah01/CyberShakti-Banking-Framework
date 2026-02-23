@@ -19,6 +19,7 @@ from src.crypto.service import (
     verify_signature,
 )
 from src.database.init_db import DB_PATH, init_db
+from src.fraud.engine import score_transaction
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,9 @@ class StoredTransaction:
     status: str
     sync_state: str
     signature: str
+    risk_score: int
+    risk_level: str
+    reason_codes: list[str]
 
 
 def create_secure_transaction(
@@ -36,8 +40,8 @@ def create_secure_transaction(
     amount: float,
     recipient: str,
     db_path: Path = DB_PATH,
-    risk_score: int = 0,
-    risk_level: str = "LOW",
+    risk_score_override: int | None = None,
+    risk_level_override: str | None = None,
     timestamp: datetime | None = None,
 ) -> StoredTransaction:
     """Authenticate user, encrypt transaction fields, sign record, and enqueue for sync."""
@@ -55,6 +59,21 @@ def create_secure_transaction(
     tx_time = (timestamp or datetime.now(UTC)).isoformat()
     status = "PENDING"
     sync_state = "PENDING"
+
+    history = _load_user_history(user_id=user_id, enc_key=enc_key, db_path=db_path)
+    recent_failed_attempts = _load_failed_attempts(user_id=user_id, db_path=db_path)
+    risk = score_transaction(
+        transaction={
+            "amount": amount,
+            "recipient": recipient.strip(),
+            "timestamp": tx_time,
+        },
+        history=history,
+        recent_failed_attempts=recent_failed_attempts,
+    )
+    risk_score = risk_score_override if risk_score_override is not None else risk["risk_score"]
+    risk_level = risk_level_override if risk_level_override is not None else risk["risk_level"]
+    reason_codes = risk["reason_codes"]
 
     amount_payload = encrypt_payload(f"{amount:.2f}", enc_key)
     recipient_payload = encrypt_payload(recipient.strip(), enc_key)
@@ -79,6 +98,7 @@ def create_secure_transaction(
         "timestamp": tx_time,
         "risk_score": risk_score,
         "risk_level": risk_level,
+        "reason_codes": reason_codes,
         "amount_enc": amount_enc,
         "recipient_enc": recipient_enc,
         "signature": signature,
@@ -124,6 +144,9 @@ def create_secure_transaction(
         status=status,
         sync_state=sync_state,
         signature=signature,
+        risk_score=risk_score,
+        risk_level=risk_level,
+        reason_codes=reason_codes,
     )
 
 
@@ -192,3 +215,44 @@ def read_secure_transaction(
         "risk_level": risk_level,
         "status": status,
     }
+
+
+def _load_user_history(user_id: str, enc_key: bytes, db_path: Path) -> list[dict]:
+    """Load and decrypt recent transaction metadata for local fraud scoring."""
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT amount_enc, recipient_enc, timestamp
+            FROM transactions
+            WHERE user_id = ?
+            ORDER BY timestamp DESC
+            LIMIT 20
+            """,
+            (user_id,),
+        )
+        rows = cursor.fetchall()
+
+    history: list[dict] = []
+    for amount_enc, recipient_enc, tx_time in rows:
+        try:
+            amount = decrypt_payload(json.loads(amount_enc), enc_key)
+            recipient = decrypt_payload(json.loads(recipient_enc), enc_key)
+            history.append(
+                {
+                    "amount": amount,
+                    "recipient": recipient,
+                    "timestamp": tx_time,
+                }
+            )
+        except Exception:
+            continue
+    return history
+
+
+def _load_failed_attempts(user_id: str, db_path: Path) -> int:
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT failed_attempts FROM users WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+    return int(row[0]) if row else 0
