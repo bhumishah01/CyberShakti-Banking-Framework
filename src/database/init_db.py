@@ -23,6 +23,9 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 phone_hash TEXT NOT NULL,
                 pin_salt TEXT NOT NULL,
                 pin_hash TEXT NOT NULL,
+                failed_attempts INTEGER NOT NULL DEFAULT 0,
+                lockout_until TEXT,
+                last_auth_at TEXT,
                 auth_config TEXT,
                 created_at TEXT NOT NULL
             )
@@ -97,7 +100,23 @@ def init_db(db_path: Path = DB_PATH) -> None:
             """
         )
 
+        _ensure_users_auth_columns(cursor)
         conn.commit()
+
+
+def _ensure_users_auth_columns(cursor: sqlite3.Cursor) -> None:
+    """Backfill auth columns for older local databases."""
+    cursor.execute("PRAGMA table_info(users)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "failed_attempts" not in columns:
+        cursor.execute(
+            "ALTER TABLE users ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0"
+        )
+    if "lockout_until" not in columns:
+        cursor.execute("ALTER TABLE users ADD COLUMN lockout_until TEXT")
+    if "last_auth_at" not in columns:
+        cursor.execute("ALTER TABLE users ADD COLUMN last_auth_at TEXT")
 
 
 if __name__ == "__main__":
