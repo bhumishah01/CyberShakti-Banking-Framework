@@ -65,3 +65,25 @@ def test_ui_release_held_transaction_endpoint_exists() -> None:
     )
     assert response.status_code in {200, 400}
     assert "Release" in response.text or "failed" in response.text.lower()
+
+
+def test_ui_trusted_contact_and_panic_freeze_endpoints() -> None:
+    user = {
+        "user_id": "safety-user",
+        "phone": "+919123409999",
+        "pin": "1234",
+        "replace": "1",
+    }
+    _ = client.post("/users", data=user)
+
+    r1 = client.post(
+        "/users/trusted-contact",
+        data={"user_id": "safety-user", "pin": "1234", "trusted_contact": "+919888777666"},
+    )
+    assert r1.status_code == 200
+
+    r2 = client.post(
+        "/users/panic-freeze",
+        data={"user_id": "safety-user", "pin": "1234", "minutes": "30"},
+    )
+    assert r2.status_code == 200

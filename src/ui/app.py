@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from src.audit.chain import verify_audit_chain
-from src.auth.service import create_user
+from src.auth.service import create_user, enable_panic_freeze, set_trusted_contact
 from src.database.init_db import init_db
 from src.database.transaction_store import (
     create_secure_transaction,
@@ -94,6 +94,11 @@ def add_transaction(
             f"Reason: {reason_text}. "
             f"Guidance: {' '.join(stored.intervention_guidance)}"
         )
+        if stored.approval_required:
+            msg += (
+                f" Trusted approval required (contact ending {stored.trusted_contact_hint}). "
+                f"Demo approval code: {stored.approval_code_for_demo}"
+            )
         return templates.TemplateResponse("index.html", _ctx(request, message=msg))
     except Exception as exc:
         return templates.TemplateResponse("index.html", _ctx(request, error=str(exc)), status_code=400)
@@ -120,6 +125,11 @@ def list_transactions(request: Request, user_id: str, pin: str, limit: int = 10)
                     "display_action": _friendly_action(row.get("action_decision", "ALLOW")),
                     "display_intervention_title": row.get("intervention", {}).get("title", ""),
                     "display_intervention_guidance": row.get("intervention", {}).get("guidance", []),
+                    "display_approval": (
+                        f"Required (contact ending {row.get('trusted_contact_hint', '')})"
+                        if row.get("approval_required")
+                        else "Not required"
+                    ),
                 }
             )
 
@@ -224,12 +234,14 @@ def release_transaction(
     tx_id: str = Form(...),
     user_id: str = Form(...),
     pin: str = Form(...),
+    approval_code: str = Form(default=""),
 ):
     try:
         released = release_held_transaction(
             tx_id=tx_id.strip(),
             user_id=user_id.strip(),
             pin=pin.strip(),
+            approval_code=approval_code.strip(),
             db_path=DEFAULT_DB,
         )
         if released:
@@ -241,6 +253,53 @@ def release_transaction(
             "index.html",
             _ctx(request, error="Release failed: transaction not found or not in HOLD state."),
             status_code=400,
+        )
+    except Exception as exc:
+        return templates.TemplateResponse("index.html", _ctx(request, error=str(exc)), status_code=400)
+
+
+@app.post("/users/trusted-contact")
+def update_trusted_contact(
+    request: Request,
+    user_id: str = Form(...),
+    pin: str = Form(...),
+    trusted_contact: str = Form(...),
+):
+    try:
+        set_trusted_contact(
+            user_id=user_id.strip(),
+            pin=pin.strip(),
+            trusted_contact=trusted_contact.strip(),
+            db_path=DEFAULT_DB,
+        )
+        return templates.TemplateResponse(
+            "index.html",
+            _ctx(request, message=f"Trusted contact updated for user {user_id.strip()}."),
+        )
+    except Exception as exc:
+        return templates.TemplateResponse("index.html", _ctx(request, error=str(exc)), status_code=400)
+
+
+@app.post("/users/panic-freeze")
+def panic_freeze(
+    request: Request,
+    user_id: str = Form(...),
+    pin: str = Form(...),
+    minutes: int = Form(60),
+):
+    try:
+        freeze_until = enable_panic_freeze(
+            user_id=user_id.strip(),
+            pin=pin.strip(),
+            minutes=minutes,
+            db_path=DEFAULT_DB,
+        )
+        return templates.TemplateResponse(
+            "index.html",
+            _ctx(
+                request,
+                message=f"Panic freeze enabled until {freeze_until} for user {user_id.strip()}.",
+            ),
         )
     except Exception as exc:
         return templates.TemplateResponse("index.html", _ctx(request, error=str(exc)), status_code=400)

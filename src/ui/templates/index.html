@@ -38,6 +38,18 @@
         <label class="checkbox"><input type="checkbox" name="replace" value="1"> Replace existing user</label>
         <button type="submit">Save User</button>
       </form>
+      <form action="/users/trusted-contact" method="post" class="grid release-grid">
+        <input name="user_id" placeholder="User ID for trusted contact">
+        <input name="pin" placeholder="PIN" maxlength="4">
+        <input name="trusted_contact" placeholder="Trusted contact phone or ID">
+        <button type="submit">Set Trusted Contact</button>
+      </form>
+      <form action="/users/panic-freeze" method="post" class="grid release-grid">
+        <input name="user_id" placeholder="User ID for panic freeze">
+        <input name="pin" placeholder="PIN" maxlength="4">
+        <input name="minutes" type="number" min="1" value="60" placeholder="Freeze minutes">
+        <button type="submit">Enable Panic Freeze</button>
+      </form>
     </section>
 
     <section class="card">
@@ -71,6 +83,7 @@
         <input name="tx_id" placeholder="Held Transaction ID">
         <input name="user_id" placeholder="User ID">
         <input name="pin" placeholder="PIN" maxlength="4">
+        <input name="approval_code" placeholder="Trusted approval code (if required)">
         <button type="submit">Release Held Transaction</button>
       </form>
       <div class="actions">

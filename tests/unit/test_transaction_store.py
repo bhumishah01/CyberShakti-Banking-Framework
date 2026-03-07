@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from src.auth.service import create_user
+from src.auth.service import create_user, set_trusted_contact
 from src.database.init_db import init_db
 from src.database.transaction_store import (
     create_secure_transaction,
@@ -99,6 +99,7 @@ def test_high_risk_transaction_can_be_held_and_released(tmp_path) -> None:
     db_path = tmp_path / "tx.db"
     init_db(db_path)
     create_user("u300", "+919000111222", "1234", db_path=db_path)
+    set_trusted_contact("u300", "1234", "+919111122223", db_path=db_path)
 
     stored = create_secure_transaction(
         user_id="u300",
@@ -115,7 +116,20 @@ def test_high_risk_transaction_can_be_held_and_released(tmp_path) -> None:
     assert listed
 
     if stored.action_decision == "HOLD":
-        assert listed[0]["status"] == "HOLD_FOR_REVIEW"
-        assert release_held_transaction(stored.tx_id, "u300", "1234", db_path=db_path) is True
+        assert listed[0]["status"] in {"HOLD_FOR_REVIEW", "AWAITING_TRUSTED_APPROVAL"}
+        if listed[0]["status"] == "AWAITING_TRUSTED_APPROVAL":
+            assert release_held_transaction(
+                stored.tx_id, "u300", "1234", approval_code="", db_path=db_path
+            ) is False
+            assert stored.approval_code_for_demo
+            assert release_held_transaction(
+                stored.tx_id,
+                "u300",
+                "1234",
+                approval_code=stored.approval_code_for_demo,
+                db_path=db_path,
+            ) is True
+        else:
+            assert release_held_transaction(stored.tx_id, "u300", "1234", db_path=db_path) is True
         listed_after = list_secure_transactions("u300", "1234", db_path=db_path, limit=5)
         assert listed_after[0]["status"] == "PENDING"

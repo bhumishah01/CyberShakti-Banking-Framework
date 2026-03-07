@@ -45,6 +45,12 @@ def create_user(
     phone_hash = _hash_phone(phone_number)
     pin_hash = _hash_pin(pin, pin_salt)
 
+    default_auth_config = {
+        "step_up_enabled": True,
+        "trusted_contact": "",
+        "freeze_until": "",
+    }
+
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,))
@@ -65,7 +71,7 @@ def create_user(
                     phone_hash,
                     pin_salt.hex(),
                     pin_hash.hex(),
-                    json.dumps({"step_up_enabled": True}),
+                    json.dumps(default_auth_config),
                     now_iso,
                     user_id,
                 ),
@@ -83,11 +89,69 @@ def create_user(
                     phone_hash,
                     pin_salt.hex(),
                     pin_hash.hex(),
-                    json.dumps({"step_up_enabled": True}),
+                    json.dumps(default_auth_config),
                     now_iso,
                 ),
             )
         conn.commit()
+
+
+def set_trusted_contact(
+    user_id: str, pin: str, trusted_contact: str, db_path: Path = DB_PATH
+) -> None:
+    """Set or update trusted contact for high-risk approvals."""
+    if not trusted_contact.strip():
+        raise ValueError("trusted_contact cannot be empty")
+    _ = derive_session_key(user_id=user_id, pin=pin, db_path=db_path)
+    config = get_user_auth_config(user_id=user_id, db_path=db_path)
+    config["trusted_contact"] = trusted_contact.strip()
+    _update_auth_config(user_id=user_id, config=config, db_path=db_path)
+
+
+def enable_panic_freeze(
+    user_id: str, pin: str, minutes: int = 60, db_path: Path = DB_PATH
+) -> str:
+    """Freeze outgoing transactions for a limited duration."""
+    if minutes <= 0:
+        raise ValueError("minutes must be > 0")
+    _ = derive_session_key(user_id=user_id, pin=pin, db_path=db_path)
+    freeze_until = (_now_utc() + timedelta(minutes=minutes)).isoformat()
+    config = get_user_auth_config(user_id=user_id, db_path=db_path)
+    config["freeze_until"] = freeze_until
+    _update_auth_config(user_id=user_id, config=config, db_path=db_path)
+    return freeze_until
+
+
+def get_user_auth_config(user_id: str, db_path: Path = DB_PATH) -> dict:
+    init_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT auth_config FROM users WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+    if row is None:
+        raise ValueError(f"user_not_found:{user_id}")
+    raw = row[0] or "{}"
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    payload.setdefault("step_up_enabled", True)
+    payload.setdefault("trusted_contact", "")
+    payload.setdefault("freeze_until", "")
+    return payload
+
+
+def is_user_frozen(user_id: str, db_path: Path = DB_PATH) -> bool:
+    config = get_user_auth_config(user_id=user_id, db_path=db_path)
+    freeze_until = config.get("freeze_until", "")
+    if not freeze_until:
+        return False
+    try:
+        return _now_utc() < datetime.fromisoformat(str(freeze_until))
+    except ValueError:
+        return False
 
 
 def authenticate_user(
@@ -238,3 +302,13 @@ def _is_locked(lockout_until: str | None, now: datetime) -> bool:
 
 def _now_utc() -> datetime:
     return datetime.now(UTC)
+
+
+def _update_auth_config(user_id: str, config: dict, db_path: Path) -> None:
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE users SET auth_config = ? WHERE user_id = ?",
+            (json.dumps(config), user_id),
+        )
+        conn.commit()

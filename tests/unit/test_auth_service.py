@@ -8,6 +8,10 @@ from src.auth.service import (
     authenticate_user,
     create_user,
     derive_session_key,
+    enable_panic_freeze,
+    get_user_auth_config,
+    is_user_frozen,
+    set_trusted_contact,
 )
 from src.database.init_db import init_db
 
@@ -73,3 +77,16 @@ def test_create_user_duplicate_requires_replace_flag(tmp_path) -> None:
     # replace should allow user credential reset
     create_user("u4", "+919666666666", "4321", db_path=db_path, replace_existing=True)
     assert authenticate_user("u4", "4321", db_path=db_path).is_authenticated is True
+
+
+def test_trusted_contact_and_panic_freeze_settings(tmp_path) -> None:
+    db_path = tmp_path / "auth.db"
+    init_db(db_path)
+    create_user("u5", "+919555000111", "1234", db_path=db_path)
+
+    set_trusted_contact("u5", "1234", "+919888777666", db_path=db_path)
+    cfg = get_user_auth_config("u5", db_path=db_path)
+    assert cfg["trusted_contact"] == "+919888777666"
+
+    _ = enable_panic_freeze("u5", "1234", minutes=30, db_path=db_path)
+    assert is_user_frozen("u5", db_path=db_path) is True

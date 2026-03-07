@@ -9,9 +9,10 @@ import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from secrets import randbelow
 
 from src.audit.chain import append_audit_event
-from src.auth.service import derive_session_key
+from src.auth.service import derive_session_key, get_user_auth_config, is_user_frozen
 from src.crypto.service import (
     canonical_json,
     decrypt_payload,
@@ -37,6 +38,9 @@ class StoredTransaction:
     action_decision: str
     intervention_title: str
     intervention_guidance: list[str]
+    approval_required: bool
+    trusted_contact_hint: str
+    approval_code_for_demo: str
 
 
 def create_secure_transaction(
@@ -83,13 +87,40 @@ def create_secure_transaction(
     action_decision = intervention["action"]
     intervention_title = intervention["title"]
     intervention_guidance = intervention["guidance"]
+    approval_required = False
+    approval_code_hash = None
+    trusted_contact_hint = ""
+    approval_code_for_demo = ""
 
-    if action_decision == "HOLD":
+    auth_config = get_user_auth_config(user_id=user_id, db_path=db_path)
+    trusted_contact = str(auth_config.get("trusted_contact", "")).strip()
+
+    if is_user_frozen(user_id=user_id, db_path=db_path):
+        action_decision = "BLOCK"
+        intervention_title = "Outgoing transfers are frozen (panic mode)"
+        intervention_guidance = [
+            "Panic freeze is active for this account.",
+            "Unfreeze or wait until freeze period ends to continue.",
+        ]
+        status = "BLOCKED_PANIC_FREEZE"
+        sync_state = "BLOCKED"
+    elif action_decision == "HOLD":
         status = "HOLD_FOR_REVIEW"
         sync_state = "HOLD"
     elif action_decision == "BLOCK":
         status = "BLOCKED_LOCAL"
         sync_state = "BLOCKED"
+
+    if trusted_contact and action_decision in {"HOLD", "BLOCK"} and status.startswith("HOLD"):
+        approval_required = True
+        approval_code_for_demo = f"{randbelow(1_000_000):06d}"
+        approval_code_hash = hashlib.sha256(approval_code_for_demo.encode("utf-8")).hexdigest()
+        trusted_contact_hint = trusted_contact[-4:] if len(trusted_contact) >= 4 else trusted_contact
+        status = "AWAITING_TRUSTED_APPROVAL"
+        sync_state = "HOLD"
+        intervention_guidance = intervention_guidance + [
+            f"Approval code required from trusted contact ending with {trusted_contact_hint}.",
+        ]
 
     amount_payload = encrypt_payload(f"{amount:.2f}", enc_key)
     recipient_payload = encrypt_payload(recipient.strip(), enc_key)
@@ -128,8 +159,9 @@ def create_secure_transaction(
             """
             INSERT INTO transactions (
                 tx_id, user_id, amount_enc, recipient_enc, timestamp,
-                risk_score, risk_level, reason_codes, action_decision, intervention_data, status, signature, nonce
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                risk_score, risk_level, reason_codes, action_decision, intervention_data,
+                approval_required, approval_code_hash, trusted_contact_hint, status, signature, nonce
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 tx_id,
@@ -144,6 +176,9 @@ def create_secure_transaction(
                 canonical_json(
                     {"title": intervention_title, "guidance": intervention_guidance}
                 ),
+                1 if approval_required else 0,
+                approval_code_hash,
+                trusted_contact_hint,
                 status,
                 signature,
                 amount_payload["nonce"],
@@ -186,6 +221,9 @@ def create_secure_transaction(
         action_decision=action_decision,
         intervention_title=intervention_title,
         intervention_guidance=intervention_guidance,
+        approval_required=approval_required,
+        trusted_contact_hint=trusted_contact_hint,
+        approval_code_for_demo=approval_code_for_demo,
     )
 
 
@@ -205,7 +243,8 @@ def read_secure_transaction(
         cursor.execute(
             """
             SELECT tx_id, user_id, amount_enc, recipient_enc, timestamp,
-                   risk_score, risk_level, reason_codes, action_decision, intervention_data, status, signature
+                   risk_score, risk_level, reason_codes, action_decision, intervention_data,
+                   approval_required, trusted_contact_hint, status, signature
             FROM transactions
             WHERE tx_id = ? AND user_id = ?
             """,
@@ -227,6 +266,8 @@ def read_secure_transaction(
         reason_codes_raw,
         action_decision,
         intervention_raw,
+        approval_required,
+        trusted_contact_hint,
         status,
         signature,
     ) = row
@@ -258,6 +299,8 @@ def read_secure_transaction(
         "reason_codes": _parse_reason_codes(reason_codes_raw),
         "action_decision": action_decision or "ALLOW",
         "intervention": _parse_intervention(intervention_raw),
+        "approval_required": bool(approval_required),
+        "trusted_contact_hint": trusted_contact_hint or "",
         "status": status,
     }
 
@@ -278,7 +321,7 @@ def list_secure_transactions(
         cursor.execute(
             """
             SELECT tx_id, amount_enc, recipient_enc, timestamp, risk_score, risk_level, status, signature
-                   ,reason_codes, action_decision, intervention_data
+                   ,reason_codes, action_decision, intervention_data, approval_required, trusted_contact_hint
             FROM transactions
             WHERE user_id = ?
             ORDER BY timestamp DESC
@@ -302,6 +345,8 @@ def list_secure_transactions(
             reason_codes_raw,
             action_decision,
             intervention_raw,
+            approval_required,
+            trusted_contact_hint,
         ) = row
         signable = {
             "tx_id": tx_id,
@@ -325,6 +370,8 @@ def list_secure_transactions(
                     "reason_codes": _parse_reason_codes(reason_codes_raw),
                     "action_decision": action_decision or "ALLOW",
                     "intervention": _parse_intervention(intervention_raw),
+                    "approval_required": bool(approval_required),
+                    "trusted_contact_hint": trusted_contact_hint or "",
                     "amount": None,
                     "recipient": None,
                 }
@@ -343,6 +390,8 @@ def list_secure_transactions(
                 "reason_codes": _parse_reason_codes(reason_codes_raw),
                 "action_decision": action_decision or "ALLOW",
                 "intervention": _parse_intervention(intervention_raw),
+                "approval_required": bool(approval_required),
+                "trusted_contact_hint": trusted_contact_hint or "",
                 "amount": amount,
                 "recipient": recipient,
             }
@@ -459,6 +508,7 @@ def release_held_transaction(
     tx_id: str,
     user_id: str,
     pin: str,
+    approval_code: str = "",
     db_path: Path = DB_PATH,
 ) -> bool:
     """Release one held transaction after successful user authentication."""
@@ -470,7 +520,8 @@ def release_held_transaction(
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT amount_enc, recipient_enc, timestamp, risk_score, risk_level, status
+            SELECT amount_enc, recipient_enc, timestamp, risk_score, risk_level, status,
+                   approval_required, approval_code_hash
             FROM transactions WHERE tx_id = ? AND user_id = ?
             """,
             (tx_id, user_id),
@@ -478,9 +529,22 @@ def release_held_transaction(
         row = cursor.fetchone()
         if row is None:
             return False
-        amount_enc, recipient_enc, tx_time, risk_score, risk_level, status = row
-        if status != "HOLD_FOR_REVIEW":
+        (
+            amount_enc,
+            recipient_enc,
+            tx_time,
+            risk_score,
+            risk_level,
+            status,
+            approval_required,
+            approval_code_hash,
+        ) = row
+        if status not in {"HOLD_FOR_REVIEW", "AWAITING_TRUSTED_APPROVAL"}:
             return False
+        if bool(approval_required):
+            provided_hash = hashlib.sha256(approval_code.strip().encode("utf-8")).hexdigest()
+            if not approval_code.strip() or provided_hash != (approval_code_hash or ""):
+                return False
 
         new_status = "PENDING"
         signable = {

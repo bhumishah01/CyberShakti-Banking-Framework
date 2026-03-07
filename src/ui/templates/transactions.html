@@ -40,6 +40,7 @@
               <th>Action</th>
               <th>Reasons</th>
               <th>Guidance</th>
+              <th>Approval</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -63,6 +64,7 @@
                 </ul>
                 {% endif %}
               </td>
+              <td>{{ row.display_approval }}</td>
               <td><span class="pill pill-status">{{ row.display_status }}</span></td>
             </tr>
             {% endfor %}
