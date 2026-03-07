@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -44,6 +45,7 @@ def _ctx(request: Request, message: str = "", error: str = "", lang: str = "en")
         "lang": lang,
         "i18n": i18n,
         "langs": _language_choices(),
+        "scenarios": _scenario_choices(lang),
     }
 
 
@@ -259,12 +261,164 @@ def export_report():
     return JSONResponse(payload)
 
 
+@app.post("/simulate/scenario")
+def run_scenario(
+    request: Request,
+    scenario_id: str = Form(...),
+    user_id: str = Form(...),
+    pin: str = Form(...),
+    trusted_contact: str = Form(default=""),
+    lang: str = Form(default="en"),
+):
+    lang = _resolve_lang(lang)
+    try:
+        clean_user = user_id.strip()
+        clean_pin = pin.strip()
+        _ensure_user_for_scenario(user_id=clean_user, pin=clean_pin)
+
+        if trusted_contact.strip():
+            set_trusted_contact(
+                user_id=clean_user,
+                pin=clean_pin,
+                trusted_contact=trusted_contact.strip(),
+                db_path=DEFAULT_DB,
+            )
+
+        simulated = _simulate_scenario(
+            scenario_id=scenario_id.strip(),
+            user_id=clean_user,
+            pin=clean_pin,
+        )
+        summary = _scenario_result_message(scenario_id=scenario_id.strip(), transactions=simulated, lang=lang)
+        return templates.TemplateResponse("index.html", _ctx(request, message=summary, lang=lang))
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "index.html", _ctx(request, error=str(exc), lang=lang), status_code=400
+        )
+
+
 def _language_choices() -> list[dict]:
     return [
         {"code": "en", "label": "English"},
         {"code": "hi", "label": "हिंदी"},
         {"code": "or", "label": "ଓଡ଼ିଆ"},
     ]
+
+
+def _scenario_choices(lang: str) -> list[dict]:
+    options = {
+        "en": [
+            {"id": "scam_high_amount", "label": "Late-night high amount to unknown recipient"},
+            {"id": "rapid_mule_burst", "label": "Rapid burst transfers (money mule pattern)"},
+            {"id": "account_takeover", "label": "Account takeover after failed logins"},
+        ],
+        "hi": [
+            {"id": "scam_high_amount", "label": "देर रात अज्ञात प्राप्तकर्ता को बड़ी राशि"},
+            {"id": "rapid_mule_burst", "label": "तेज़ी से कई ट्रांसफर (मनी म्यूल पैटर्न)"},
+            {"id": "account_takeover", "label": "असफल लॉगिन के बाद अकाउंट टेकओवर"},
+        ],
+        "or": [
+            {"id": "scam_high_amount", "label": "ରାତିରେ ଅଜଣା ପ୍ରାପ୍ତକର୍ତ୍ତାଙ୍କୁ ବଡ଼ ରାଶି"},
+            {"id": "rapid_mule_burst", "label": "ଦ୍ରୁତ ଅନେକ ଟ୍ରାନ୍ସଫର୍ (ମନି ମ୍ୟୁଲ୍ ପ୍ୟାଟର୍ନ)"},
+            {"id": "account_takeover", "label": "ବିଫଳ ଲଗଇନ ପରେ ଆକାଉଣ୍ଟ ଟେକଓଭର୍"},
+        ],
+    }
+    return options.get(lang, options["en"])
+
+
+def _ensure_user_for_scenario(user_id: str, pin: str) -> None:
+    try:
+        create_user(
+            user_id=user_id,
+            phone_number=f"+91{abs(hash(user_id)) % 10_000_000_000:010d}",
+            pin=pin,
+            db_path=DEFAULT_DB,
+            replace_existing=False,
+        )
+    except ValueError as exc:
+        if "already exists" not in str(exc).lower():
+            raise
+
+
+def _set_failed_attempts(user_id: str, attempts: int) -> None:
+    with sqlite3.connect(DEFAULT_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE users SET failed_attempts = ?, lockout_until = NULL WHERE user_id = ?",
+            (attempts, user_id),
+        )
+        conn.commit()
+
+
+def _simulate_scenario(scenario_id: str, user_id: str, pin: str):
+    now = datetime.now(UTC)
+    if scenario_id == "scam_high_amount":
+        tx = create_secure_transaction(
+            user_id=user_id,
+            pin=pin,
+            amount=7800.0,
+            recipient="Unknown Agent",
+            db_path=DEFAULT_DB,
+            timestamp=now.replace(hour=23, minute=35, second=0, microsecond=0),
+        )
+        return [tx]
+
+    if scenario_id == "rapid_mule_burst":
+        start = now - timedelta(minutes=6)
+        samples = [
+            (420.0, "Local Friend A", start),
+            (590.0, "Local Friend B", start + timedelta(minutes=2)),
+            (640.0, "Local Friend C", start + timedelta(minutes=4)),
+            (720.0, "Unknown Mule", start + timedelta(minutes=6)),
+        ]
+        generated = []
+        for amount, recipient, when in samples:
+            generated.append(
+                create_secure_transaction(
+                    user_id=user_id,
+                    pin=pin,
+                    amount=amount,
+                    recipient=recipient,
+                    db_path=DEFAULT_DB,
+                    timestamp=when,
+                )
+            )
+        return generated
+
+    if scenario_id == "account_takeover":
+        _set_failed_attempts(user_id=user_id, attempts=4)
+        try:
+            tx = create_secure_transaction(
+                user_id=user_id,
+                pin=pin,
+                amount=6500.0,
+                recipient="Emergency Receiver",
+                db_path=DEFAULT_DB,
+                timestamp=now,
+            )
+            return [tx]
+        finally:
+            _set_failed_attempts(user_id=user_id, attempts=0)
+
+    raise ValueError("Unknown scenario selected")
+
+
+def _scenario_result_message(scenario_id: str, transactions: list, lang: str) -> str:
+    labels = {item["id"]: item["label"] for item in _scenario_choices(lang="en")}
+    scenario_name = labels.get(scenario_id, scenario_id)
+    latest = transactions[-1]
+    reason_text = ", ".join(_friendly_reason(code, lang=lang) for code in latest.reason_codes) or _t(lang, "no_alert")
+    summary = (
+        f"{_t(lang, 'scenario_ran')}: {scenario_name}. "
+        f"{_t(lang, 'created_count')}: {len(transactions)}. "
+        f"{_t(lang, 'risk_label')} {_friendly_risk(latest.risk_level, lang=lang)} ({latest.risk_score}/100). "
+        f"{_t(lang, 'decision_label')} {_friendly_action(latest.action_decision, lang=lang)}. "
+        f"{_t(lang, 'status_label')} {_friendly_status(latest.status, lang=lang)}. "
+        f"{_t(lang, 'reason_label')} {reason_text}."
+    )
+    if latest.approval_required:
+        summary += f" {_t(lang, 'demo_code')}: {latest.approval_code_for_demo}"
+    return summary
 
 
 @app.post("/transactions/release")
@@ -491,6 +645,12 @@ def _bundle(lang: str) -> dict:
             "section_2": "2. Create Secure Transaction",
             "section_3": "3. View Transactions",
             "section_4": "4. Sync and Audit",
+            "section_5": "5. Fraud Scenario Simulator",
+            "scenario_user": "Simulation User ID",
+            "scenario_pin": "Simulation PIN",
+            "scenario_contact": "Trusted Contact (optional)",
+            "scenario_choice": "Scenario",
+            "run_scenario_btn": "Run Scenario",
             "save_user": "Save User",
             "set_trusted": "Set Trusted Contact",
             "enable_freeze": "Enable Panic Freeze",
@@ -537,6 +697,12 @@ def _bundle(lang: str) -> dict:
             "section_2": "2. सुरक्षित लेनदेन बनाएं",
             "section_3": "3. लेनदेन सूची देखें",
             "section_4": "4. सिंक और ऑडिट",
+            "section_5": "5. फ्रॉड सीनारियो सिम्युलेटर",
+            "scenario_user": "सिम्युलेशन उपयोगकर्ता ID",
+            "scenario_pin": "सिम्युलेशन PIN",
+            "scenario_contact": "विश्वसनीय संपर्क (वैकल्पिक)",
+            "scenario_choice": "सीनारियो",
+            "run_scenario_btn": "सीनारियो चलाएं",
             "save_user": "उपयोगकर्ता सहेजें",
             "set_trusted": "विश्वसनीय संपर्क सेट करें",
             "enable_freeze": "पैनिक फ्रीज़ चालू करें",
@@ -583,6 +749,12 @@ def _bundle(lang: str) -> dict:
             "section_2": "2. ସୁରକ୍ଷିତ ଟ୍ରାନ୍ଜାକ୍ସନ ସୃଷ୍ଟି",
             "section_3": "3. ଟ୍ରାନ୍ଜାକ୍ସନ ତାଲିକା ଦେଖନ୍ତୁ",
             "section_4": "4. ସିଙ୍କ ଏବଂ ଅଡିଟ୍",
+            "section_5": "5. ଠକେଇ ପରିସ୍ଥିତି ସିମ୍ୟୁଲେଟର୍",
+            "scenario_user": "ସିମ୍ୟୁଲେସନ୍ ୟୁଜର୍ ID",
+            "scenario_pin": "ସିମ୍ୟୁଲେସନ୍ PIN",
+            "scenario_contact": "ଭରସାଯୋଗ୍ୟ ସଂଯୋଗ (ଇଚ୍ଛାଧୀନ)",
+            "scenario_choice": "ପରିସ୍ଥିତି",
+            "run_scenario_btn": "ପରିସ୍ଥିତି ଚାଲାନ୍ତୁ",
             "save_user": "ବ୍ୟବହାରକାରୀ ସେଭ୍ କରନ୍ତୁ",
             "set_trusted": "ଭରସାଯୋଗ୍ୟ ସଂଯୋଗ ସେଟ୍ କରନ୍ତୁ",
             "enable_freeze": "ପ୍ୟାନିକ ଫ୍ରିଜ୍ ଚାଲୁ କରନ୍ତୁ",
@@ -623,8 +795,11 @@ def _t(lang: str, key: str) -> str:
             "tx_saved": "Secure transaction saved successfully.",
             "risk_label": "Risk:",
             "decision_label": "Decision:",
+            "status_label": "Status:",
             "reason_label": "Reason:",
             "guidance_label": "Guidance:",
+            "scenario_ran": "Scenario executed",
+            "created_count": "Transactions generated",
             "trusted_required": "Trusted approval required",
             "contact_ending": "contact ending",
             "demo_code": "Demo approval code",
@@ -645,8 +820,11 @@ def _t(lang: str, key: str) -> str:
             "tx_saved": "सुरक्षित लेनदेन सफलतापूर्वक सहेजा गया।",
             "risk_label": "रिस्क:",
             "decision_label": "निर्णय:",
+            "status_label": "स्थिति:",
             "reason_label": "कारण:",
             "guidance_label": "सलाह:",
+            "scenario_ran": "सीनारियो चलाया गया",
+            "created_count": "निर्मित लेनदेन",
             "trusted_required": "विश्वसनीय स्वीकृति आवश्यक",
             "contact_ending": "अंतिम अंक",
             "demo_code": "डेमो स्वीकृति कोड",
@@ -667,8 +845,11 @@ def _t(lang: str, key: str) -> str:
             "tx_saved": "ସୁରକ୍ଷିତ ଟ୍ରାନ୍ଜାକ୍ସନ ସଫଳତାର ସହିତ ସେଭ୍ ହେଲା।",
             "risk_label": "ଝୁମ୍ପ:",
             "decision_label": "ନିଷ୍ପତ୍ତି:",
+            "status_label": "ସ୍ଥିତି:",
             "reason_label": "କାରଣ:",
             "guidance_label": "ପରାମର୍ଶ:",
+            "scenario_ran": "ପରିସ୍ଥିତି ଚାଲିଲା",
+            "created_count": "ସୃଷ୍ଟି ହୋଇଥିବା ଟ୍ରାନ୍ଜାକ୍ସନ",
             "trusted_required": "ଭରସାଯୋଗ୍ୟ ସ୍ୱୀକୃତି ଆବଶ୍ୟକ",
             "contact_ending": "ଶେଷ ଅଙ୍କ",
             "demo_code": "ଡେମୋ ସ୍ୱୀକୃତି କୋଡ୍",

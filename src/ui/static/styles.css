@@ -109,7 +109,13 @@ input, button, .button {
   padding: 11px;
   font-size: 0.95rem;
 }
-input { background: #fff; }
+input, select { background: #fff; }
+select {
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  padding: 11px;
+  font-size: 0.95rem;
+}
 button, .button {
   background: var(--accent);
   color: white;
@@ -154,6 +160,9 @@ button:hover, .button:hover { background: var(--accent-2); }
 }
 .actions form {
   margin: 0;
+}
+.card-sim {
+  border-left: 4px solid #f4a261;
 }
 .table-wrap {
   overflow-x: auto;

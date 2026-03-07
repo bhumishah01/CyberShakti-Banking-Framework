@@ -17,6 +17,7 @@ Use this file to quickly locate any part of the project.
 - Step 12 scam intervention engine: `docs/STEPWISE PROGRESS/STEP_12_SCAM_INTERVENTION_ENGINE.md`
 - Step 13 trusted safety controls: `docs/STEPWISE PROGRESS/STEP_13_TRUSTED_SAFETY_CONTROLS.md`
 - Step 14 local language and usability: `docs/STEPWISE PROGRESS/STEP_14_LOCAL_LANGUAGE_AND_USABILITY.md`
+- Step 15 fraud scenario simulator: `docs/STEPWISE PROGRESS/STEP_15_FRAUD_SCENARIO_SIMULATOR.md`
 - Architecture: `docs/ARCHITECTURE.md`
 - Threat model: `docs/THREAT_MODEL.md`
 - Roadmap: `docs/ROADMAP.md`

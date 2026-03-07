@@ -115,6 +115,22 @@
         <a href="/reset?lang={{ lang }}" class="button secondary">{{ i18n.clear_messages }}</a>
       </div>
     </section>
+
+    <section class="card card-sim">
+      <h2>{{ i18n.section_5 }}</h2>
+      <form action="/simulate/scenario" method="post" class="grid">
+        <input type="hidden" name="lang" value="{{ lang }}">
+        <input name="user_id" placeholder="{{ i18n.scenario_user }}" required>
+        <input name="pin" placeholder="{{ i18n.scenario_pin }}" maxlength="4" required>
+        <input name="trusted_contact" placeholder="{{ i18n.scenario_contact }}">
+        <select name="scenario_id" required>
+          {% for item in scenarios %}
+          <option value="{{ item.id }}">{{ item.label }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">{{ i18n.run_scenario_btn }}</button>
+      </form>
+    </section>
   </main>
 </body>
 </html>

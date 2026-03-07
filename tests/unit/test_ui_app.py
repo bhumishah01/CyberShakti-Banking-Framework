@@ -87,3 +87,17 @@ def test_ui_trusted_contact_and_panic_freeze_endpoints() -> None:
         data={"user_id": "safety-user", "pin": "1234", "minutes": "30"},
     )
     assert r2.status_code == 200
+
+
+def test_ui_scenario_simulator_endpoint() -> None:
+    response = client.post(
+        "/simulate/scenario",
+        data={
+            "scenario_id": "account_takeover",
+            "user_id": "sim-user",
+            "pin": "1234",
+            "lang": "en",
+        },
+    )
+    assert response.status_code == 200
+    assert "Scenario executed" in response.text
