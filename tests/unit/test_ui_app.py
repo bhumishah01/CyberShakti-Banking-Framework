@@ -135,3 +135,9 @@ def test_ui_impact_report_page() -> None:
     response = client.get("/report/impact")
     assert response.status_code == 200
     assert "Fraud Impact Report" in response.text
+
+
+def test_ui_professor_demo_walkthrough_page() -> None:
+    response = client.get("/demo/walkthrough")
+    assert response.status_code == 200
+    assert "Professor Demo Walkthrough" in response.text

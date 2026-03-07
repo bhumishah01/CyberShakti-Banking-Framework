@@ -19,6 +19,7 @@ Use this file to quickly locate any part of the project.
 - Step 14 local language and usability: `docs/STEPWISE PROGRESS/STEP_14_LOCAL_LANGUAGE_AND_USABILITY.md`
 - Step 15 fraud scenario simulator: `docs/STEPWISE PROGRESS/STEP_15_FRAUD_SCENARIO_SIMULATOR.md`
 - Step 16 agent voice and impact report: `docs/STEPWISE PROGRESS/STEP_16_AGENT_VOICE_AND_IMPACT_REPORT.md`
+- Step 17 professor demo walkthrough: `docs/STEPWISE PROGRESS/STEP_17_PROFESSOR_DEMO_WALKTHROUGH.md`
 - Architecture: `docs/ARCHITECTURE.md`
 - Threat model: `docs/THREAT_MODEL.md`
 - Roadmap: `docs/ROADMAP.md`
@@ -41,6 +42,7 @@ Use this file to quickly locate any part of the project.
 - Web UI templates: `src/ui/templates/`
 - Agent UI: `src/ui/templates/agent.html`
 - Impact report UI: `src/ui/templates/impact_report.html`
+- Demo walkthrough UI: `src/ui/templates/demo_walkthrough.html`
 - Web UI styles: `src/ui/static/styles.css`
 
 ## Tests

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Professor Demo Walkthrough - RuralShield</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <div class="top-row">
+        <div>
+          <h1>Professor Demo Walkthrough</h1>
+          <p>Deterministic end-to-end story for presentation</p>
+        </div>
+        <form action="/demo/walkthrough" method="get" class="lang-form">
+          <label for="lang">{{ i18n.lang_label }}</label>
+          <select id="lang" name="lang" onchange="this.form.submit()">
+            {% for item in langs %}
+            <option value="{{ item.code }}" {% if item.code == lang %}selected{% endif %}>{{ item.label }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
+    </header>
+
+    <section class="card">
+      <p><strong>User ID:</strong> {{ demo.user_id }}</p>
+      <p><strong>PIN:</strong> {{ demo.pin }}</p>
+      <p><strong>Trusted contact hint:</strong> {{ demo.trusted_contact_hint }}</p>
+      <p><strong>Trusted release completed:</strong> {{ "Yes" if demo.released else "No" }}</p>
+    </section>
+
+    {% for step in demo.steps %}
+    <section class="card">
+      <h2>{{ step.title }}</h2>
+      <p><strong>{{ i18n.tx_id }}:</strong> <span class="mono">{{ step.tx_id }}</span></p>
+      <p><strong>{{ i18n.risk }}:</strong> {{ step.risk }}</p>
+      <p><strong>{{ i18n.action }}:</strong> {{ step.action }}</p>
+      <p><strong>{{ i18n.status }}:</strong> {{ step.status }}</p>
+      <p><strong>{{ i18n.reasons }}:</strong> {{ step.why }}</p>
+      {% if step.approval_code %}
+      <p><strong>{{ i18n.demo_code }}:</strong> {{ step.approval_code }}</p>
+      {% endif %}
+    </section>
+    {% endfor %}
+
+    <section class="card">
+      <h2>What To Say (Quick Script)</h2>
+      <ul class="guidance-list">
+        {% for line in demo.speaking_points %}
+        <li>{{ line }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <section class="actions">
+      <a href="/?lang={{ lang }}" class="button secondary">{{ i18n.back_dashboard }}</a>
+      <a href="/report/impact?lang={{ lang }}" class="button secondary">{{ i18n.impact_report }}</a>
+      <a href="/transactions?user_id={{ demo.user_id }}&pin={{ demo.pin }}&limit=10&lang={{ lang }}" class="button secondary">Open Transaction List</a>
+    </section>
+  </main>
+</body>
+</html>

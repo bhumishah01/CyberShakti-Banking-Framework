@@ -171,6 +171,9 @@ button:hover, .button:hover { background: var(--accent-2); }
   padding: 12px 16px;
   border-left: 4px solid #457b9d;
 }
+.card-demo {
+  border-left: 4px solid #6c5ce7;
+}
 .table-wrap {
   overflow-x: auto;
 }

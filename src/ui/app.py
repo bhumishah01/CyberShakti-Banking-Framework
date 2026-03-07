@@ -373,6 +373,15 @@ def fraud_impact_report(request: Request):
     return templates.TemplateResponse("impact_report.html", context)
 
 
+@app.get("/demo/walkthrough")
+def professor_walkthrough(request: Request):
+    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    demo = _run_professor_walkthrough(lang=lang)
+    context = _ctx(request, lang=lang)
+    context["demo"] = demo
+    return templates.TemplateResponse("demo_walkthrough.html", context)
+
+
 @app.post("/simulate/scenario")
 def run_scenario(
     request: Request,
@@ -674,6 +683,109 @@ def _build_voice_prompt(lang: str, risk_level: str, action: str, guidance: list[
     return " ".join([headline, *guidance]).strip()
 
 
+def _run_professor_walkthrough(lang: str) -> dict:
+    user_id = "prof_demo_user"
+    pin = "1234"
+    create_user(
+        user_id=user_id,
+        phone_number="+919222222222",
+        pin=pin,
+        db_path=DEFAULT_DB,
+        replace_existing=True,
+    )
+    set_trusted_contact(
+        user_id=user_id,
+        pin=pin,
+        trusted_contact="+919888888888",
+        db_path=DEFAULT_DB,
+    )
+
+    step1 = create_secure_transaction(
+        user_id=user_id,
+        pin=pin,
+        amount=420.0,
+        recipient="Ration Shop",
+        db_path=DEFAULT_DB,
+    )
+    late_time = datetime.now(UTC).replace(hour=23, minute=40, second=0, microsecond=0)
+    step2 = create_secure_transaction(
+        user_id=user_id,
+        pin=pin,
+        amount=7200.0,
+        recipient="Unknown Agent",
+        db_path=DEFAULT_DB,
+        timestamp=late_time,
+    )
+    enable_panic_freeze(
+        user_id=user_id,
+        pin=pin,
+        minutes=30,
+        db_path=DEFAULT_DB,
+    )
+    step3 = create_secure_transaction(
+        user_id=user_id,
+        pin=pin,
+        amount=900.0,
+        recipient="Neighbor Transfer",
+        db_path=DEFAULT_DB,
+    )
+
+    released = False
+    if step2.approval_required and step2.approval_code_for_demo:
+        released = release_held_transaction(
+            tx_id=step2.tx_id,
+            user_id=user_id,
+            pin=pin,
+            approval_code=step2.approval_code_for_demo,
+            db_path=DEFAULT_DB,
+        )
+
+    latest = list_secure_transactions(user_id=user_id, pin=pin, db_path=DEFAULT_DB, limit=8)
+    status_by_tx = {row["tx_id"]: row["status"] for row in latest}
+
+    steps = [
+        {
+            "title": "Step A: Normal low-risk payment",
+            "tx_id": step1.tx_id,
+            "risk": f"{_friendly_risk(step1.risk_level, lang)} ({step1.risk_score}/100)",
+            "action": _friendly_action(step1.action_decision, lang),
+            "status": _friendly_status(status_by_tx.get(step1.tx_id, step1.status), lang),
+            "why": ", ".join(_friendly_reason(code, lang) for code in step1.reason_codes) or _t(lang, "no_alert"),
+        },
+        {
+            "title": "Step B: Scam-like transfer to unknown receiver",
+            "tx_id": step2.tx_id,
+            "risk": f"{_friendly_risk(step2.risk_level, lang)} ({step2.risk_score}/100)",
+            "action": _friendly_action(step2.action_decision, lang),
+            "status": _friendly_status(status_by_tx.get(step2.tx_id, step2.status), lang),
+            "why": ", ".join(_friendly_reason(code, lang) for code in step2.reason_codes) or _t(lang, "no_alert"),
+            "approval_code": step2.approval_code_for_demo,
+        },
+        {
+            "title": "Step C: Panic freeze blocks outgoing transfer",
+            "tx_id": step3.tx_id,
+            "risk": f"{_friendly_risk(step3.risk_level, lang)} ({step3.risk_score}/100)",
+            "action": _friendly_action(step3.action_decision, lang),
+            "status": _friendly_status(status_by_tx.get(step3.tx_id, step3.status), lang),
+            "why": ", ".join(_friendly_reason(code, lang) for code in step3.reason_codes) or _t(lang, "no_alert"),
+        },
+    ]
+    return {
+        "user_id": user_id,
+        "pin": pin,
+        "trusted_contact_hint": "8888",
+        "steps": steps,
+        "released": released,
+        "speaking_points": [
+            "Transaction data is encrypted and stored offline first.",
+            "Risk scoring flags suspicious patterns with explainable reasons.",
+            "High-risk flows are held or blocked before sync.",
+            "Trusted-contact approval and panic freeze prevent immediate fraud loss.",
+            "All decisions are visible in local UI for assisted rural operations.",
+        ],
+    }
+
+
 @app.post("/transactions/release")
 def release_transaction(
     request: Request,
@@ -935,6 +1047,7 @@ def _bundle(lang: str) -> dict:
             "export_report": "Export Security Report",
             "agent_mode": "Open Agent/Kiosk Mode",
             "impact_report": "Fraud Impact Report",
+            "demo_walkthrough": "Run Professor Demo Walkthrough",
             "clear_messages": "Clear Messages",
             "tx_list_title": "Transaction List",
             "user_label": "User",
@@ -1008,6 +1121,7 @@ def _bundle(lang: str) -> dict:
             "export_report": "सुरक्षा रिपोर्ट निर्यात करें",
             "agent_mode": "एजेंट/कियोस्क मोड खोलें",
             "impact_report": "फ्रॉड प्रभाव रिपोर्ट",
+            "demo_walkthrough": "प्रोफेसर डेमो वॉकथ्रू चलाएं",
             "clear_messages": "संदेश साफ करें",
             "tx_list_title": "लेनदेन सूची",
             "user_label": "उपयोगकर्ता",
@@ -1081,6 +1195,7 @@ def _bundle(lang: str) -> dict:
             "export_report": "ସୁରକ୍ଷା ରିପୋର୍ଟ ନିର୍ଯାତ",
             "agent_mode": "ଏଜେଣ୍ଟ/କିଓସ୍କ ମୋଡ୍ ଖୋଲନ୍ତୁ",
             "impact_report": "ଠକେଇ ପ୍ରଭାବ ରିପୋର୍ଟ",
+            "demo_walkthrough": "ପ୍ରୋଫେସର ଡେମୋ ଚଲାନ୍ତୁ",
             "clear_messages": "ସନ୍ଦେଶ ସଫା କରନ୍ତୁ",
             "tx_list_title": "ଟ୍ରାନ୍ଜାକ୍ସନ ତାଲିକା",
             "user_label": "ବ୍ୟବହାରକାରୀ",
