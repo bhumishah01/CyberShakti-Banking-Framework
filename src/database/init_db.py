@@ -59,6 +59,8 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 intervention_data TEXT,
                 approval_required INTEGER NOT NULL DEFAULT 0,
                 approval_code_hash TEXT,
+                approval_expires_at TEXT,
+                approval_attempts INTEGER NOT NULL DEFAULT 0,
                 trusted_contact_hint TEXT,
                 status TEXT NOT NULL,
                 signature TEXT NOT NULL,
@@ -157,6 +159,12 @@ def _ensure_transactions_columns(cursor: sqlite3.Cursor) -> None:
         )
     if "approval_code_hash" not in columns:
         cursor.execute("ALTER TABLE transactions ADD COLUMN approval_code_hash TEXT")
+    if "approval_expires_at" not in columns:
+        cursor.execute("ALTER TABLE transactions ADD COLUMN approval_expires_at TEXT")
+    if "approval_attempts" not in columns:
+        cursor.execute(
+            "ALTER TABLE transactions ADD COLUMN approval_attempts INTEGER NOT NULL DEFAULT 0"
+        )
     if "trusted_contact_hint" not in columns:
         cursor.execute("ALTER TABLE transactions ADD COLUMN trusted_contact_hint TEXT")
 

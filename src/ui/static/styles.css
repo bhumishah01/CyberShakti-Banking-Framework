@@ -30,6 +30,29 @@ header p {
   margin-top: 6px;
   color: var(--muted);
 }
+.top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.lang-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 140px;
+}
+.lang-form label {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.lang-form select {
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  padding: 9px;
+  font-size: 0.9rem;
+  background: #fff;
+}
 .card {
   background: var(--card);
   border: 1px solid var(--border);
@@ -187,4 +210,8 @@ tbody tr:nth-child(odd) {
 @media (max-width: 620px) {
   .container { padding: 12px; }
   .inline { grid-template-columns: 1fr; }
+  .top-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }

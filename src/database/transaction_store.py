@@ -7,7 +7,7 @@ import sqlite3
 import uuid
 import hashlib
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from secrets import randbelow
 
@@ -23,6 +23,9 @@ from src.crypto.service import (
 )
 from src.database.init_db import DB_PATH, init_db
 from src.fraud.engine import decide_intervention, score_transaction
+
+APPROVAL_EXPIRY_MINUTES = 15
+MAX_APPROVAL_ATTEMPTS = 3
 
 
 @dataclass(frozen=True)
@@ -89,6 +92,8 @@ def create_secure_transaction(
     intervention_guidance = intervention["guidance"]
     approval_required = False
     approval_code_hash = None
+    approval_expires_at = None
+    approval_attempts = 0
     trusted_contact_hint = ""
     approval_code_for_demo = ""
 
@@ -115,11 +120,13 @@ def create_secure_transaction(
         approval_required = True
         approval_code_for_demo = f"{randbelow(1_000_000):06d}"
         approval_code_hash = hashlib.sha256(approval_code_for_demo.encode("utf-8")).hexdigest()
+        approval_expires_at = (datetime.now(UTC) + timedelta(minutes=APPROVAL_EXPIRY_MINUTES)).isoformat()
         trusted_contact_hint = trusted_contact[-4:] if len(trusted_contact) >= 4 else trusted_contact
         status = "AWAITING_TRUSTED_APPROVAL"
         sync_state = "HOLD"
         intervention_guidance = intervention_guidance + [
             f"Approval code required from trusted contact ending with {trusted_contact_hint}.",
+            f"Code expires in {APPROVAL_EXPIRY_MINUTES} minutes.",
         ]
 
     amount_payload = encrypt_payload(f"{amount:.2f}", enc_key)
@@ -160,8 +167,9 @@ def create_secure_transaction(
             INSERT INTO transactions (
                 tx_id, user_id, amount_enc, recipient_enc, timestamp,
                 risk_score, risk_level, reason_codes, action_decision, intervention_data,
-                approval_required, approval_code_hash, trusted_contact_hint, status, signature, nonce
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                approval_required, approval_code_hash, approval_expires_at, approval_attempts,
+                trusted_contact_hint, status, signature, nonce
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 tx_id,
@@ -178,6 +186,8 @@ def create_secure_transaction(
                 ),
                 1 if approval_required else 0,
                 approval_code_hash,
+                approval_expires_at,
+                approval_attempts,
                 trusted_contact_hint,
                 status,
                 signature,
@@ -244,7 +254,7 @@ def read_secure_transaction(
             """
             SELECT tx_id, user_id, amount_enc, recipient_enc, timestamp,
                    risk_score, risk_level, reason_codes, action_decision, intervention_data,
-                   approval_required, trusted_contact_hint, status, signature
+                   approval_required, trusted_contact_hint, approval_expires_at, approval_attempts, status, signature
             FROM transactions
             WHERE tx_id = ? AND user_id = ?
             """,
@@ -268,6 +278,8 @@ def read_secure_transaction(
         intervention_raw,
         approval_required,
         trusted_contact_hint,
+        approval_expires_at,
+        approval_attempts,
         status,
         signature,
     ) = row
@@ -301,6 +313,8 @@ def read_secure_transaction(
         "intervention": _parse_intervention(intervention_raw),
         "approval_required": bool(approval_required),
         "trusted_contact_hint": trusted_contact_hint or "",
+        "approval_expires_at": approval_expires_at or "",
+        "approval_attempts": int(approval_attempts or 0),
         "status": status,
     }
 
@@ -322,6 +336,7 @@ def list_secure_transactions(
             """
             SELECT tx_id, amount_enc, recipient_enc, timestamp, risk_score, risk_level, status, signature
                    ,reason_codes, action_decision, intervention_data, approval_required, trusted_contact_hint
+                   ,approval_expires_at, approval_attempts
             FROM transactions
             WHERE user_id = ?
             ORDER BY timestamp DESC
@@ -347,6 +362,8 @@ def list_secure_transactions(
             intervention_raw,
             approval_required,
             trusted_contact_hint,
+            approval_expires_at,
+            approval_attempts,
         ) = row
         signable = {
             "tx_id": tx_id,
@@ -372,6 +389,8 @@ def list_secure_transactions(
                     "intervention": _parse_intervention(intervention_raw),
                     "approval_required": bool(approval_required),
                     "trusted_contact_hint": trusted_contact_hint or "",
+                    "approval_expires_at": approval_expires_at or "",
+                    "approval_attempts": int(approval_attempts or 0),
                     "amount": None,
                     "recipient": None,
                 }
@@ -392,6 +411,8 @@ def list_secure_transactions(
                 "intervention": _parse_intervention(intervention_raw),
                 "approval_required": bool(approval_required),
                 "trusted_contact_hint": trusted_contact_hint or "",
+                "approval_expires_at": approval_expires_at or "",
+                "approval_attempts": int(approval_attempts or 0),
                 "amount": amount,
                 "recipient": recipient,
             }
@@ -459,6 +480,16 @@ def get_dashboard_stats(db_path: Path = DB_PATH) -> dict:
         synced_count = int(cursor.fetchone()[0])
 
         cursor.execute(
+            "SELECT COUNT(*) FROM transactions WHERE status IN ('HOLD_FOR_REVIEW','AWAITING_TRUSTED_APPROVAL')"
+        )
+        held_count = int(cursor.fetchone()[0])
+
+        cursor.execute(
+            "SELECT COUNT(*) FROM transactions WHERE status LIKE 'BLOCKED_%' OR status = 'BLOCKED_LOCAL'"
+        )
+        blocked_count = int(cursor.fetchone()[0])
+
+        cursor.execute(
             "SELECT COUNT(*) FROM transactions WHERE risk_level = 'HIGH' OR risk_score >= 70"
         )
         high_risk_count = int(cursor.fetchone()[0])
@@ -466,11 +497,17 @@ def get_dashboard_stats(db_path: Path = DB_PATH) -> dict:
         cursor.execute("SELECT COUNT(*) FROM audit_log")
         audit_events = int(cursor.fetchone()[0])
 
+        cursor.execute("SELECT COUNT(*) FROM audit_log WHERE event_type = 'TRANSACTION_RELEASED'")
+        released_count = int(cursor.fetchone()[0])
+
     return {
         "user_count": user_count,
         "tx_count": tx_count,
         "pending_count": pending_count,
         "synced_count": synced_count,
+        "held_count": held_count,
+        "blocked_count": blocked_count,
+        "released_count": released_count,
         "high_risk_count": high_risk_count,
         "audit_events": audit_events,
     }
@@ -521,7 +558,7 @@ def release_held_transaction(
         cursor.execute(
             """
             SELECT amount_enc, recipient_enc, timestamp, risk_score, risk_level, status,
-                   approval_required, approval_code_hash
+                   approval_required, approval_code_hash, approval_expires_at, approval_attempts
             FROM transactions WHERE tx_id = ? AND user_id = ?
             """,
             (tx_id, user_id),
@@ -538,12 +575,45 @@ def release_held_transaction(
             status,
             approval_required,
             approval_code_hash,
+            approval_expires_at,
+            approval_attempts,
         ) = row
         if status not in {"HOLD_FOR_REVIEW", "AWAITING_TRUSTED_APPROVAL"}:
             return False
         if bool(approval_required):
+            if int(approval_attempts or 0) >= MAX_APPROVAL_ATTEMPTS:
+                cursor.execute(
+                    "UPDATE transactions SET status = 'BLOCKED_TRUST_CHECK_FAILED' WHERE tx_id = ?",
+                    (tx_id,),
+                )
+                cursor.execute(
+                    "UPDATE outbox SET sync_state = 'BLOCKED' WHERE tx_id = ?",
+                    (tx_id,),
+                )
+                conn.commit()
+                return False
+            if approval_expires_at:
+                try:
+                    if datetime.now(UTC) > datetime.fromisoformat(str(approval_expires_at)):
+                        cursor.execute(
+                            "UPDATE transactions SET status = 'BLOCKED_APPROVAL_EXPIRED' WHERE tx_id = ?",
+                            (tx_id,),
+                        )
+                        cursor.execute(
+                            "UPDATE outbox SET sync_state = 'BLOCKED' WHERE tx_id = ?",
+                            (tx_id,),
+                        )
+                        conn.commit()
+                        return False
+                except ValueError:
+                    pass
             provided_hash = hashlib.sha256(approval_code.strip().encode("utf-8")).hexdigest()
             if not approval_code.strip() or provided_hash != (approval_code_hash or ""):
+                cursor.execute(
+                    "UPDATE transactions SET approval_attempts = approval_attempts + 1 WHERE tx_id = ?",
+                    (tx_id,),
+                )
+                conn.commit()
                 return False
 
         new_status = "PENDING"
@@ -560,7 +630,12 @@ def release_held_transaction(
         new_signature = sign_payload(canonical_json(signable), sig_key)
 
         cursor.execute(
-            "UPDATE transactions SET status = ?, signature = ? WHERE tx_id = ?",
+            """
+            UPDATE transactions
+            SET status = ?, signature = ?, approval_required = 0,
+                approval_code_hash = NULL, approval_expires_at = NULL, approval_attempts = 0
+            WHERE tx_id = ?
+            """,
             (new_status, new_signature, tx_id),
         )
         cursor.execute(

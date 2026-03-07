@@ -9,8 +9,23 @@
 <body>
   <main class="container">
     <header>
-      <h1>Transaction List</h1>
-      <p>User: {{ active_user }}</p>
+      <div class="top-row">
+        <div>
+          <h1>{{ i18n.tx_list_title }}</h1>
+          <p>{{ i18n.user_label }}: {{ active_user }}</p>
+        </div>
+        <form action="/transactions" method="get" class="lang-form">
+          <input type="hidden" name="user_id" value="{{ active_user }}">
+          <input type="hidden" name="pin" value="{{ request.query_params.get('pin', '') }}">
+          <input type="hidden" name="limit" value="{{ request.query_params.get('limit', '10') }}">
+          <label for="lang">{{ i18n.lang_label }}</label>
+          <select id="lang" name="lang" onchange="this.form.submit()">
+            {% for item in langs %}
+            <option value="{{ item.code }}" {% if item.code == lang %}selected{% endif %}>{{ item.label }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
     </header>
 
     {% if message %}
@@ -21,10 +36,10 @@
     {% endif %}
 
     <section class="card note">
-      <h2>How To Read This</h2>
-      <p><strong>Pending Sync</strong> means saved securely on this device, waiting to send to server.</p>
-      <p><strong>Blocked (Integrity Check Failed)</strong> means a tampered record was detected and protected.</p>
-      <p><strong>Risk</strong> explains fraud likelihood and why an alert was triggered.</p>
+      <h2>{{ i18n.how_read_title }}</h2>
+      <p>{{ i18n.how_read_pending }}</p>
+      <p>{{ i18n.how_read_blocked }}</p>
+      <p>{{ i18n.how_read_risk }}</p>
     </section>
 
     <section class="card">
@@ -32,16 +47,16 @@
         <table>
           <thead>
             <tr>
-              <th>Time</th>
-              <th>Tx ID</th>
-              <th>Amount</th>
-              <th>Recipient</th>
-              <th>Risk</th>
-              <th>Action</th>
-              <th>Reasons</th>
-              <th>Guidance</th>
-              <th>Approval</th>
-              <th>Status</th>
+              <th>{{ i18n.time }}</th>
+              <th>{{ i18n.tx_id }}</th>
+              <th>{{ i18n.amount }}</th>
+              <th>{{ i18n.recipient }}</th>
+              <th>{{ i18n.risk }}</th>
+              <th>{{ i18n.action }}</th>
+              <th>{{ i18n.reasons }}</th>
+              <th>{{ i18n.guidance }}</th>
+              <th>{{ i18n.approval }}</th>
+              <th>{{ i18n.status }}</th>
             </tr>
           </thead>
           <tbody>
@@ -74,7 +89,7 @@
     </section>
 
     <section class="actions">
-      <a href="/" class="button secondary">Back to Dashboard</a>
+      <a href="/?lang={{ lang }}" class="button secondary">{{ i18n.back_dashboard }}</a>
     </section>
   </main>
 </body>

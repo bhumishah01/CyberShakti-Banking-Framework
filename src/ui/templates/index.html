@@ -9,17 +9,32 @@
 <body>
   <main class="container">
     <header>
-      <h1>RuralShield</h1>
-      <p>Offline-First Security Prototype for Rural Digital Banking</p>
+      <div class="top-row">
+        <div>
+          <h1>{{ i18n.title }}</h1>
+          <p>{{ i18n.subtitle }}</p>
+        </div>
+        <form action="/" method="get" class="lang-form">
+          <label for="lang">{{ i18n.lang_label }}</label>
+          <select id="lang" name="lang" onchange="this.form.submit()">
+            {% for item in langs %}
+            <option value="{{ item.code }}" {% if item.code == lang %}selected{% endif %}>{{ item.label }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
     </header>
 
     <section class="stats-grid">
-      <article class="stat-card"><h3>Users</h3><p>{{ stats.user_count }}</p></article>
-      <article class="stat-card"><h3>Transactions</h3><p>{{ stats.tx_count }}</p></article>
-      <article class="stat-card"><h3>Pending Sync</h3><p>{{ stats.pending_count }}</p></article>
-      <article class="stat-card"><h3>Synced</h3><p>{{ stats.synced_count }}</p></article>
-      <article class="stat-card"><h3>High Risk</h3><p>{{ stats.high_risk_count }}</p></article>
-      <article class="stat-card"><h3>Audit Events</h3><p>{{ stats.audit_events }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.users }}</h3><p>{{ stats.user_count }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.transactions }}</h3><p>{{ stats.tx_count }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p>{{ stats.pending_count }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.synced }}</h3><p>{{ stats.synced_count }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.held }}</h3><p>{{ stats.held_count }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.blocked }}</h3><p>{{ stats.blocked_count }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.released }}</h3><p>{{ stats.released_count }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.high_risk }}</h3><p>{{ stats.high_risk_count }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.audit_events }}</h3><p>{{ stats.audit_events }}</p></article>
     </section>
 
     {% if message %}
@@ -30,67 +45,74 @@
     {% endif %}
 
     <section class="card">
-      <h2>1. Register / Replace User</h2>
+      <h2>{{ i18n.section_1 }}</h2>
       <form action="/users" method="post" class="grid">
+        <input type="hidden" name="lang" value="{{ lang }}">
         <input name="user_id" placeholder="User ID (e.g., u1)" required>
         <input name="phone" placeholder="Phone (e.g., +919999999999)" required>
         <input name="pin" placeholder="4-digit PIN" maxlength="4" required>
         <label class="checkbox"><input type="checkbox" name="replace" value="1"> Replace existing user</label>
-        <button type="submit">Save User</button>
+        <button type="submit">{{ i18n.save_user }}</button>
       </form>
       <form action="/users/trusted-contact" method="post" class="grid release-grid">
+        <input type="hidden" name="lang" value="{{ lang }}">
         <input name="user_id" placeholder="User ID for trusted contact">
         <input name="pin" placeholder="PIN" maxlength="4">
         <input name="trusted_contact" placeholder="Trusted contact phone or ID">
-        <button type="submit">Set Trusted Contact</button>
+        <button type="submit">{{ i18n.set_trusted }}</button>
       </form>
       <form action="/users/panic-freeze" method="post" class="grid release-grid">
+        <input type="hidden" name="lang" value="{{ lang }}">
         <input name="user_id" placeholder="User ID for panic freeze">
         <input name="pin" placeholder="PIN" maxlength="4">
         <input name="minutes" type="number" min="1" value="60" placeholder="Freeze minutes">
-        <button type="submit">Enable Panic Freeze</button>
+        <button type="submit">{{ i18n.enable_freeze }}</button>
       </form>
     </section>
 
     <section class="card">
-      <h2>2. Create Secure Transaction</h2>
+      <h2>{{ i18n.section_2 }}</h2>
       <form action="/transactions" method="post" class="grid">
+        <input type="hidden" name="lang" value="{{ lang }}">
         <input name="user_id" placeholder="User ID" required>
         <input name="pin" placeholder="PIN" maxlength="4" required>
         <input name="amount" placeholder="Amount" type="number" step="0.01" min="1" required>
         <input name="recipient" placeholder="Recipient name" required>
-        <button type="submit">Create Transaction</button>
+        <button type="submit">{{ i18n.create_tx }}</button>
       </form>
     </section>
 
     <section class="card">
-      <h2>3. View Transactions</h2>
+      <h2>{{ i18n.section_3 }}</h2>
       <form action="/transactions" method="get" class="grid">
+        <input type="hidden" name="lang" value="{{ lang }}">
         <input name="user_id" placeholder="User ID" required>
         <input name="pin" placeholder="PIN" maxlength="4" required>
         <input name="limit" placeholder="Limit" type="number" value="10" min="1" max="100" required>
-        <button type="submit">Open Transaction List</button>
+        <button type="submit">{{ i18n.open_tx_list }}</button>
       </form>
     </section>
 
     <section class="card">
-      <h2>4. Sync and Audit</h2>
+      <h2>{{ i18n.section_4 }}</h2>
       <form action="/sync" method="post" class="grid inline">
+        <input type="hidden" name="lang" value="{{ lang }}">
         <input name="server_url" placeholder="http://localhost:8000" value="http://localhost:8000" required>
-        <button type="submit">Sync Pending Transactions</button>
+        <button type="submit">{{ i18n.sync_pending }}</button>
       </form>
       <form action="/transactions/release" method="post" class="grid release-grid">
+        <input type="hidden" name="lang" value="{{ lang }}">
         <input name="tx_id" placeholder="Held Transaction ID">
         <input name="user_id" placeholder="User ID">
         <input name="pin" placeholder="PIN" maxlength="4">
         <input name="approval_code" placeholder="Trusted approval code (if required)">
-        <button type="submit">Release Held Transaction</button>
+        <button type="submit">{{ i18n.release_held }}</button>
       </form>
       <div class="actions">
-        <a href="/audit" class="button secondary">Check Audit Integrity</a>
-        <form action="/seed-demo" method="post"><button type="submit" class="button secondary">Seed Demo Data</button></form>
-        <a href="/export/report" class="button secondary" target="_blank">Export Security Report</a>
-        <a href="/reset" class="button secondary">Clear Messages</a>
+        <a href="/audit?lang={{ lang }}" class="button secondary">{{ i18n.check_audit }}</a>
+        <form action="/seed-demo?lang={{ lang }}" method="post"><button type="submit" class="button secondary">{{ i18n.seed_demo }}</button></form>
+        <a href="/export/report" class="button secondary" target="_blank">{{ i18n.export_report }}</a>
+        <a href="/reset?lang={{ lang }}" class="button secondary">{{ i18n.clear_messages }}</a>
       </div>
     </section>
   </main>
