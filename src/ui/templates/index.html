@@ -43,6 +43,11 @@
     {% if error %}
       <section class="alert error">{{ error }}</section>
     {% endif %}
+    {% if voice_text %}
+      <section class="card voice-card">
+        <button type="button" class="button secondary voice-btn" data-voice-text="{{ voice_text|e }}">{{ i18n.voice_play }}</button>
+      </section>
+    {% endif %}
 
     <section class="card">
       <h2>{{ i18n.section_1 }}</h2>
@@ -112,6 +117,8 @@
         <a href="/audit?lang={{ lang }}" class="button secondary">{{ i18n.check_audit }}</a>
         <form action="/seed-demo?lang={{ lang }}" method="post"><button type="submit" class="button secondary">{{ i18n.seed_demo }}</button></form>
         <a href="/export/report" class="button secondary" target="_blank">{{ i18n.export_report }}</a>
+        <a href="/agent?lang={{ lang }}" class="button secondary">{{ i18n.agent_mode }}</a>
+        <a href="/report/impact?lang={{ lang }}" class="button secondary">{{ i18n.impact_report }}</a>
         <a href="/reset?lang={{ lang }}" class="button secondary">{{ i18n.clear_messages }}</a>
       </div>
     </section>
@@ -132,5 +139,17 @@
       </form>
     </section>
   </main>
+  <script>
+    (() => {
+      const btn = document.querySelector(".voice-btn");
+      if (!btn || !window.speechSynthesis) return;
+      btn.addEventListener("click", () => {
+        const text = btn.getAttribute("data-voice-text") || "";
+        if (!text) return;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+      });
+    })();
+  </script>
 </body>
 </html>

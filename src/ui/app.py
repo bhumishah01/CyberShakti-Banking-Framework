@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -33,7 +34,13 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 
-def _ctx(request: Request, message: str = "", error: str = "", lang: str = "en") -> dict:
+def _ctx(
+    request: Request,
+    message: str = "",
+    error: str = "",
+    lang: str = "en",
+    voice_text: str = "",
+) -> dict:
     stats = get_dashboard_stats(db_path=DEFAULT_DB)
     i18n = _bundle(lang)
     return {
@@ -46,6 +53,7 @@ def _ctx(request: Request, message: str = "", error: str = "", lang: str = "en")
         "i18n": i18n,
         "langs": _language_choices(),
         "scenarios": _scenario_choices(lang),
+        "voice_text": voice_text,
     }
 
 
@@ -54,6 +62,15 @@ def index(request: Request):
     init_db(DEFAULT_DB)
     lang = _resolve_lang(request.query_params.get("lang", "en"))
     return templates.TemplateResponse("index.html", _ctx(request, lang=lang))
+
+
+@app.get("/agent")
+def agent_mode(request: Request):
+    init_db(DEFAULT_DB)
+    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    context = _ctx(request, lang=lang)
+    context["agent_result"] = None
+    return templates.TemplateResponse("agent.html", context)
 
 
 @app.post("/users")
@@ -113,11 +130,97 @@ def add_transaction(
                 f" {_t(lang, 'trusted_required')} ({_t(lang, 'contact_ending')} {stored.trusted_contact_hint}). "
                 f"{_t(lang, 'demo_code')}: {stored.approval_code_for_demo}"
             )
-        return templates.TemplateResponse("index.html", _ctx(request, message=msg, lang=lang))
+        voice_text = _build_voice_prompt(
+            lang=lang,
+            risk_level=stored.risk_level,
+            action=stored.action_decision,
+            guidance=list(stored.intervention_guidance),
+        )
+        return templates.TemplateResponse(
+            "index.html",
+            _ctx(request, message=msg, lang=lang, voice_text=voice_text),
+        )
     except Exception as exc:
         return templates.TemplateResponse(
             "index.html", _ctx(request, error=str(exc), lang=lang), status_code=400
         )
+
+
+@app.post("/agent/assist")
+def agent_assist(
+    request: Request,
+    user_id: str = Form(...),
+    phone: str = Form(...),
+    pin: str = Form(...),
+    amount: float = Form(...),
+    recipient: str = Form(...),
+    trusted_contact: str = Form(default=""),
+    lang: str = Form(default="en"),
+):
+    lang = _resolve_lang(lang)
+    clean_user = user_id.strip()
+    clean_pin = pin.strip()
+    try:
+        create_user(
+            user_id=clean_user,
+            phone_number=phone.strip(),
+            pin=clean_pin,
+            db_path=DEFAULT_DB,
+            replace_existing=False,
+        )
+    except ValueError as exc:
+        if "already exists" not in str(exc).lower():
+            context = _ctx(request, error=str(exc), lang=lang)
+            context["agent_result"] = None
+            return templates.TemplateResponse("agent.html", context, status_code=400)
+
+    if trusted_contact.strip():
+        set_trusted_contact(
+            user_id=clean_user,
+            pin=clean_pin,
+            trusted_contact=trusted_contact.strip(),
+            db_path=DEFAULT_DB,
+        )
+
+    try:
+        stored = create_secure_transaction(
+            user_id=clean_user,
+            pin=clean_pin,
+            amount=amount,
+            recipient=recipient.strip(),
+            db_path=DEFAULT_DB,
+        )
+    except Exception as exc:
+        context = _ctx(request, error=str(exc), lang=lang)
+        context["agent_result"] = None
+        return templates.TemplateResponse("agent.html", context, status_code=400)
+
+    reasons = [_friendly_reason(code, lang=lang) for code in stored.reason_codes]
+    guidance = list(stored.intervention_guidance)
+    voice_text = _build_voice_prompt(
+        lang=lang,
+        risk_level=stored.risk_level,
+        action=stored.action_decision,
+        guidance=guidance,
+    )
+    summary = (
+        f"{_t(lang, 'agent_done')} "
+        f"{_t(lang, 'risk_label')} {_friendly_risk(stored.risk_level, lang=lang)} ({stored.risk_score}/100). "
+        f"{_t(lang, 'decision_label')} {_friendly_action(stored.action_decision, lang=lang)}."
+    )
+    context = _ctx(request, message=summary, lang=lang, voice_text=voice_text)
+    context["agent_result"] = {
+        "user_id": clean_user,
+        "tx_id": stored.tx_id,
+        "risk": f"{_friendly_risk(stored.risk_level, lang=lang)} ({stored.risk_score}/100)",
+        "action": _friendly_action(stored.action_decision, lang=lang),
+        "status": _friendly_status(stored.status, lang=lang),
+        "reasons": reasons,
+        "guidance": guidance,
+        "approval_required": stored.approval_required,
+        "approval_code_for_demo": stored.approval_code_for_demo,
+    }
+    return templates.TemplateResponse("agent.html", context)
 
 
 @app.get("/transactions")
@@ -261,6 +364,15 @@ def export_report():
     return JSONResponse(payload)
 
 
+@app.get("/report/impact")
+def fraud_impact_report(request: Request):
+    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    impact = _load_impact_report_data()
+    context = _ctx(request, lang=lang)
+    context["impact"] = impact
+    return templates.TemplateResponse("impact_report.html", context)
+
+
 @app.post("/simulate/scenario")
 def run_scenario(
     request: Request,
@@ -289,8 +401,22 @@ def run_scenario(
             user_id=clean_user,
             pin=clean_pin,
         )
+        _record_scenario_run(
+            scenario_id=scenario_id.strip(),
+            user_id=clean_user,
+            transactions=simulated,
+        )
         summary = _scenario_result_message(scenario_id=scenario_id.strip(), transactions=simulated, lang=lang)
-        return templates.TemplateResponse("index.html", _ctx(request, message=summary, lang=lang))
+        voice_text = _build_voice_prompt(
+            lang=lang,
+            risk_level=simulated[-1].risk_level,
+            action=simulated[-1].action_decision,
+            guidance=list(simulated[-1].intervention_guidance),
+        )
+        return templates.TemplateResponse(
+            "index.html",
+            _ctx(request, message=summary, lang=lang, voice_text=voice_text),
+        )
     except Exception as exc:
         return templates.TemplateResponse(
             "index.html", _ctx(request, error=str(exc), lang=lang), status_code=400
@@ -419,6 +545,133 @@ def _scenario_result_message(scenario_id: str, transactions: list, lang: str) ->
     if latest.approval_required:
         summary += f" {_t(lang, 'demo_code')}: {latest.approval_code_for_demo}"
     return summary
+
+
+def _record_scenario_run(scenario_id: str, user_id: str, transactions: list) -> None:
+    init_db(DEFAULT_DB)
+    high_risk = sum(1 for tx in transactions if tx.risk_level == "HIGH" or tx.risk_score >= 70)
+    held = sum(1 for tx in transactions if tx.status in {"HOLD_FOR_REVIEW", "AWAITING_TRUSTED_APPROVAL"})
+    blocked = sum(1 for tx in transactions if tx.status.startswith("BLOCKED") or tx.status == "BLOCKED_LOCAL")
+    avg_risk = sum(tx.risk_score for tx in transactions) / max(len(transactions), 1)
+    with sqlite3.connect(DEFAULT_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO scenario_runs (
+                run_id, scenario_id, user_id, tx_created, high_risk_count,
+                held_count, blocked_count, avg_risk_score, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(uuid.uuid4()),
+                scenario_id,
+                user_id,
+                len(transactions),
+                high_risk,
+                held,
+                blocked,
+                round(avg_risk, 2),
+                datetime.now(UTC).isoformat(),
+            ),
+        )
+        conn.commit()
+
+
+def _load_impact_report_data() -> dict:
+    init_db(DEFAULT_DB)
+    with sqlite3.connect(DEFAULT_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM scenario_runs")
+        total_runs = int(cursor.fetchone()[0])
+
+        cursor.execute("SELECT COALESCE(SUM(tx_created), 0) FROM scenario_runs")
+        total_txs = int(cursor.fetchone()[0])
+
+        cursor.execute("SELECT COALESCE(SUM(high_risk_count), 0) FROM scenario_runs")
+        high_risk_total = int(cursor.fetchone()[0])
+
+        cursor.execute("SELECT COALESCE(SUM(held_count), 0) FROM scenario_runs")
+        held_total = int(cursor.fetchone()[0])
+
+        cursor.execute("SELECT COALESCE(SUM(blocked_count), 0) FROM scenario_runs")
+        blocked_total = int(cursor.fetchone()[0])
+
+        cursor.execute("SELECT COALESCE(AVG(avg_risk_score), 0) FROM scenario_runs")
+        avg_risk = float(cursor.fetchone()[0] or 0.0)
+
+        cursor.execute(
+            """
+            SELECT scenario_id, COUNT(*), COALESCE(AVG(avg_risk_score), 0),
+                   COALESCE(SUM(high_risk_count), 0), COALESCE(SUM(held_count), 0), COALESCE(SUM(blocked_count), 0)
+            FROM scenario_runs
+            GROUP BY scenario_id
+            ORDER BY COUNT(*) DESC
+            """
+        )
+        by_scenario_rows = cursor.fetchall()
+
+        cursor.execute(
+            """
+            SELECT created_at, scenario_id, user_id, tx_created, high_risk_count, held_count, blocked_count, avg_risk_score
+            FROM scenario_runs
+            ORDER BY created_at DESC
+            LIMIT 10
+            """
+        )
+        recent_rows = cursor.fetchall()
+
+    scenario_labels = {item["id"]: item["label"] for item in _scenario_choices("en")}
+    by_scenario = [
+        {
+            "scenario_id": scenario_id,
+            "scenario_label": scenario_labels.get(scenario_id, scenario_id),
+            "runs": runs,
+            "avg_risk": round(float(avg), 2),
+            "high_risk": int(high),
+            "held": int(held),
+            "blocked": int(blocked),
+        }
+        for scenario_id, runs, avg, high, held, blocked in by_scenario_rows
+    ]
+    recent_runs = [
+        {
+            "created_at": _friendly_time(str(created_at)),
+            "scenario_id": scenario_id,
+            "scenario_label": scenario_labels.get(scenario_id, scenario_id),
+            "user_id": user_id,
+            "tx_created": tx_created,
+            "high_risk": high_risk,
+            "held": held,
+            "blocked": blocked,
+            "avg_risk": round(float(avg_risk_score), 2),
+        }
+        for created_at, scenario_id, user_id, tx_created, high_risk, held, blocked, avg_risk_score in recent_rows
+    ]
+
+    protection_rate = 0.0
+    if total_txs > 0:
+        protection_rate = round(((held_total + blocked_total) / total_txs) * 100, 2)
+
+    return {
+        "total_runs": total_runs,
+        "total_txs": total_txs,
+        "high_risk_total": high_risk_total,
+        "held_total": held_total,
+        "blocked_total": blocked_total,
+        "avg_risk": round(avg_risk, 2),
+        "protection_rate": protection_rate,
+        "by_scenario": by_scenario,
+        "recent_runs": recent_runs,
+    }
+
+
+def _build_voice_prompt(lang: str, risk_level: str, action: str, guidance: list[str]) -> str:
+    headline = {
+        "en": f"Security alert. Risk is {_friendly_risk(risk_level, lang)}. Action: {_friendly_action(action, lang)}.",
+        "hi": f"सुरक्षा अलर्ट। जोखिम स्तर {_friendly_risk(risk_level, lang)} है। कार्रवाई: {_friendly_action(action, lang)}।",
+        "or": f"ସୁରକ୍ଷା ସତର୍କତା। ଝୁମ୍ପ ସ୍ତର {_friendly_risk(risk_level, lang)}। କାର୍ଯ୍ୟ: {_friendly_action(action, lang)}।",
+    }.get(lang, "")
+    return " ".join([headline, *guidance]).strip()
 
 
 @app.post("/transactions/release")
@@ -646,6 +899,25 @@ def _bundle(lang: str) -> dict:
             "section_3": "3. View Transactions",
             "section_4": "4. Sync and Audit",
             "section_5": "5. Fraud Scenario Simulator",
+            "agent_title": "Agent/Kiosk Assisted Mode",
+            "agent_subtitle": "Single-screen assisted transaction flow for business correspondents",
+            "agent_user": "User ID",
+            "agent_phone": "Phone number",
+            "agent_pin": "PIN",
+            "agent_amount": "Amount",
+            "agent_recipient": "Recipient",
+            "agent_trusted": "Trusted contact (optional)",
+            "agent_submit": "Run Secure Assisted Transaction",
+            "agent_result": "Assisted Transaction Result",
+            "voice_play": "Read Safety Guidance Aloud",
+            "report_title": "Fraud Impact Report",
+            "report_subtitle": "Measured simulator outcomes for anti-fraud controls",
+            "report_runs": "Scenario Runs",
+            "report_txs": "Simulated Transactions",
+            "report_protection": "Protection Rate",
+            "report_avg_risk": "Average Risk Score",
+            "report_recent": "Recent Simulation Runs",
+            "report_breakdown": "Scenario Breakdown",
             "scenario_user": "Simulation User ID",
             "scenario_pin": "Simulation PIN",
             "scenario_contact": "Trusted Contact (optional)",
@@ -661,6 +933,8 @@ def _bundle(lang: str) -> dict:
             "check_audit": "Check Audit Integrity",
             "seed_demo": "Seed Demo Data",
             "export_report": "Export Security Report",
+            "agent_mode": "Open Agent/Kiosk Mode",
+            "impact_report": "Fraud Impact Report",
             "clear_messages": "Clear Messages",
             "tx_list_title": "Transaction List",
             "user_label": "User",
@@ -698,6 +972,25 @@ def _bundle(lang: str) -> dict:
             "section_3": "3. लेनदेन सूची देखें",
             "section_4": "4. सिंक और ऑडिट",
             "section_5": "5. फ्रॉड सीनारियो सिम्युलेटर",
+            "agent_title": "एजेंट/कियोस्क असिस्टेड मोड",
+            "agent_subtitle": "बिजनेस कॉरेस्पॉन्डेंट के लिए एक-स्क्रीन सुरक्षित लेनदेन प्रवाह",
+            "agent_user": "उपयोगकर्ता ID",
+            "agent_phone": "फोन नंबर",
+            "agent_pin": "PIN",
+            "agent_amount": "राशि",
+            "agent_recipient": "प्राप्तकर्ता",
+            "agent_trusted": "विश्वसनीय संपर्क (वैकल्पिक)",
+            "agent_submit": "सुरक्षित असिस्टेड लेनदेन चलाएं",
+            "agent_result": "असिस्टेड लेनदेन परिणाम",
+            "voice_play": "सुरक्षा सलाह आवाज़ में चलाएं",
+            "report_title": "फ्रॉड प्रभाव रिपोर्ट",
+            "report_subtitle": "एंटी-फ्रॉड नियंत्रणों के मापे गए सिम्युलेशन परिणाम",
+            "report_runs": "सीनारियो रन",
+            "report_txs": "सिम्युलेटेड लेनदेन",
+            "report_protection": "प्रोटेक्शन रेट",
+            "report_avg_risk": "औसत जोखिम स्कोर",
+            "report_recent": "हाल के सिम्युलेशन रन",
+            "report_breakdown": "सीनारियो ब्रेकडाउन",
             "scenario_user": "सिम्युलेशन उपयोगकर्ता ID",
             "scenario_pin": "सिम्युलेशन PIN",
             "scenario_contact": "विश्वसनीय संपर्क (वैकल्पिक)",
@@ -713,6 +1006,8 @@ def _bundle(lang: str) -> dict:
             "check_audit": "ऑडिट अखंडता जांचें",
             "seed_demo": "डेमो डेटा बनाएं",
             "export_report": "सुरक्षा रिपोर्ट निर्यात करें",
+            "agent_mode": "एजेंट/कियोस्क मोड खोलें",
+            "impact_report": "फ्रॉड प्रभाव रिपोर्ट",
             "clear_messages": "संदेश साफ करें",
             "tx_list_title": "लेनदेन सूची",
             "user_label": "उपयोगकर्ता",
@@ -750,6 +1045,25 @@ def _bundle(lang: str) -> dict:
             "section_3": "3. ଟ୍ରାନ୍ଜାକ୍ସନ ତାଲିକା ଦେଖନ୍ତୁ",
             "section_4": "4. ସିଙ୍କ ଏବଂ ଅଡିଟ୍",
             "section_5": "5. ଠକେଇ ପରିସ୍ଥିତି ସିମ୍ୟୁଲେଟର୍",
+            "agent_title": "ଏଜେଣ୍ଟ/କିଓସ୍କ ସହାୟିତ ମୋଡ୍",
+            "agent_subtitle": "ବିଜନେସ୍ କରେସ୍ପୋଣ୍ଡେଣ୍ଟ ପାଇଁ ଏକ-ସ୍କ୍ରିନ୍ ସୁରକ୍ଷିତ ଟ୍ରାନ୍ଜାକ୍ସନ ଫ୍ଲୋ",
+            "agent_user": "ବ୍ୟବହାରକାରୀ ID",
+            "agent_phone": "ଫୋନ୍ ନମ୍ବର",
+            "agent_pin": "PIN",
+            "agent_amount": "ରାଶି",
+            "agent_recipient": "ପ୍ରାପ୍ତକର୍ତ୍ତା",
+            "agent_trusted": "ଭରସାଯୋଗ୍ୟ ସଂଯୋଗ (ଇଚ୍ଛାଧୀନ)",
+            "agent_submit": "ସୁରକ୍ଷିତ ସହାୟିତ ଟ୍ରାନ୍ଜାକ୍ସନ ଚାଲାନ୍ତୁ",
+            "agent_result": "ସହାୟିତ ଟ୍ରାନ୍ଜାକ୍ସନ ଫଳାଫଳ",
+            "voice_play": "ସୁରକ୍ଷା ପରାମର୍ଶ ଶୁଣନ୍ତୁ",
+            "report_title": "ଠକେଇ ପ୍ରଭାବ ରିପୋର୍ଟ",
+            "report_subtitle": "ଆଣ୍ଟି-ଫ୍ରଡ୍ କନ୍ଟ୍ରୋଲ୍ ପାଇଁ ମାପିତ ସିମ୍ୟୁଲେସନ୍ ଫଳାଫଳ",
+            "report_runs": "ପରିସ୍ଥିତି ଚାଳନ",
+            "report_txs": "ସିମ୍ୟୁଲେଟେଡ୍ ଟ୍ରାନ୍ଜାକ୍ସନ",
+            "report_protection": "ସୁରକ୍ଷା ହାର",
+            "report_avg_risk": "ସର୍ବମୋଟ ଝୁମ୍ପ ସ୍କୋର",
+            "report_recent": "ସମ୍ପ୍ରତି ସିମ୍ୟୁଲେସନ୍ ଚାଳନ",
+            "report_breakdown": "ପରିସ୍ଥିତି ଭିତ୍ତିକ ବିଭାଜନ",
             "scenario_user": "ସିମ୍ୟୁଲେସନ୍ ୟୁଜର୍ ID",
             "scenario_pin": "ସିମ୍ୟୁଲେସନ୍ PIN",
             "scenario_contact": "ଭରସାଯୋଗ୍ୟ ସଂଯୋଗ (ଇଚ୍ଛାଧୀନ)",
@@ -765,6 +1079,8 @@ def _bundle(lang: str) -> dict:
             "check_audit": "ଅଡିଟ୍ ଅଖଣ୍ଡତା ଯାଞ୍ଚ",
             "seed_demo": "ଡେମୋ ତଥ୍ୟ ତିଆରି",
             "export_report": "ସୁରକ୍ଷା ରିପୋର୍ଟ ନିର୍ଯାତ",
+            "agent_mode": "ଏଜେଣ୍ଟ/କିଓସ୍କ ମୋଡ୍ ଖୋଲନ୍ତୁ",
+            "impact_report": "ଠକେଇ ପ୍ରଭାବ ରିପୋର୍ଟ",
             "clear_messages": "ସନ୍ଦେଶ ସଫା କରନ୍ତୁ",
             "tx_list_title": "ଟ୍ରାନ୍ଜାକ୍ସନ ତାଲିକା",
             "user_label": "ବ୍ୟବହାରକାରୀ",
@@ -800,6 +1116,7 @@ def _t(lang: str, key: str) -> str:
             "guidance_label": "Guidance:",
             "scenario_ran": "Scenario executed",
             "created_count": "Transactions generated",
+            "agent_done": "Assisted transaction processed.",
             "trusted_required": "Trusted approval required",
             "contact_ending": "contact ending",
             "demo_code": "Demo approval code",
@@ -825,6 +1142,7 @@ def _t(lang: str, key: str) -> str:
             "guidance_label": "सलाह:",
             "scenario_ran": "सीनारियो चलाया गया",
             "created_count": "निर्मित लेनदेन",
+            "agent_done": "असिस्टेड लेनदेन प्रोसेस हुआ।",
             "trusted_required": "विश्वसनीय स्वीकृति आवश्यक",
             "contact_ending": "अंतिम अंक",
             "demo_code": "डेमो स्वीकृति कोड",
@@ -850,6 +1168,7 @@ def _t(lang: str, key: str) -> str:
             "guidance_label": "ପରାମର୍ଶ:",
             "scenario_ran": "ପରିସ୍ଥିତି ଚାଲିଲା",
             "created_count": "ସୃଷ୍ଟି ହୋଇଥିବା ଟ୍ରାନ୍ଜାକ୍ସନ",
+            "agent_done": "ସହାୟିତ ଟ୍ରାନ୍ଜାକ୍ସନ ପ୍ରସେସ୍ ହେଲା।",
             "trusted_required": "ଭରସାଯୋଗ୍ୟ ସ୍ୱୀକୃତି ଆବଶ୍ୟକ",
             "contact_ending": "ଶେଷ ଅଙ୍କ",
             "demo_code": "ଡେମୋ ସ୍ୱୀକୃତି କୋଡ୍",

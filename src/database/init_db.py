@@ -110,6 +110,22 @@ def init_db(db_path: Path = DB_PATH) -> None:
             """
         )
 
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS scenario_runs (
+                run_id TEXT PRIMARY KEY,
+                scenario_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                tx_created INTEGER NOT NULL,
+                high_risk_count INTEGER NOT NULL,
+                held_count INTEGER NOT NULL,
+                blocked_count INTEGER NOT NULL,
+                avg_risk_score REAL NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+
         _ensure_users_auth_columns(cursor)
         _ensure_outbox_sync_columns(cursor)
         _ensure_transactions_columns(cursor)

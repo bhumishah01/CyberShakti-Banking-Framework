@@ -164,6 +164,13 @@ button:hover, .button:hover { background: var(--accent-2); }
 .card-sim {
   border-left: 4px solid #f4a261;
 }
+.card-agent {
+  border-left: 4px solid #2a9d8f;
+}
+.voice-card {
+  padding: 12px 16px;
+  border-left: 4px solid #457b9d;
+}
 .table-wrap {
   overflow-x: auto;
 }

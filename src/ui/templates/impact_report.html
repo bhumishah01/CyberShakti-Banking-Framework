@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fraud Impact Report - RuralShield</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <div class="top-row">
+        <div>
+          <h1>{{ i18n.report_title }}</h1>
+          <p>{{ i18n.report_subtitle }}</p>
+        </div>
+        <form action="/report/impact" method="get" class="lang-form">
+          <label for="lang">{{ i18n.lang_label }}</label>
+          <select id="lang" name="lang" onchange="this.form.submit()">
+            {% for item in langs %}
+            <option value="{{ item.code }}" {% if item.code == lang %}selected{% endif %}>{{ item.label }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
+    </header>
+
+    <section class="stats-grid">
+      <article class="stat-card"><h3>{{ i18n.report_runs }}</h3><p>{{ impact.total_runs }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.report_txs }}</h3><p>{{ impact.total_txs }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.high_risk }}</h3><p>{{ impact.high_risk_total }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.held }}</h3><p>{{ impact.held_total }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.blocked }}</h3><p>{{ impact.blocked_total }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.report_avg_risk }}</h3><p>{{ impact.avg_risk }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.report_protection }}</h3><p>{{ impact.protection_rate }}%</p></article>
+    </section>
+
+    <section class="card">
+      <h2>{{ i18n.report_breakdown }}</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{{ i18n.scenario_choice }}</th>
+              <th>{{ i18n.report_runs }}</th>
+              <th>{{ i18n.report_avg_risk }}</th>
+              <th>{{ i18n.high_risk }}</th>
+              <th>{{ i18n.held }}</th>
+              <th>{{ i18n.blocked }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in impact.by_scenario %}
+            <tr>
+              <td>{{ row.scenario_label }}</td>
+              <td>{{ row.runs }}</td>
+              <td>{{ row.avg_risk }}</td>
+              <td>{{ row.high_risk }}</td>
+              <td>{{ row.held }}</td>
+              <td>{{ row.blocked }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>{{ i18n.report_recent }}</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{{ i18n.time }}</th>
+              <th>{{ i18n.scenario_choice }}</th>
+              <th>{{ i18n.user_label }}</th>
+              <th>{{ i18n.report_txs }}</th>
+              <th>{{ i18n.high_risk }}</th>
+              <th>{{ i18n.held }}</th>
+              <th>{{ i18n.blocked }}</th>
+              <th>{{ i18n.report_avg_risk }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in impact.recent_runs %}
+            <tr>
+              <td>{{ row.created_at }}</td>
+              <td>{{ row.scenario_label }}</td>
+              <td>{{ row.user_id }}</td>
+              <td>{{ row.tx_created }}</td>
+              <td>{{ row.high_risk }}</td>
+              <td>{{ row.held }}</td>
+              <td>{{ row.blocked }}</td>
+              <td>{{ row.avg_risk }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="actions">
+      <a href="/?lang={{ lang }}" class="button secondary">{{ i18n.back_dashboard }}</a>
+      <a href="/agent?lang={{ lang }}" class="button secondary">{{ i18n.agent_mode }}</a>
+    </section>
+  </main>
+</body>
+</html>

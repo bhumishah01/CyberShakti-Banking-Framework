@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Mode - RuralShield</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <div class="top-row">
+        <div>
+          <h1>{{ i18n.agent_title }}</h1>
+          <p>{{ i18n.agent_subtitle }}</p>
+        </div>
+        <form action="/agent" method="get" class="lang-form">
+          <label for="lang">{{ i18n.lang_label }}</label>
+          <select id="lang" name="lang" onchange="this.form.submit()">
+            {% for item in langs %}
+            <option value="{{ item.code }}" {% if item.code == lang %}selected{% endif %}>{{ item.label }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
+    </header>
+
+    {% if message %}
+      <section class="alert success">{{ message }}</section>
+    {% endif %}
+    {% if error %}
+      <section class="alert error">{{ error }}</section>
+    {% endif %}
+
+    <section class="card card-agent">
+      <form action="/agent/assist" method="post" class="grid">
+        <input type="hidden" name="lang" value="{{ lang }}">
+        <input name="user_id" placeholder="{{ i18n.agent_user }}" required>
+        <input name="phone" placeholder="{{ i18n.agent_phone }}" required>
+        <input name="pin" placeholder="{{ i18n.agent_pin }}" maxlength="4" required>
+        <input name="amount" type="number" min="1" step="0.01" placeholder="{{ i18n.agent_amount }}" required>
+        <input name="recipient" placeholder="{{ i18n.agent_recipient }}" required>
+        <input name="trusted_contact" placeholder="{{ i18n.agent_trusted }}">
+        <button type="submit">{{ i18n.agent_submit }}</button>
+      </form>
+    </section>
+
+    {% if agent_result %}
+    <section class="card">
+      <h2>{{ i18n.agent_result }}</h2>
+      <p><strong>{{ i18n.user_label }}:</strong> {{ agent_result.user_id }}</p>
+      <p><strong>{{ i18n.tx_id }}:</strong> <span class="mono">{{ agent_result.tx_id }}</span></p>
+      <p><strong>{{ i18n.risk }}:</strong> {{ agent_result.risk }}</p>
+      <p><strong>{{ i18n.action }}:</strong> {{ agent_result.action }}</p>
+      <p><strong>{{ i18n.status }}:</strong> {{ agent_result.status }}</p>
+      <p><strong>{{ i18n.reasons }}:</strong> {{ ', '.join(agent_result.reasons) if agent_result.reasons else '-' }}</p>
+      {% if agent_result.guidance %}
+      <ul class="guidance-list">
+        {% for g in agent_result.guidance %}
+        <li>{{ g }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if agent_result.approval_required %}
+      <p><strong>{{ i18n.approval }}:</strong> {{ i18n.required }} | {{ i18n.demo_code }}: {{ agent_result.approval_code_for_demo }}</p>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    {% if voice_text %}
+    <section class="card voice-card">
+      <button type="button" class="button secondary voice-btn" data-voice-text="{{ voice_text|e }}">{{ i18n.voice_play }}</button>
+    </section>
+    {% endif %}
+
+    <section class="actions">
+      <a href="/?lang={{ lang }}" class="button secondary">{{ i18n.back_dashboard }}</a>
+      <a href="/report/impact?lang={{ lang }}" class="button secondary">{{ i18n.impact_report }}</a>
+    </section>
+  </main>
+  <script>
+    (() => {
+      const btn = document.querySelector(".voice-btn");
+      if (!btn || !window.speechSynthesis) return;
+      btn.addEventListener("click", () => {
+        const text = btn.getAttribute("data-voice-text") || "";
+        if (!text) return;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+      });
+    })();
+  </script>
+</body>
+</html>

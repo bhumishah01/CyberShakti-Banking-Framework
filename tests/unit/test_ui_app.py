@@ -101,3 +101,37 @@ def test_ui_scenario_simulator_endpoint() -> None:
     )
     assert response.status_code == 200
     assert "Scenario executed" in response.text
+
+
+def test_ui_agent_mode_pages() -> None:
+    page = client.get("/agent")
+    assert page.status_code == 200
+
+    action = client.post(
+        "/agent/assist",
+        data={
+            "user_id": "agent-user",
+            "phone": "+919111111111",
+            "pin": "1234",
+            "amount": "2100",
+            "recipient": "Village Store",
+            "lang": "en",
+        },
+    )
+    assert action.status_code == 200
+    assert "Assisted Transaction Result" in action.text
+
+
+def test_ui_impact_report_page() -> None:
+    _ = client.post(
+        "/simulate/scenario",
+        data={
+            "scenario_id": "scam_high_amount",
+            "user_id": "impact-user",
+            "pin": "1234",
+            "lang": "en",
+        },
+    )
+    response = client.get("/report/impact")
+    assert response.status_code == 200
+    assert "Fraud Impact Report" in response.text
