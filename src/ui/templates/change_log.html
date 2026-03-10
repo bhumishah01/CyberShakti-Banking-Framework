@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Change Log - RuralShield</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <div class="top-row">
+        <div>
+          <h1>Change Log</h1>
+          <p>Local edits with old/new values</p>
+        </div>
+        <form action="/change-log" method="get" class="lang-form">
+          <label for="lang">{{ i18n.lang_label }}</label>
+          <select id="lang" name="lang" onchange="this.form.submit()">
+            {% for item in langs %}
+            <option value="{{ item.code }}" {% if item.code == lang %}selected{% endif %}>{{ item.label }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{{ i18n.time }}</th>
+              <th>Entity</th>
+              <th>Field</th>
+              <th>Old</th>
+              <th>New</th>
+              <th>Actor</th>
+              <th>Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in entries %}
+            <tr>
+              <td>{{ row.created_at }}</td>
+              <td>{{ row.entity_type }} / {{ row.entity_id }}</td>
+              <td>{{ row.field_name }}</td>
+              <td>{{ row.old_value }}</td>
+              <td>{{ row.new_value }}</td>
+              <td>{{ row.actor }}</td>
+              <td>{{ row.source }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="actions">
+      <form action="/export/change-log" method="post">
+        <input type="hidden" name="lang" value="{{ lang }}">
+        <button type="submit" class="button secondary">{{ i18n.export_change_log }}</button>
+      </form>
+      <a href="/?lang={{ lang }}" class="button secondary">{{ i18n.back_dashboard }}</a>
+    </section>
+  </main>
+</body>
+</html>

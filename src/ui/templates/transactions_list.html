@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ list_title }} - RuralShield</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <div class="top-row">
+        <div>
+          <h1>{{ list_title }}</h1>
+          <p>{{ list_subtitle }}</p>
+        </div>
+        <form action="{{ list_action }}" method="get" class="lang-form">
+          <label for="lang">{{ i18n.lang_label }}</label>
+          <select id="lang" name="lang" onchange="this.form.submit()">
+            {% for item in langs %}
+            <option value="{{ item.code }}" {% if item.code == lang %}selected{% endif %}>{{ item.label }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
+    </header>
+
+    <section class="card">
+      <p class="muted">Amounts and recipients are encrypted locally and only visible via user PIN.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{{ i18n.time }}</th>
+              <th>{{ i18n.tx_id }}</th>
+              <th>{{ i18n.user_label }}</th>
+              <th>{{ i18n.risk }}</th>
+              <th>{{ i18n.action }}</th>
+              <th>{{ i18n.status }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in transactions %}
+            <tr>
+              <td>{{ row.display_time }}</td>
+              <td class="mono">{{ row.tx_id }}</td>
+              <td>{{ row.user_id }}</td>
+              <td><span class="pill pill-risk">{{ row.display_risk }}</span></td>
+              <td><span class="pill pill-action">{{ row.display_action }}</span></td>
+              <td><span class="pill pill-status">{{ row.display_status }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="actions">
+      <a href="/?lang={{ lang }}" class="button secondary">{{ i18n.back_dashboard }}</a>
+    </section>
+  </main>
+</body>
+</html>

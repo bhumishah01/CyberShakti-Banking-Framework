@@ -14,7 +14,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from src.audit.chain import verify_audit_chain
-from src.auth.service import create_user, enable_panic_freeze, set_trusted_contact
+from src.auth.service import (
+    authenticate_user,
+    create_user,
+    enable_panic_freeze,
+    set_trusted_contact,
+)
 from src.database.init_db import init_db
 from src.database.transaction_store import (
     create_secure_transaction,
@@ -44,12 +49,14 @@ def _ctx(
 ) -> dict:
     stats = get_dashboard_stats(db_path=DEFAULT_DB)
     i18n = _bundle(lang)
+    recent_changes = _load_recent_change_log()
     return {
         "request": request,
         "message": message,
         "error": error,
         "db_path": str(DEFAULT_DB),
         "stats": stats,
+        "recent_changes": recent_changes,
         "lang": lang,
         "i18n": i18n,
         "langs": _language_choices(),
@@ -161,16 +168,28 @@ def agent_assist(
     lang = _resolve_lang(lang)
     clean_user = user_id.strip()
     clean_pin = pin.strip()
-    try:
-        create_user(
-            user_id=clean_user,
-            phone_number=phone.strip(),
-            pin=clean_pin,
-            db_path=DEFAULT_DB,
-            replace_existing=False,
-        )
-    except ValueError as exc:
-        if "already exists" not in str(exc).lower():
+    init_db(DEFAULT_DB)
+    with sqlite3.connect(DEFAULT_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM users WHERE user_id = ?", (clean_user,))
+        user_exists = cursor.fetchone() is not None
+
+    if user_exists:
+        auth = authenticate_user(user_id=clean_user, pin=clean_pin, db_path=DEFAULT_DB)
+        if not auth.is_authenticated:
+            context = _ctx(request, error="Invalid PIN for existing user.", lang=lang)
+            context["agent_result"] = None
+            return templates.TemplateResponse("agent.html", context, status_code=400)
+    else:
+        try:
+            create_user(
+                user_id=clean_user,
+                phone_number=phone.strip(),
+                pin=clean_pin,
+                db_path=DEFAULT_DB,
+                replace_existing=False,
+            )
+        except ValueError as exc:
             context = _ctx(request, error=str(exc), lang=lang)
             context["agent_result"] = None
             return templates.TemplateResponse("agent.html", context, status_code=400)
@@ -267,6 +286,122 @@ def list_transactions(request: Request, user_id: str, pin: str, limit: int = 10,
         return templates.TemplateResponse("transactions.html", context, status_code=400)
 
 
+@app.get("/users/list")
+def list_users(request: Request, lang: str = "en"):
+    lang = _resolve_lang(lang)
+    init_db(DEFAULT_DB)
+    with sqlite3.connect(DEFAULT_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT user_id, failed_attempts, last_auth_at, auth_config, created_at
+            FROM users
+            ORDER BY created_at DESC
+            """
+        )
+        rows = cursor.fetchall()
+    users = []
+    for user_id, failed_attempts, last_auth_at, auth_config, created_at in rows:
+        trusted_contact = ""
+        freeze_until = ""
+        try:
+            payload = json.loads(auth_config or "{}")
+            trusted_contact = str(payload.get("trusted_contact", ""))
+            freeze_until = str(payload.get("freeze_until", ""))
+        except Exception:
+            trusted_contact = ""
+            freeze_until = ""
+        users.append(
+            {
+                "user_id": user_id,
+                "failed_attempts": int(failed_attempts or 0),
+                "last_auth_at": last_auth_at or "",
+                "trusted_contact": trusted_contact,
+                "freeze_until": freeze_until,
+                "created_at": created_at or "",
+            }
+        )
+    context = _ctx(request, lang=lang)
+    context["users"] = users
+    return templates.TemplateResponse("users_list.html", context)
+
+
+@app.get("/transactions/all")
+def list_all_transactions(request: Request, lang: str = "en"):
+    return list_transactions_by_kind(request, kind="all", lang=lang)
+
+
+@app.get("/transactions/list/{kind}")
+def list_transactions_by_kind(request: Request, kind: str, lang: str = "en"):
+    lang = _resolve_lang(lang)
+    title, where_sql, params = _transaction_list_filter(kind)
+    rows = _fetch_transaction_rows(where_sql, params)
+    items = _format_transaction_rows(rows, lang=lang)
+    context = _ctx(request, lang=lang)
+    context["transactions"] = items
+    context["list_title"] = title
+    context["list_subtitle"] = "Local transaction metadata (amounts encrypted)"
+    context["list_action"] = f"/transactions/list/{kind}"
+    return templates.TemplateResponse("transactions_list.html", context)
+
+
+@app.get("/audit/events")
+def list_audit_events(request: Request, lang: str = "en", event_type: str = ""):
+    lang = _resolve_lang(lang)
+    init_db(DEFAULT_DB)
+    query = "SELECT created_at, log_id, event_type FROM audit_log"
+    params = []
+    if event_type:
+        query += " WHERE event_type = ?"
+        params.append(event_type)
+    query += " ORDER BY created_at DESC LIMIT 200"
+    with sqlite3.connect(DEFAULT_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+    events = [
+        {"created_at": _friendly_time(ts), "log_id": log_id, "event_type": etype}
+        for ts, log_id, etype in rows
+    ]
+    context = _ctx(request, lang=lang)
+    context["events"] = events
+    context["event_title"] = "Audit Events" if not event_type else f"Audit Events: {event_type}"
+    return templates.TemplateResponse("audit_events.html", context)
+
+
+@app.get("/change-log")
+def list_change_log(request: Request, lang: str = "en"):
+    lang = _resolve_lang(lang)
+    init_db(DEFAULT_DB)
+    with sqlite3.connect(DEFAULT_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT created_at, entity_type, entity_id, field_name, old_value, new_value, actor, source
+            FROM change_log
+            ORDER BY created_at DESC
+            LIMIT 200
+            """
+        )
+        rows = cursor.fetchall()
+    entries = [
+        {
+            "created_at": _friendly_time(ts),
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "field_name": field_name,
+            "old_value": old_value,
+            "new_value": new_value,
+            "actor": actor,
+            "source": source,
+        }
+        for ts, entity_type, entity_id, field_name, old_value, new_value, actor, source in rows
+    ]
+    context = _ctx(request, lang=lang)
+    context["entries"] = entries
+    return templates.TemplateResponse("change_log.html", context)
+
+
 @app.post("/sync")
 def do_sync(
     request: Request,
@@ -349,8 +484,26 @@ def seed_demo_data(request: Request):
 
 
 @app.get("/export/report")
-def export_report():
-    """Export current system snapshot for faculty review."""
+def export_report(request: Request):
+    """Human-friendly security report page."""
+    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    stats = get_dashboard_stats(db_path=DEFAULT_DB)
+    audit = verify_audit_chain(db_path=DEFAULT_DB)
+    context = _ctx(request, lang=lang)
+    context["report"] = {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "stats": stats,
+        "audit": {
+            "is_valid": audit.is_valid,
+            "checked_entries": audit.checked_entries,
+            "error": audit.error,
+        },
+    }
+    return templates.TemplateResponse("report_snapshot.html", context)
+
+
+@app.get("/export/report.json")
+def export_report_json():
     stats = get_dashboard_stats(db_path=DEFAULT_DB)
     audit = verify_audit_chain(db_path=DEFAULT_DB)
     payload = {
@@ -411,6 +564,28 @@ def fraud_impact_report(request: Request):
     impact = _load_impact_report_data()
     context = _ctx(request, lang=lang)
     context["impact"] = impact
+    return templates.TemplateResponse("impact_report.html", context)
+
+
+@app.post("/report/impact/seed")
+def seed_impact_report(request: Request, lang: str = Form(default="en")):
+    lang = _resolve_lang(lang)
+    seed_user = "impact_demo"
+    pin = "1234"
+    create_user(
+        user_id=seed_user,
+        phone_number="+919333333333",
+        pin=pin,
+        db_path=DEFAULT_DB,
+        replace_existing=True,
+    )
+    scenarios = ["scam_high_amount", "rapid_mule_burst", "account_takeover"]
+    for scenario_id in scenarios:
+        simulated = _simulate_scenario(scenario_id=scenario_id, user_id=seed_user, pin=pin)
+        _record_scenario_run(scenario_id=scenario_id, user_id=seed_user, transactions=simulated)
+    msg = "Impact report seeded with demo scenarios."
+    context = _ctx(request, message=msg, lang=lang)
+    context["impact"] = _load_impact_report_data()
     return templates.TemplateResponse("impact_report.html", context)
 
 
@@ -724,6 +899,92 @@ def _build_voice_prompt(lang: str, risk_level: str, action: str, guidance: list[
     return " ".join([headline, *guidance]).strip()
 
 
+def _transaction_list_filter(kind: str) -> tuple[str, str, list]:
+    normalized = (kind or "all").lower()
+    if normalized in {"pending", "pending-sync"}:
+        return ("Pending Sync Transactions", "WHERE status = 'PENDING'", [])
+    if normalized == "synced":
+        return ("Synced Transactions", "WHERE status = 'SYNCED'", [])
+    if normalized == "held":
+        return (
+            "Held Transactions",
+            "WHERE status IN ('HOLD_FOR_REVIEW','AWAITING_TRUSTED_APPROVAL')",
+            [],
+        )
+    if normalized == "blocked":
+        return (
+            "Blocked Transactions",
+            "WHERE status LIKE 'BLOCKED_%' OR status = 'BLOCKED_LOCAL' OR status = 'REJECTED_INTEGRITY_FAIL'",
+            [],
+        )
+    if normalized in {"high-risk", "high_risk"}:
+        return (
+            "High Risk Transactions",
+            "WHERE risk_level = 'HIGH' OR risk_score >= 70",
+            [],
+        )
+    return ("All Transactions", "", [])
+
+
+def _fetch_transaction_rows(where_sql: str, params: list) -> list[tuple]:
+    init_db(DEFAULT_DB)
+    query = (
+        "SELECT tx_id, user_id, timestamp, risk_score, risk_level, status, action_decision "
+        "FROM transactions "
+    )
+    if where_sql:
+        query += f"{where_sql} "
+    query += "ORDER BY timestamp DESC LIMIT 200"
+    with sqlite3.connect(DEFAULT_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        return cursor.fetchall()
+
+
+def _format_transaction_rows(rows: list[tuple], lang: str) -> list[dict]:
+    items = []
+    for tx_id, user_id, ts, risk_score, risk_level, status, action_decision in rows:
+        items.append(
+            {
+                "tx_id": tx_id,
+                "user_id": user_id,
+                "timestamp": ts,
+                "display_time": _friendly_time(ts),
+                "display_risk": f"{_friendly_risk(risk_level, lang=lang)} ({risk_score}/100)",
+                "display_status": _friendly_status(status, lang=lang),
+                "display_action": _friendly_action(action_decision or "ALLOW", lang=lang),
+            }
+        )
+    return items
+
+
+def _load_recent_change_log(limit: int = 5) -> list[dict]:
+    init_db(DEFAULT_DB)
+    with sqlite3.connect(DEFAULT_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT created_at, entity_type, entity_id, field_name, old_value, new_value
+            FROM change_log
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        rows = cursor.fetchall()
+    return [
+        {
+            "created_at": _friendly_time(ts),
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "field_name": field_name,
+            "old_value": old_value,
+            "new_value": new_value,
+        }
+        for ts, entity_type, entity_id, field_name, old_value, new_value in rows
+    ]
+
+
 def _run_professor_walkthrough(lang: str) -> dict:
     user_id = "prof_demo_user"
     pin = "1234"
@@ -859,6 +1120,13 @@ def release_transaction(
         return templates.TemplateResponse(
             "index.html", _ctx(request, error=str(exc), lang=lang), status_code=400
         )
+
+
+@app.get("/transactions/release")
+def release_transaction_help(request: Request):
+    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    msg = "Use the Release Held Transaction form on the dashboard."
+    return templates.TemplateResponse("index.html", _ctx(request, message=msg, lang=lang))
 
 
 @app.post("/users/trusted-contact")
@@ -1277,6 +1545,11 @@ def _t(lang: str, key: str) -> str:
             "created_count": "Transactions generated",
             "agent_done": "Assisted transaction processed.",
             "change_log_exported": "Change log exported to",
+            "failed_attempts": "Failed Attempts",
+            "last_auth": "Last Auth",
+            "trusted_contact": "Trusted Contact",
+            "freeze_until": "Freeze Until",
+            "created_at": "Created At",
             "trusted_required": "Trusted approval required",
             "contact_ending": "contact ending",
             "demo_code": "Demo approval code",
@@ -1304,6 +1577,11 @@ def _t(lang: str, key: str) -> str:
             "created_count": "निर्मित लेनदेन",
             "agent_done": "असिस्टेड लेनदेन प्रोसेस हुआ।",
             "change_log_exported": "चेंज लॉग निर्यात हुआ",
+            "failed_attempts": "विफल प्रयास",
+            "last_auth": "अंतिम लॉगिन",
+            "trusted_contact": "विश्वसनीय संपर्क",
+            "freeze_until": "फ्रीज़ समय तक",
+            "created_at": "निर्मित समय",
             "trusted_required": "विश्वसनीय स्वीकृति आवश्यक",
             "contact_ending": "अंतिम अंक",
             "demo_code": "डेमो स्वीकृति कोड",
@@ -1331,6 +1609,11 @@ def _t(lang: str, key: str) -> str:
             "created_count": "ସୃଷ୍ଟି ହୋଇଥିବା ଟ୍ରାନ୍ଜାକ୍ସନ",
             "agent_done": "ସହାୟିତ ଟ୍ରାନ୍ଜାକ୍ସନ ପ୍ରସେସ୍ ହେଲା।",
             "change_log_exported": "ଚେଞ୍ଜ ଲଗ୍ ନିର୍ଯାତ ହେଲା",
+            "failed_attempts": "ବିଫଳ ପ୍ରୟାସ",
+            "last_auth": "ଶେଷ ଲଗଇନ",
+            "trusted_contact": "ଭରସାଯୋଗ୍ୟ ସଂଯୋଗ",
+            "freeze_until": "ଫ୍ରିଜ୍ ସମୟ",
+            "created_at": "ସୃଷ୍ଟି ସମୟ",
             "trusted_required": "ଭରସାଯୋଗ୍ୟ ସ୍ୱୀକୃତି ଆବଶ୍ୟକ",
             "contact_ending": "ଶେଷ ଅଙ୍କ",
             "demo_code": "ଡେମୋ ସ୍ୱୀକୃତି କୋଡ୍",

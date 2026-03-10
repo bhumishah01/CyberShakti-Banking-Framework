@@ -35,6 +35,16 @@
       <article class="stat-card"><h3>{{ i18n.report_protection }}</h3><p>{{ impact.protection_rate }}%</p></article>
     </section>
 
+    {% if impact.total_runs == 0 %}
+    <section class="card note">
+      <p>No simulator data yet. Click below to seed demo scenarios.</p>
+      <form action="/report/impact/seed" method="post">
+        <input type="hidden" name="lang" value="{{ lang }}">
+        <button type="submit" class="button secondary">Seed Impact Demo</button>
+      </form>
+    </section>
+    {% endif %}
+
     <section class="card">
       <h2>{{ i18n.report_breakdown }}</h2>
       <div class="table-wrap">

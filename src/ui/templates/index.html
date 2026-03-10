@@ -26,15 +26,33 @@
     </header>
 
     <section class="stats-grid">
-      <article class="stat-card"><h3>{{ i18n.users }}</h3><p>{{ stats.user_count }}</p></article>
-      <article class="stat-card"><h3>{{ i18n.transactions }}</h3><p>{{ stats.tx_count }}</p></article>
-      <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p>{{ stats.pending_count }}</p></article>
-      <article class="stat-card"><h3>{{ i18n.synced }}</h3><p>{{ stats.synced_count }}</p></article>
-      <article class="stat-card"><h3>{{ i18n.held }}</h3><p>{{ stats.held_count }}</p></article>
-      <article class="stat-card"><h3>{{ i18n.blocked }}</h3><p>{{ stats.blocked_count }}</p></article>
-      <article class="stat-card"><h3>{{ i18n.released }}</h3><p>{{ stats.released_count }}</p></article>
-      <article class="stat-card"><h3>{{ i18n.high_risk }}</h3><p>{{ stats.high_risk_count }}</p></article>
-      <article class="stat-card"><h3>{{ i18n.audit_events }}</h3><p>{{ stats.audit_events }}</p></article>
+      <a class="stat-card-link" href="/users/list?lang={{ lang }}">
+        <article class="stat-card"><h3>{{ i18n.users }}</h3><p>{{ stats.user_count }}</p></article>
+      </a>
+      <a class="stat-card-link" href="/transactions/all?lang={{ lang }}">
+        <article class="stat-card"><h3>{{ i18n.transactions }}</h3><p>{{ stats.tx_count }}</p></article>
+      </a>
+      <a class="stat-card-link" href="/transactions/list/pending?lang={{ lang }}">
+        <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p>{{ stats.pending_count }}</p></article>
+      </a>
+      <a class="stat-card-link" href="/transactions/list/synced?lang={{ lang }}">
+        <article class="stat-card"><h3>{{ i18n.synced }}</h3><p>{{ stats.synced_count }}</p></article>
+      </a>
+      <a class="stat-card-link" href="/transactions/list/held?lang={{ lang }}">
+        <article class="stat-card"><h3>{{ i18n.held }}</h3><p>{{ stats.held_count }}</p></article>
+      </a>
+      <a class="stat-card-link" href="/transactions/list/blocked?lang={{ lang }}">
+        <article class="stat-card"><h3>{{ i18n.blocked }}</h3><p>{{ stats.blocked_count }}</p></article>
+      </a>
+      <a class="stat-card-link" href="/audit/events?event_type=TRANSACTION_RELEASED&lang={{ lang }}">
+        <article class="stat-card"><h3>{{ i18n.released }}</h3><p>{{ stats.released_count }}</p></article>
+      </a>
+      <a class="stat-card-link" href="/transactions/list/high-risk?lang={{ lang }}">
+        <article class="stat-card"><h3>{{ i18n.high_risk }}</h3><p>{{ stats.high_risk_count }}</p></article>
+      </a>
+      <a class="stat-card-link" href="/audit/events?lang={{ lang }}">
+        <article class="stat-card"><h3>{{ i18n.audit_events }}</h3><p>{{ stats.audit_events }}</p></article>
+      </a>
     </section>
 
     {% if message %}
@@ -48,6 +66,37 @@
         <button type="button" class="button secondary voice-btn" data-voice-text="{{ voice_text|e }}">{{ i18n.voice_play }}</button>
       </section>
     {% endif %}
+
+    <section class="card compact-card">
+      <h2>Recent Change Log</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{{ i18n.time }}</th>
+              <th>Entity</th>
+              <th>Field</th>
+              <th>Old</th>
+              <th>New</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in (stats.recent_changes or []) %}
+            <tr>
+              <td>{{ row.created_at }}</td>
+              <td>{{ row.entity_type }} / {{ row.entity_id }}</td>
+              <td>{{ row.field_name }}</td>
+              <td>{{ row.old_value }}</td>
+              <td>{{ row.new_value }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="actions">
+        <a href="/change-log?lang={{ lang }}" class="button secondary">Open Full Change Log</a>
+      </div>
+    </section>
 
     <section class="card">
       <h2>{{ i18n.section_1 }}</h2>
@@ -113,19 +162,24 @@
         <input name="approval_code" placeholder="Trusted approval code (if required)">
         <button type="submit">{{ i18n.release_held }}</button>
       </form>
-      <div class="actions">
-        <a href="/audit?lang={{ lang }}" class="button secondary">{{ i18n.check_audit }}</a>
-        <form action="/seed-demo?lang={{ lang }}" method="post"><button type="submit" class="button secondary">{{ i18n.seed_demo }}</button></form>
-        <a href="/export/report" class="button secondary" target="_blank">{{ i18n.export_report }}</a>
-        <form action="/export/change-log" method="post">
-          <input type="hidden" name="lang" value="{{ lang }}">
-          <button type="submit" class="button secondary">{{ i18n.export_change_log }}</button>
-        </form>
-        <a href="/agent?lang={{ lang }}" class="button secondary">{{ i18n.agent_mode }}</a>
-        <a href="/report/impact?lang={{ lang }}" class="button secondary">{{ i18n.impact_report }}</a>
-        <a href="/demo/walkthrough?lang={{ lang }}" class="button secondary">{{ i18n.demo_walkthrough }}</a>
-        <a href="/reset?lang={{ lang }}" class="button secondary">{{ i18n.clear_messages }}</a>
+      <div class="actions primary-actions">
+        <a href="/agent?lang={{ lang }}" class="button">{{ i18n.agent_mode }}</a>
+        <a href="/report/impact?lang={{ lang }}" class="button">{{ i18n.impact_report }}</a>
+        <a href="/demo/walkthrough?lang={{ lang }}" class="button">{{ i18n.demo_walkthrough }}</a>
       </div>
+      <details class="tools-panel">
+        <summary>More Tools</summary>
+        <div class="actions tool-actions">
+          <form action="/seed-demo?lang={{ lang }}" method="post"><button type="submit" class="button secondary">{{ i18n.seed_demo }}</button></form>
+          <a href="/export/report?lang={{ lang }}" class="button secondary">{{ i18n.export_report }}</a>
+          <form action="/export/change-log" method="post">
+            <input type="hidden" name="lang" value="{{ lang }}">
+            <button type="submit" class="button secondary">{{ i18n.export_change_log }}</button>
+          </form>
+          <a href="/audit/events?lang={{ lang }}" class="button secondary">{{ i18n.audit_events }}</a>
+          <a href="/reset?lang={{ lang }}" class="button secondary">{{ i18n.clear_messages }}</a>
+        </div>
+      </details>
     </section>
 
     <section class="card card-sim">

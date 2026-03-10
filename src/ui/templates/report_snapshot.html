@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Security Report - RuralShield</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <div class="top-row">
+        <div>
+          <h1>Security Report</h1>
+          <p>Local snapshot with audit integrity</p>
+        </div>
+        <form action="/export/report" method="get" class="lang-form">
+          <label for="lang">{{ i18n.lang_label }}</label>
+          <select id="lang" name="lang" onchange="this.form.submit()">
+            {% for item in langs %}
+            <option value="{{ item.code }}" {% if item.code == lang %}selected{% endif %}>{{ item.label }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
+    </header>
+
+    <section class="card">
+      <p><strong>Generated At:</strong> {{ report.generated_at }}</p>
+      <p><strong>Audit Valid:</strong> {{ report.audit.is_valid }}</p>
+      <p><strong>Entries Checked:</strong> {{ report.audit.checked_entries }}</p>
+      {% if report.audit.error %}
+      <p><strong>Audit Error:</strong> {{ report.audit.error }}</p>
+      {% endif %}
+    </section>
+
+    <section class="stats-grid">
+      <article class="stat-card"><h3>{{ i18n.users }}</h3><p>{{ report.stats.user_count }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.transactions }}</h3><p>{{ report.stats.tx_count }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p>{{ report.stats.pending_count }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.synced }}</h3><p>{{ report.stats.synced_count }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.held }}</h3><p>{{ report.stats.held_count }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.blocked }}</h3><p>{{ report.stats.blocked_count }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.high_risk }}</h3><p>{{ report.stats.high_risk_count }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.audit_events }}</h3><p>{{ report.stats.audit_events }}</p></article>
+    </section>
+
+    <section class="actions">
+      <a href="/?lang={{ lang }}" class="button secondary">{{ i18n.back_dashboard }}</a>
+      <a href="/export/report.json" class="button secondary">Download JSON</a>
+    </section>
+  </main>
+</body>
+</html>
