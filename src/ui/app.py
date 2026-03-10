@@ -1,4 +1,11 @@
-"""Web UI for RuralShield runtime demo."""
+"""Web UI for RuralShield runtime demo.
+
+This file wires the HTML pages to the core security logic:
+- routes (URLs)
+- form inputs
+- local database reads
+- response messages for the demo
+"""
 
 from __future__ import annotations
 
@@ -31,10 +38,12 @@ from src.sync.client import make_http_sender
 from src.sync.manager import sync_outbox
 
 
+# === App configuration ===
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_DB = Path("data/ruralshield.db")
 SUPPORTED_LANGS = {"en", "hi", "or", "gu", "de"}
 
+# FastAPI app + static assets + HTML templates
 app = FastAPI(title="RuralShield UI", version="1.0.0")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
@@ -47,6 +56,7 @@ def _ctx(
     lang: str = "en",
     voice_text: str = "",
 ) -> dict:
+    # Common context shared by all HTML pages.
     stats = get_dashboard_stats(db_path=DEFAULT_DB)
     i18n = _bundle(lang)
     recent_changes = _load_recent_change_log()
@@ -66,6 +76,7 @@ def _ctx(
 
 
 def _fetch_outbox_rows(limit: int = 200) -> list[dict]:
+    # Read local sync queue (outbox) for the Sync Queue page.
     init_db(DEFAULT_DB)
     query = (
         "SELECT outbox_id, tx_id, sync_state, retry_count, next_retry_at, last_error "
@@ -93,6 +104,7 @@ def _fetch_outbox_rows(limit: int = 200) -> list[dict]:
 
 
 def _outbox_stats(rows: list[dict]) -> dict:
+    # Aggregate counts for the Sync Queue cards.
     counts = {"PENDING": 0, "RETRYING": 0, "SYNCED": 0, "HOLD": 0, "BLOCKED": 0}
     for row in rows:
         state = row.get("sync_state", "")
@@ -109,6 +121,7 @@ def _outbox_stats(rows: list[dict]) -> dict:
 
 @app.get("/")
 def index(request: Request):
+    # Dashboard page
     init_db(DEFAULT_DB)
     lang = _resolve_lang(request.query_params.get("lang", "en"))
     return templates.TemplateResponse("index.html", _ctx(request, lang=lang))
@@ -116,6 +129,7 @@ def index(request: Request):
 
 @app.get("/agent")
 def agent_mode(request: Request):
+    # Assisted agent/kiosk workflow page
     init_db(DEFAULT_DB)
     lang = _resolve_lang(request.query_params.get("lang", "en"))
     context = _ctx(request, lang=lang)
@@ -132,6 +146,7 @@ def add_user(
     replace: str | None = Form(default=None),
     lang: str = Form(default="en"),
 ):
+    # Create or replace a local user (stored in SQLite).
     lang = _resolve_lang(lang)
     try:
         create_user(
@@ -158,6 +173,7 @@ def add_transaction(
     recipient: str = Form(...),
     lang: str = Form(default="en"),
 ):
+    # Create a transaction: encrypt locally + risk score + add to outbox.
     lang = _resolve_lang(lang)
     try:
         stored = create_secure_transaction(
@@ -207,6 +223,7 @@ def agent_assist(
     trusted_contact: str = Form(default=""),
     lang: str = Form(default="en"),
 ):
+    # Agent flow: user + transaction in one screen.
     lang = _resolve_lang(lang)
     clean_user = user_id.strip()
     clean_pin = pin.strip()
@@ -469,6 +486,7 @@ def do_sync(
 
 @app.get("/sync/queue")
 def view_sync_queue(request: Request, lang: str = "en"):
+    # Visualize local outbox queue for offline-first demo.
     lang = _resolve_lang(lang)
     rows = _fetch_outbox_rows()
     context = _ctx(request, lang=lang)
@@ -479,6 +497,7 @@ def view_sync_queue(request: Request, lang: str = "en"):
 
 @app.post("/sync/simulate")
 def simulate_night_sync(request: Request, lang: str = Form(default="en")):
+    # Demo-only action: mark pending outbox entries as synced.
     lang = _resolve_lang(lang)
     init_db(DEFAULT_DB)
     tx_ids: list[str] = []

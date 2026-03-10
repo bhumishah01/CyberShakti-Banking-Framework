@@ -1,4 +1,11 @@
-"""Secure local transaction persistence for offline-first flow."""
+"""Secure local transaction persistence for offline-first flow.
+
+This file is the core of the project:
+- encrypts amount/recipient locally
+- scores fraud risk
+- decides allow/hold/block
+- writes to outbox for later sync
+"""
 
 from __future__ import annotations
 
@@ -25,12 +32,14 @@ from src.crypto.service import (
 from src.database.init_db import DB_PATH, init_db
 from src.fraud.engine import decide_intervention, score_transaction
 
+# === Risk approval rules ===
 APPROVAL_EXPIRY_MINUTES = 15
 MAX_APPROVAL_ATTEMPTS = 3
 
 
 @dataclass(frozen=True)
 class StoredTransaction:
+    # Simple container used by UI and CLI responses
     tx_id: str
     outbox_id: str
     status: str
@@ -58,12 +67,15 @@ def create_secure_transaction(
     timestamp: datetime | None = None,
 ) -> StoredTransaction:
     """Authenticate user, encrypt transaction fields, sign record, and enqueue for sync."""
+    # Basic input checks
     if amount <= 0:
         raise ValueError("Amount must be greater than zero")
     if not recipient.strip():
         raise ValueError("Recipient must not be empty")
 
+    # Ensure local DB schema exists
     init_db(db_path)
+    # Derive session key from PIN, then derive encryption + signature keys
     session_key = derive_session_key(user_id=user_id, pin=pin, db_path=db_path)
     enc_key, sig_key = derive_crypto_keys(session_key)
 
@@ -73,6 +85,7 @@ def create_secure_transaction(
     status = "PENDING"
     sync_state = "PENDING"
 
+    # Local fraud scoring uses recent history + failed attempts (offline-first).
     history = _load_user_history(user_id=user_id, enc_key=enc_key, db_path=db_path)
     recent_failed_attempts = _load_failed_attempts(user_id=user_id, db_path=db_path)
     risk = score_transaction(
@@ -87,6 +100,7 @@ def create_secure_transaction(
     risk_score = risk_score_override if risk_score_override is not None else risk["risk_score"]
     risk_level = risk_level_override if risk_level_override is not None else risk["risk_level"]
     reason_codes = risk["reason_codes"]
+    # Decide allow/hold/block based on risk
     intervention = decide_intervention(risk_score=risk_score, risk_level=risk_level, reason_codes=reason_codes)
     action_decision = intervention["action"]
     intervention_title = intervention["title"]
@@ -98,9 +112,11 @@ def create_secure_transaction(
     trusted_contact_hint = ""
     approval_code_for_demo = ""
 
+    # Pull trusted-contact config for step-up approvals
     auth_config = get_user_auth_config(user_id=user_id, db_path=db_path)
     trusted_contact = str(auth_config.get("trusted_contact", "")).strip()
 
+    # Panic freeze overrides everything
     if is_user_frozen(user_id=user_id, db_path=db_path):
         action_decision = "BLOCK"
         intervention_title = "Outgoing transfers are frozen (panic mode)"
@@ -117,6 +133,7 @@ def create_secure_transaction(
         status = "BLOCKED_LOCAL"
         sync_state = "BLOCKED"
 
+    # Step-up: require trusted contact approval when risk is high
     if trusted_contact and action_decision in {"HOLD", "BLOCK"} and status.startswith("HOLD"):
         approval_required = True
         approval_code_for_demo = f"{randbelow(1_000_000):06d}"
@@ -130,6 +147,7 @@ def create_secure_transaction(
             f"Code expires in {APPROVAL_EXPIRY_MINUTES} minutes.",
         ]
 
+    # Encrypt sensitive fields before storing locally
     amount_payload = encrypt_payload(f"{amount:.2f}", enc_key)
     recipient_payload = encrypt_payload(recipient.strip(), enc_key)
     amount_enc = canonical_json(amount_payload)
@@ -145,6 +163,7 @@ def create_secure_transaction(
         "risk_level": risk_level,
         "status": status,
     }
+    # Sign the record to detect tampering later
     signature = sign_payload(canonical_json(signable), sig_key)
 
     outbox_packet = {
@@ -158,9 +177,11 @@ def create_secure_transaction(
         "recipient_enc": recipient_enc,
         "signature": signature,
     }
+    # Encrypt outbox payload for later sync
     outbox_payload = encrypt_payload(canonical_json(outbox_packet), enc_key)
     idempotency_key = hashlib.sha256(tx_id.encode("utf-8")).hexdigest()
 
+    # Persist into transactions table + outbox queue
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -195,6 +216,7 @@ def create_secure_transaction(
                 amount_payload["nonce"],
             ),
         )
+        # Only queue for sync if it isn't blocked
         if action_decision != "BLOCK":
             cursor.execute(
                 """
@@ -206,6 +228,7 @@ def create_secure_transaction(
             )
         conn.commit()
 
+    # Audit chain (tamper-evidence)
     append_audit_event(
         event_type="TRANSACTION_CREATED",
         event_data_enc=canonical_json(
@@ -220,6 +243,7 @@ def create_secure_transaction(
         db_path=db_path,
     )
 
+    # Change log (old/new values)
     log_change(
         entity_type="transaction",
         entity_id=tx_id,
@@ -358,6 +382,7 @@ def list_secure_transactions(
     limit: int = 20,
 ) -> list[dict]:
     """List and decrypt recent user transactions with integrity checks."""
+    # Authentication and key derivation
     init_db(db_path)
     session_key = derive_session_key(user_id=user_id, pin=pin, db_path=db_path)
     enc_key, sig_key = derive_crypto_keys(session_key)
@@ -407,6 +432,7 @@ def list_secure_transactions(
             "risk_level": risk_level,
             "status": status,
         }
+        # Verify signature to detect local tampering
         integrity_ok = verify_signature(canonical_json(signable), signature, sig_key)
         if not integrity_ok:
             transactions.append(
@@ -581,6 +607,7 @@ def release_held_transaction(
     db_path: Path = DB_PATH,
 ) -> bool:
     """Release one held transaction after successful user authentication."""
+    # Verify user PIN and trusted approval code (if required).
     init_db(db_path)
     session_key = derive_session_key(user_id=user_id, pin=pin, db_path=db_path)
     _, sig_key = derive_crypto_keys(session_key)

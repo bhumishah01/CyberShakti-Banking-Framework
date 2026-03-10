@@ -1,4 +1,10 @@
-"""Authentication service for PIN hashing, verification, and lockout control."""
+"""Authentication service for PIN hashing, verification, and lockout control.
+
+This file handles user security:
+- PIN hashing + verification
+- lockout after repeated failures
+- trusted contact + panic freeze settings
+"""
 
 from __future__ import annotations
 
@@ -14,9 +20,11 @@ from secrets import token_bytes
 from src.audit.change_log import log_change
 from src.database.init_db import DB_PATH, init_db
 
+# === Security policy settings ===
 MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
 PIN_LENGTH = 4
+# Scrypt parameters (slow hash for PIN security)
 SCRYPT_N = 2**14
 SCRYPT_R = 8
 SCRYPT_P = 1
@@ -25,6 +33,7 @@ SCRYPT_DKLEN = 32
 
 @dataclass(frozen=True)
 class AuthResult:
+    # Returned by authenticate_user() to explain outcome
     is_authenticated: bool
     reason: str
     failed_attempts: int
@@ -39,6 +48,7 @@ def create_user(
     replace_existing: bool = False,
 ) -> None:
     """Create a user record with securely hashed PIN credentials."""
+    # Validate and hash user info
     init_db(db_path)
     _validate_pin(pin)
     now_iso = _now_utc().isoformat()
@@ -46,6 +56,7 @@ def create_user(
     phone_hash = _hash_phone(phone_number)
     pin_hash = _hash_pin(pin, pin_salt)
 
+    # Default auth config for step-up + panic freeze
     default_auth_config = {
         "step_up_enabled": True,
         "trusted_contact": "",
@@ -53,6 +64,7 @@ def create_user(
     }
 
     change_events: list[dict] = []
+    # Save user to SQLite
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,))
@@ -143,6 +155,7 @@ def set_trusted_contact(
     user_id: str, pin: str, trusted_contact: str, db_path: Path = DB_PATH
 ) -> None:
     """Set or update trusted contact for high-risk approvals."""
+    # Only allow if PIN is valid
     if not trusted_contact.strip():
         raise ValueError("trusted_contact cannot be empty")
     _ = derive_session_key(user_id=user_id, pin=pin, db_path=db_path)
@@ -155,6 +168,7 @@ def enable_panic_freeze(
     user_id: str, pin: str, minutes: int = 60, db_path: Path = DB_PATH
 ) -> str:
     """Freeze outgoing transactions for a limited duration."""
+    # Validate PIN, then set freeze time in auth_config
     if minutes <= 0:
         raise ValueError("minutes must be > 0")
     _ = derive_session_key(user_id=user_id, pin=pin, db_path=db_path)
@@ -166,6 +180,7 @@ def enable_panic_freeze(
 
 
 def get_user_auth_config(user_id: str, db_path: Path = DB_PATH) -> dict:
+    # Read auth config from DB (step-up, trusted contact, freeze)
     init_db(db_path)
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
@@ -187,6 +202,7 @@ def get_user_auth_config(user_id: str, db_path: Path = DB_PATH) -> dict:
 
 
 def is_user_frozen(user_id: str, db_path: Path = DB_PATH) -> bool:
+    # True if panic freeze window is active
     config = get_user_auth_config(user_id=user_id, db_path=db_path)
     freeze_until = config.get("freeze_until", "")
     if not freeze_until:
@@ -204,6 +220,7 @@ def authenticate_user(
     now: datetime | None = None,
 ) -> AuthResult:
     """Authenticate a user with lockout-aware PIN verification."""
+    # Main PIN verification + lockout logic
     init_db(db_path)
     _validate_pin(pin)
     current_time = now or _now_utc()
@@ -291,6 +308,7 @@ def derive_session_key(user_id: str, pin: str, db_path: Path = DB_PATH) -> bytes
 
     This key is a bridge step for Step 2 and will later be wrapped by OS keystore keys.
     """
+    # This key is used to derive encryption + signature keys
     auth_result = authenticate_user(user_id=user_id, pin=pin, db_path=db_path)
     if not auth_result.is_authenticated:
         raise PermissionError(f"Cannot derive session key: {auth_result.reason}")
@@ -315,11 +333,13 @@ def derive_session_key(user_id: str, pin: str, db_path: Path = DB_PATH) -> bytes
 
 
 def _validate_pin(pin: str) -> None:
+    # PIN must be exactly 4 digits
     if not pin.isdigit() or len(pin) != PIN_LENGTH:
         raise ValueError(f"PIN must be exactly {PIN_LENGTH} digits")
 
 
 def _hash_pin(pin: str, salt: bytes) -> bytes:
+    # Slow hash for PIN storage
     return hashlib.scrypt(
         pin.encode("utf-8"),
         salt=salt,
@@ -331,10 +351,12 @@ def _hash_pin(pin: str, salt: bytes) -> bytes:
 
 
 def _hash_phone(phone_number: str) -> str:
+    # Store a hash of phone number (not raw)
     return hashlib.sha256(phone_number.strip().encode("utf-8")).hexdigest()
 
 
 def _is_locked(lockout_until: str | None, now: datetime) -> bool:
+    # Returns True if lockout is still active
     if not lockout_until:
         return False
     try:
@@ -344,10 +366,12 @@ def _is_locked(lockout_until: str | None, now: datetime) -> bool:
 
 
 def _now_utc() -> datetime:
+    # Unified time source (UTC)
     return datetime.now(UTC)
 
 
 def _update_auth_config(user_id: str, config: dict, db_path: Path) -> None:
+    # Persist auth_config JSON back to DB
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute(
