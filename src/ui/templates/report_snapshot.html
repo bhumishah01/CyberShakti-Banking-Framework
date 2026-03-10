@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Security Report - RuralShield</title>
+  <title>{{ i18n.page_title_report }}</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
@@ -11,8 +11,8 @@
     <header>
       <div class="top-row">
         <div>
-          <h1>Security Report</h1>
-          <p>Local snapshot with audit integrity</p>
+          <h1>{{ i18n.report_snapshot_title }}</h1>
+          <p>{{ i18n.report_snapshot_subtitle }}</p>
         </div>
         <form action="/export/report" method="get" class="lang-form">
           <label for="lang">{{ i18n.lang_label }}</label>
@@ -26,11 +26,11 @@
     </header>
 
     <section class="card">
-      <p><strong>Generated At:</strong> {{ report.generated_at }}</p>
-      <p><strong>Audit Valid:</strong> {{ report.audit.is_valid }}</p>
-      <p><strong>Entries Checked:</strong> {{ report.audit.checked_entries }}</p>
+      <p><strong>{{ i18n.report_generated_at }}:</strong> {{ report.generated_at }}</p>
+      <p><strong>{{ i18n.report_audit_valid }}:</strong> {{ report.audit.is_valid }}</p>
+      <p><strong>{{ i18n.report_entries_checked }}:</strong> {{ report.audit.checked_entries }}</p>
       {% if report.audit.error %}
-      <p><strong>Audit Error:</strong> {{ report.audit.error }}</p>
+      <p><strong>{{ i18n.report_audit_error }}:</strong> {{ report.audit.error }}</p>
       {% endif %}
     </section>
 
@@ -47,7 +47,7 @@
 
     <section class="actions">
       <a href="/?lang={{ lang }}" class="button secondary">{{ i18n.back_dashboard }}</a>
-      <a href="/export/report.json" class="button secondary">Download JSON</a>
+      <a href="/export/report.json" class="button secondary">{{ i18n.report_download_json }}</a>
     </section>
   </main>
 </body>

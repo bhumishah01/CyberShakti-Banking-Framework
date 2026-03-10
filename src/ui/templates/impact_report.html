@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Fraud Impact Report - RuralShield</title>
+  <title>{{ i18n.page_title_impact }}</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
@@ -37,10 +37,10 @@
 
     {% if impact.total_runs == 0 %}
     <section class="card note">
-      <p>No simulator data yet. Click below to seed demo scenarios.</p>
+      <p>{{ i18n.report_no_data }}</p>
       <form action="/report/impact/seed" method="post">
         <input type="hidden" name="lang" value="{{ lang }}">
-        <button type="submit" class="button secondary">Seed Impact Demo</button>
+        <button type="submit" class="button secondary">{{ i18n.report_seed_demo }}</button>
       </form>
     </section>
     {% endif %}

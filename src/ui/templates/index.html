@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>RuralShield Demo</title>
+  <title>{{ i18n.page_title_dashboard }}</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
@@ -14,14 +14,17 @@
           <h1>{{ i18n.title }}</h1>
           <p>{{ i18n.subtitle }}</p>
         </div>
-        <form action="/" method="get" class="lang-form">
-          <label for="lang">{{ i18n.lang_label }}</label>
-          <select id="lang" name="lang" onchange="this.form.submit()">
-            {% for item in langs %}
-            <option value="{{ item.code }}" {% if item.code == lang %}selected{% endif %}>{{ item.label }}</option>
-            {% endfor %}
-          </select>
-        </form>
+        <div class="header-actions">
+          <form action="/" method="get" class="lang-form">
+            <label for="lang">{{ i18n.lang_label }}</label>
+            <select id="lang" name="lang" onchange="this.form.submit()">
+              {% for item in langs %}
+              <option value="{{ item.code }}" {% if item.code == lang %}selected{% endif %}>{{ item.label }}</option>
+              {% endfor %}
+            </select>
+          </form>
+          <a href="/guide?lang={{ lang }}" class="button secondary">{{ i18n.demo_guide }}</a>
+        </div>
       </div>
     </header>
 
@@ -68,16 +71,16 @@
     {% endif %}
 
     <section class="card compact-card">
-      <h2>Recent Change Log</h2>
+      <h2>{{ i18n.recent_change_log }}</h2>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>{{ i18n.time }}</th>
-              <th>Entity</th>
-              <th>Field</th>
-              <th>Old</th>
-              <th>New</th>
+              <th>{{ i18n.change_entity }}</th>
+              <th>{{ i18n.change_field }}</th>
+              <th>{{ i18n.change_old }}</th>
+              <th>{{ i18n.change_new }}</th>
             </tr>
           </thead>
           <tbody>
@@ -94,7 +97,7 @@
         </table>
       </div>
       <div class="actions">
-        <a href="/change-log?lang={{ lang }}" class="button secondary">Open Full Change Log</a>
+        <a href="/change-log?lang={{ lang }}" class="button secondary">{{ i18n.change_log_full }}</a>
       </div>
     </section>
 
@@ -102,24 +105,24 @@
       <h2>{{ i18n.section_1 }}</h2>
       <form action="/users" method="post" class="grid">
         <input type="hidden" name="lang" value="{{ lang }}">
-        <input name="user_id" placeholder="User ID (e.g., u1)" required>
-        <input name="phone" placeholder="Phone (e.g., +919999999999)" required>
-        <input name="pin" placeholder="4-digit PIN" maxlength="4" required>
-        <label class="checkbox"><input type="checkbox" name="replace" value="1"> Replace existing user</label>
+        <input name="user_id" placeholder="{{ i18n.ph_user_id_example }}" required>
+        <input name="phone" placeholder="{{ i18n.ph_phone_example }}" required>
+        <input name="pin" placeholder="{{ i18n.ph_pin_4digit }}" maxlength="4" required>
+        <label class="checkbox"><input type="checkbox" name="replace" value="1"> {{ i18n.replace_user }}</label>
         <button type="submit">{{ i18n.save_user }}</button>
       </form>
       <form action="/users/trusted-contact" method="post" class="grid release-grid">
         <input type="hidden" name="lang" value="{{ lang }}">
-        <input name="user_id" placeholder="User ID for trusted contact">
-        <input name="pin" placeholder="PIN" maxlength="4">
-        <input name="trusted_contact" placeholder="Trusted contact phone or ID">
+        <input name="user_id" placeholder="{{ i18n.ph_user_id_trusted }}">
+        <input name="pin" placeholder="{{ i18n.ph_pin }}" maxlength="4">
+        <input name="trusted_contact" placeholder="{{ i18n.ph_trusted_contact }}">
         <button type="submit">{{ i18n.set_trusted }}</button>
       </form>
       <form action="/users/panic-freeze" method="post" class="grid release-grid">
         <input type="hidden" name="lang" value="{{ lang }}">
-        <input name="user_id" placeholder="User ID for panic freeze">
-        <input name="pin" placeholder="PIN" maxlength="4">
-        <input name="minutes" type="number" min="1" value="60" placeholder="Freeze minutes">
+        <input name="user_id" placeholder="{{ i18n.ph_user_id_freeze }}">
+        <input name="pin" placeholder="{{ i18n.ph_pin }}" maxlength="4">
+        <input name="minutes" type="number" min="1" value="60" placeholder="{{ i18n.ph_freeze_minutes }}">
         <button type="submit">{{ i18n.enable_freeze }}</button>
       </form>
     </section>
@@ -128,10 +131,10 @@
       <h2>{{ i18n.section_2 }}</h2>
       <form action="/transactions" method="post" class="grid">
         <input type="hidden" name="lang" value="{{ lang }}">
-        <input name="user_id" placeholder="User ID" required>
-        <input name="pin" placeholder="PIN" maxlength="4" required>
-        <input name="amount" placeholder="Amount" type="number" step="0.01" min="1" required>
-        <input name="recipient" placeholder="Recipient name" required>
+        <input name="user_id" placeholder="{{ i18n.ph_user_id }}" required>
+        <input name="pin" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+        <input name="amount" placeholder="{{ i18n.ph_amount }}" type="number" step="0.01" min="1" required>
+        <input name="recipient" placeholder="{{ i18n.ph_recipient_name }}" required>
         <button type="submit">{{ i18n.create_tx }}</button>
       </form>
     </section>
@@ -140,9 +143,9 @@
       <h2>{{ i18n.section_3 }}</h2>
       <form action="/transactions" method="get" class="grid">
         <input type="hidden" name="lang" value="{{ lang }}">
-        <input name="user_id" placeholder="User ID" required>
-        <input name="pin" placeholder="PIN" maxlength="4" required>
-        <input name="limit" placeholder="Limit" type="number" value="10" min="1" max="100" required>
+        <input name="user_id" placeholder="{{ i18n.ph_user_id }}" required>
+        <input name="pin" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+        <input name="limit" placeholder="{{ i18n.ph_limit }}" type="number" value="10" min="1" max="100" required>
         <button type="submit">{{ i18n.open_tx_list }}</button>
       </form>
     </section>
@@ -151,15 +154,15 @@
       <h2>{{ i18n.section_4 }}</h2>
       <form action="/sync" method="post" class="grid inline">
         <input type="hidden" name="lang" value="{{ lang }}">
-        <input name="server_url" placeholder="http://localhost:8000" value="http://localhost:8000" required>
+        <input name="server_url" placeholder="{{ i18n.ph_server_url }}" value="http://localhost:8000" required>
         <button type="submit">{{ i18n.sync_pending }}</button>
       </form>
       <form action="/transactions/release" method="post" class="grid release-grid">
         <input type="hidden" name="lang" value="{{ lang }}">
-        <input name="tx_id" placeholder="Held Transaction ID">
-        <input name="user_id" placeholder="User ID">
-        <input name="pin" placeholder="PIN" maxlength="4">
-        <input name="approval_code" placeholder="Trusted approval code (if required)">
+        <input name="tx_id" placeholder="{{ i18n.ph_held_tx_id }}">
+        <input name="user_id" placeholder="{{ i18n.ph_user_id }}">
+        <input name="pin" placeholder="{{ i18n.ph_pin }}" maxlength="4">
+        <input name="approval_code" placeholder="{{ i18n.ph_approval_code }}">
         <button type="submit">{{ i18n.release_held }}</button>
       </form>
       <div class="actions primary-actions">
@@ -168,7 +171,7 @@
         <a href="/demo/walkthrough?lang={{ lang }}" class="button">{{ i18n.demo_walkthrough }}</a>
       </div>
       <details class="tools-panel">
-        <summary>More Tools</summary>
+        <summary>{{ i18n.more_tools }}</summary>
         <div class="actions tool-actions">
           <form action="/seed-demo?lang={{ lang }}" method="post"><button type="submit" class="button secondary">{{ i18n.seed_demo }}</button></form>
           <a href="/export/report?lang={{ lang }}" class="button secondary">{{ i18n.export_report }}</a>

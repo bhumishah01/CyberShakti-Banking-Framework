@@ -21,6 +21,7 @@ Use this file to quickly locate any part of the project.
 - Step 16 agent voice and impact report: `docs/STEPWISE PROGRESS/STEP_16_AGENT_VOICE_AND_IMPACT_REPORT.md`
 - Step 17 professor demo walkthrough: `docs/STEPWISE PROGRESS/STEP_17_PROFESSOR_DEMO_WALKTHROUGH.md`
 - Step 18 change log export: `docs/STEPWISE PROGRESS/STEP_18_CHANGE_LOG_EXPORT.md`
+- Step 19 full multilingual UI: `docs/STEPWISE PROGRESS/STEP_19_FULL_I18N_UI.md`
 - Architecture: `docs/ARCHITECTURE.md`
 - Threat model: `docs/THREAT_MODEL.md`
 - Roadmap: `docs/ROADMAP.md`

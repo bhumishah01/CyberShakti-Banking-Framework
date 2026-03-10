@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>User List - RuralShield</title>
+  <title>{{ i18n.page_title_users }}</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
@@ -11,7 +11,7 @@
     <header>
       <div class="top-row">
         <div>
-          <h1>User List</h1>
+          <h1>{{ i18n.users_list_title }}</h1>
           <p>{{ i18n.subtitle }}</p>
         </div>
         <form action="/users/list" method="get" class="lang-form">

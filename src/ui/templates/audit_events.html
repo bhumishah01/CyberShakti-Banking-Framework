@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ event_title }} - RuralShield</title>
+  <title>{{ i18n.page_title_audit }}</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
@@ -12,7 +12,7 @@
       <div class="top-row">
         <div>
           <h1>{{ event_title }}</h1>
-          <p>Append-only audit chain log</p>
+          <p>{{ i18n.audit_events_subtitle }}</p>
         </div>
         <form action="/audit/events" method="get" class="lang-form">
           <label for="lang">{{ i18n.lang_label }}</label>
@@ -31,8 +31,8 @@
           <thead>
             <tr>
               <th>{{ i18n.time }}</th>
-              <th>Event Type</th>
-              <th>Log ID</th>
+              <th>{{ i18n.audit_event_type }}</th>
+              <th>{{ i18n.audit_log_id }}</th>
             </tr>
           </thead>
           <tbody>

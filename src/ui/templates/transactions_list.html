@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ list_title }} - RuralShield</title>
+  <title>{{ i18n.page_title_transaction_list }}</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
@@ -26,7 +26,7 @@
     </header>
 
     <section class="card">
-      <p class="muted">Amounts and recipients are encrypted locally and only visible via user PIN.</p>
+          <p class="muted">{{ i18n.transactions_meta_note }}</p>
       <div class="table-wrap">
         <table>
           <thead>

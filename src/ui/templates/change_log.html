@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Change Log - RuralShield</title>
+  <title>{{ i18n.page_title_change_log }}</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
@@ -11,8 +11,8 @@
     <header>
       <div class="top-row">
         <div>
-          <h1>Change Log</h1>
-          <p>Local edits with old/new values</p>
+          <h1>{{ i18n.change_log_title }}</h1>
+          <p>{{ i18n.change_log_subtitle }}</p>
         </div>
         <form action="/change-log" method="get" class="lang-form">
           <label for="lang">{{ i18n.lang_label }}</label>
@@ -31,12 +31,12 @@
           <thead>
             <tr>
               <th>{{ i18n.time }}</th>
-              <th>Entity</th>
-              <th>Field</th>
-              <th>Old</th>
-              <th>New</th>
-              <th>Actor</th>
-              <th>Source</th>
+              <th>{{ i18n.change_entity }}</th>
+              <th>{{ i18n.change_field }}</th>
+              <th>{{ i18n.change_old }}</th>
+              <th>{{ i18n.change_new }}</th>
+              <th>{{ i18n.change_actor }}</th>
+              <th>{{ i18n.change_source }}</th>
             </tr>
           </thead>
           <tbody>

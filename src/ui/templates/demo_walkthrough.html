@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Professor Demo Walkthrough - RuralShield</title>
+  <title>{{ i18n.page_title_demo_walkthrough }}</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
@@ -11,8 +11,8 @@
     <header>
       <div class="top-row">
         <div>
-          <h1>Professor Demo Walkthrough</h1>
-          <p>Deterministic end-to-end story for presentation</p>
+          <h1>{{ i18n.demo_walkthrough_title }}</h1>
+          <p>{{ i18n.demo_walkthrough_subtitle }}</p>
         </div>
         <form action="/demo/walkthrough" method="get" class="lang-form">
           <label for="lang">{{ i18n.lang_label }}</label>
@@ -26,10 +26,10 @@
     </header>
 
     <section class="card">
-      <p><strong>User ID:</strong> {{ demo.user_id }}</p>
-      <p><strong>PIN:</strong> {{ demo.pin }}</p>
-      <p><strong>Trusted contact hint:</strong> {{ demo.trusted_contact_hint }}</p>
-      <p><strong>Trusted release completed:</strong> {{ "Yes" if demo.released else "No" }}</p>
+      <p><strong>{{ i18n.demo_user_id }}:</strong> {{ demo.user_id }}</p>
+      <p><strong>{{ i18n.demo_pin }}:</strong> {{ demo.pin }}</p>
+      <p><strong>{{ i18n.demo_trusted_hint }}:</strong> {{ demo.trusted_contact_hint }}</p>
+      <p><strong>{{ i18n.demo_release_done }}:</strong> {{ i18n.demo_yes if demo.released else i18n.demo_no }}</p>
     </section>
 
     {% for step in demo.steps %}
@@ -47,7 +47,7 @@
     {% endfor %}
 
     <section class="card">
-      <h2>What To Say (Quick Script)</h2>
+      <h2>{{ i18n.demo_script_title }}</h2>
       <ul class="guidance-list">
         {% for line in demo.speaking_points %}
         <li>{{ line }}</li>
@@ -58,7 +58,7 @@
     <section class="actions">
       <a href="/?lang={{ lang }}" class="button secondary">{{ i18n.back_dashboard }}</a>
       <a href="/report/impact?lang={{ lang }}" class="button secondary">{{ i18n.impact_report }}</a>
-      <a href="/transactions?user_id={{ demo.user_id }}&pin={{ demo.pin }}&limit=10&lang={{ lang }}" class="button secondary">Open Transaction List</a>
+      <a href="/transactions?user_id={{ demo.user_id }}&pin={{ demo.pin }}&limit=10&lang={{ lang }}" class="button secondary">{{ i18n.open_tx_list }}</a>
     </section>
   </main>
 </body>

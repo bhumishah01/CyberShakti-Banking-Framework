@@ -36,6 +36,11 @@ header p {
   align-items: flex-start;
   gap: 12px;
 }
+.header-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
 .lang-form {
   display: flex;
   flex-direction: column;
@@ -267,6 +272,9 @@ tbody tr:nth-child(odd) {
   .inline { grid-template-columns: 1fr; }
   .top-row {
     flex-direction: column;
+    align-items: stretch;
+  }
+  .header-actions {
     align-items: stretch;
   }
 }
