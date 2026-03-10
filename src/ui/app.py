@@ -477,6 +477,35 @@ def view_sync_queue(request: Request, lang: str = "en"):
     return templates.TemplateResponse("sync_queue.html", context)
 
 
+@app.post("/sync/simulate")
+def simulate_night_sync(request: Request, lang: str = Form(default="en")):
+    lang = _resolve_lang(lang)
+    init_db(DEFAULT_DB)
+    tx_ids: list[str] = []
+    with sqlite3.connect(DEFAULT_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT tx_id FROM outbox WHERE sync_state IN ('PENDING','RETRYING')"
+        )
+        tx_ids = [row[0] for row in cursor.fetchall()]
+        cursor.execute(
+            "UPDATE outbox SET sync_state = 'SYNCED', last_error = NULL, next_retry_at = NULL "
+            "WHERE sync_state IN ('PENDING','RETRYING')"
+        )
+        if tx_ids:
+            placeholders = ",".join(["?"] * len(tx_ids))
+            cursor.execute(
+                f"UPDATE transactions SET status = 'SYNCED' WHERE status = 'PENDING' AND tx_id IN ({placeholders})",
+                tx_ids,
+            )
+        conn.commit()
+    rows = _fetch_outbox_rows()
+    context = _ctx(request, message=_t(lang, "night_sync_done").format(count=len(tx_ids)), lang=lang)
+    context["rows"] = rows
+    context["stats"] = _outbox_stats(rows)
+    return templates.TemplateResponse("sync_queue.html", context)
+
+
 @app.get("/audit")
 def audit_status(request: Request):
     lang = _resolve_lang(request.query_params.get("lang", "en"))
@@ -2425,6 +2454,7 @@ def _t(lang: str, key: str) -> str:
             "trusted_updated": "Trusted contact updated for user",
             "freeze_enabled": "Panic freeze enabled until",
             "invalid_pin_existing": "Invalid PIN for existing user.",
+            "night_sync_done": "Night sync simulated: {count} transactions marked synced.",
         },
         "hi": {
             "no_alert": "कोई अलर्ट ट्रिगर नहीं",
