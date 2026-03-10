@@ -173,6 +173,7 @@
       <details class="tools-panel">
         <summary>{{ i18n.more_tools }}</summary>
         <div class="actions tool-actions">
+          <a href="/sync/queue?lang={{ lang }}" class="button secondary">{{ i18n.sync_queue_open }}</a>
           <form action="/seed-demo?lang={{ lang }}" method="post"><button type="submit" class="button secondary">{{ i18n.seed_demo }}</button></form>
           <a href="/export/report?lang={{ lang }}" class="button secondary">{{ i18n.export_report }}</a>
           <form action="/export/change-log" method="post">

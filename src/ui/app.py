@@ -65,6 +65,48 @@ def _ctx(
     }
 
 
+def _fetch_outbox_rows(limit: int = 200) -> list[dict]:
+    init_db(DEFAULT_DB)
+    query = (
+        "SELECT outbox_id, tx_id, sync_state, retry_count, next_retry_at, last_error "
+        "FROM outbox ORDER BY rowid DESC LIMIT ?"
+    )
+    rows = []
+    with sqlite3.connect(DEFAULT_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, (limit,))
+        rows = cursor.fetchall()
+    items = []
+    for outbox_id, tx_id, sync_state, retry_count, next_retry_at, last_error in rows:
+        items.append(
+            {
+                "created_at": "",
+                "outbox_id": outbox_id,
+                "tx_id": tx_id,
+                "sync_state": sync_state,
+                "retry_count": retry_count,
+                "next_retry": next_retry_at or "-",
+                "last_error": last_error or "-",
+            }
+        )
+    return items
+
+
+def _outbox_stats(rows: list[dict]) -> dict:
+    counts = {"PENDING": 0, "RETRYING": 0, "SYNCED": 0, "HOLD": 0, "BLOCKED": 0}
+    for row in rows:
+        state = row.get("sync_state", "")
+        if state in counts:
+            counts[state] += 1
+    return {
+        "pending": counts["PENDING"],
+        "retrying": counts["RETRYING"],
+        "synced": counts["SYNCED"],
+        "held": counts["HOLD"],
+        "blocked": counts["BLOCKED"],
+    }
+
+
 @app.get("/")
 def index(request: Request):
     init_db(DEFAULT_DB)
@@ -423,6 +465,16 @@ def do_sync(
         return templates.TemplateResponse(
             "index.html", _ctx(request, error=str(exc), lang=lang), status_code=400
         )
+
+
+@app.get("/sync/queue")
+def view_sync_queue(request: Request, lang: str = "en"):
+    lang = _resolve_lang(lang)
+    rows = _fetch_outbox_rows()
+    context = _ctx(request, lang=lang)
+    context["rows"] = rows
+    context["stats"] = _outbox_stats(rows)
+    return templates.TemplateResponse("sync_queue.html", context)
 
 
 @app.get("/audit")
@@ -1392,6 +1444,7 @@ def _bundle(lang: str) -> dict:
             "page_title_demo_walkthrough": "Professor Demo Walkthrough - RuralShield",
             "page_title_agent": "Agent Mode - RuralShield",
             "page_title_audit": "Audit Events - RuralShield",
+            "page_title_sync_queue": "Sync Queue - RuralShield",
             "users": "Users",
             "transactions": "Transactions",
             "pending_sync": "Pending Sync",
@@ -1402,6 +1455,8 @@ def _bundle(lang: str) -> dict:
             "high_risk": "High Risk",
             "audit_events": "Audit Events",
             "audit_events_title": "Audit Events",
+            "sync_queue_title": "Offline Sync Queue",
+            "sync_queue_subtitle": "Pending local transactions waiting for night sync",
             "section_1": "1. Register / Replace User",
             "section_2": "2. Create Secure Transaction",
             "section_3": "3. View Transactions",
@@ -1447,6 +1502,7 @@ def _bundle(lang: str) -> dict:
             "demo_walkthrough": "Run Professor Demo Walkthrough",
             "demo_guide": "Demo Guide",
             "clear_messages": "Clear Messages",
+            "sync_queue_open": "Open Sync Queue",
             "more_tools": "More Tools",
             "replace_user": "Replace existing user",
             "ph_user_id_example": "User ID (e.g., u1)",
@@ -1477,6 +1533,13 @@ def _bundle(lang: str) -> dict:
             "approval": "Approval",
             "status": "Status",
             "back_dashboard": "Back to Dashboard",
+            "retrying": "Retrying",
+            "sync_state": "Sync State",
+            "retry_count": "Retry Count",
+            "next_retry": "Next Retry",
+            "last_error": "Last Error",
+            "outbox_id": "Outbox ID",
+            "simulate_night_sync": "Simulate Night Sync",
             "failed_attempts": "Failed Attempts",
             "last_auth": "Last Auth",
             "trusted_contact": "Trusted Contact",
