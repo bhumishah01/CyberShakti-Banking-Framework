@@ -1,6 +1,6 @@
 # Step 8 Metrics Summary
 
-Generated at: `2026-02-23T06:48:49.781238+00:00`
+Generated at: `2026-02-23T07:30:29.747718+00:00`
 
 ## Fraud Simulation
 - Total cases: `200`
@@ -12,8 +12,8 @@ Generated at: `2026-02-23T06:48:49.781238+00:00`
 - False positive rate: `17.19%`
 
 ## Performance
-- Scoring average latency: `0.0018 ms`
-- Scoring p95 latency: `0.0021 ms`
+- Scoring average latency: `0.0015 ms`
+- Scoring p95 latency: `0.0016 ms`
 
 ## SIH Alignment
 - Target asks for meaningful fraud reduction; simulation quantifies this in a reproducible way.
