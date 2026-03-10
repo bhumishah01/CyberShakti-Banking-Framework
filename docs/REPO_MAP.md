@@ -20,6 +20,7 @@ Use this file to quickly locate any part of the project.
 - Step 15 fraud scenario simulator: `docs/STEPWISE PROGRESS/STEP_15_FRAUD_SCENARIO_SIMULATOR.md`
 - Step 16 agent voice and impact report: `docs/STEPWISE PROGRESS/STEP_16_AGENT_VOICE_AND_IMPACT_REPORT.md`
 - Step 17 professor demo walkthrough: `docs/STEPWISE PROGRESS/STEP_17_PROFESSOR_DEMO_WALKTHROUGH.md`
+- Step 18 change log export: `docs/STEPWISE PROGRESS/STEP_18_CHANGE_LOG_EXPORT.md`
 - Architecture: `docs/ARCHITECTURE.md`
 - Threat model: `docs/THREAT_MODEL.md`
 - Roadmap: `docs/ROADMAP.md`
@@ -35,6 +36,7 @@ Use this file to quickly locate any part of the project.
 - Sync manager: `src/sync/manager.py`
 - Sync HTTP client: `src/sync/client.py`
 - Audit chain: `src/audit/chain.py`
+- Change log capture: `src/audit/change_log.py`
 - Backend API: `src/backend/app.py`
 - Evaluation simulation: `src/evaluation/simulation.py`
 - CLI runtime prototype: `src/app/cli.py`

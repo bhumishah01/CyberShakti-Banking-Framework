@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from secrets import token_bytes
 
+from src.audit.change_log import log_change
 from src.database.init_db import DB_PATH, init_db
 
 MAX_FAILED_ATTEMPTS = 5
@@ -51,6 +52,7 @@ def create_user(
         "freeze_until": "",
     }
 
+    change_events: list[dict] = []
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,))
@@ -59,6 +61,11 @@ def create_user(
             raise ValueError(f"user_exists:{user_id}")
 
         if exists and replace_existing:
+            cursor.execute(
+                "SELECT phone_hash FROM users WHERE user_id = ?",
+                (user_id,),
+            )
+            prev_phone_hash = cursor.fetchone()
             cursor.execute(
                 """
                 UPDATE users
@@ -75,6 +82,22 @@ def create_user(
                     now_iso,
                     user_id,
                 ),
+            )
+            change_events.extend(
+                [
+                    {
+                        "field_name": "phone_hash",
+                        "old_value": prev_phone_hash[0] if prev_phone_hash else "",
+                        "new_value": phone_hash,
+                        "source": "user_replace",
+                    },
+                    {
+                        "field_name": "pin_hash",
+                        "old_value": "<redacted>",
+                        "new_value": "<redacted>",
+                        "source": "user_replace",
+                    },
+                ]
             )
         else:
             cursor.execute(
@@ -93,7 +116,27 @@ def create_user(
                     now_iso,
                 ),
             )
+            change_events.append(
+                {
+                    "field_name": "user_created",
+                    "old_value": "",
+                    "new_value": "created",
+                    "source": "user_create",
+                }
+            )
         conn.commit()
+
+    for event in change_events:
+        log_change(
+            entity_type="user",
+            entity_id=user_id,
+            field_name=event["field_name"],
+            old_value=event["old_value"],
+            new_value=event["new_value"],
+            actor=user_id,
+            source=event["source"],
+            db_path=db_path,
+        )
 
 
 def set_trusted_contact(

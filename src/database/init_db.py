@@ -112,6 +112,22 @@ def init_db(db_path: Path = DB_PATH) -> None:
 
         cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS change_log (
+                log_id TEXT PRIMARY KEY,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                field_name TEXT NOT NULL,
+                old_value TEXT,
+                new_value TEXT,
+                actor TEXT NOT NULL,
+                source TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS scenario_runs (
                 run_id TEXT PRIMARY KEY,
                 scenario_id TEXT NOT NULL,

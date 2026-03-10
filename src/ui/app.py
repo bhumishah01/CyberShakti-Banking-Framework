@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 import uuid
 from datetime import UTC, datetime, timedelta
+import csv
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
@@ -362,6 +363,46 @@ def export_report():
         },
     }
     return JSONResponse(payload)
+
+
+@app.post("/export/change-log")
+def export_change_log(request: Request, lang: str = Form(default="en")):
+    lang = _resolve_lang(lang)
+    init_db(DEFAULT_DB)
+    export_dir = Path("data/exports")
+    export_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    export_path = export_dir / f"change_log_{timestamp}.csv"
+
+    with sqlite3.connect(DEFAULT_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT created_at, entity_type, entity_id, field_name, old_value, new_value, actor, source
+            FROM change_log
+            ORDER BY created_at DESC
+            """
+        )
+        rows = cursor.fetchall()
+
+    with export_path.open("w", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(
+            [
+                "created_at",
+                "entity_type",
+                "entity_id",
+                "field_name",
+                "old_value",
+                "new_value",
+                "actor",
+                "source",
+            ]
+        )
+        writer.writerows(rows)
+
+    msg = f"{_t(lang, 'change_log_exported')} {export_path} ({len(rows)} records)."
+    return templates.TemplateResponse("index.html", _ctx(request, message=msg, lang=lang))
 
 
 @app.get("/report/impact")
@@ -1045,6 +1086,7 @@ def _bundle(lang: str) -> dict:
             "check_audit": "Check Audit Integrity",
             "seed_demo": "Seed Demo Data",
             "export_report": "Export Security Report",
+            "export_change_log": "Export Change Log (CSV)",
             "agent_mode": "Open Agent/Kiosk Mode",
             "impact_report": "Fraud Impact Report",
             "demo_walkthrough": "Run Professor Demo Walkthrough",
@@ -1119,6 +1161,7 @@ def _bundle(lang: str) -> dict:
             "check_audit": "ऑडिट अखंडता जांचें",
             "seed_demo": "डेमो डेटा बनाएं",
             "export_report": "सुरक्षा रिपोर्ट निर्यात करें",
+            "export_change_log": "चेंज लॉग निर्यात करें (CSV)",
             "agent_mode": "एजेंट/कियोस्क मोड खोलें",
             "impact_report": "फ्रॉड प्रभाव रिपोर्ट",
             "demo_walkthrough": "प्रोफेसर डेमो वॉकथ्रू चलाएं",
@@ -1193,6 +1236,7 @@ def _bundle(lang: str) -> dict:
             "check_audit": "ଅଡିଟ୍ ଅଖଣ୍ଡତା ଯାଞ୍ଚ",
             "seed_demo": "ଡେମୋ ତଥ୍ୟ ତିଆରି",
             "export_report": "ସୁରକ୍ଷା ରିପୋର୍ଟ ନିର୍ଯାତ",
+            "export_change_log": "ଚେଞ୍ଜ ଲଗ୍ ନିର୍ଯାତ (CSV)",
             "agent_mode": "ଏଜେଣ୍ଟ/କିଓସ୍କ ମୋଡ୍ ଖୋଲନ୍ତୁ",
             "impact_report": "ଠକେଇ ପ୍ରଭାବ ରିପୋର୍ଟ",
             "demo_walkthrough": "ପ୍ରୋଫେସର ଡେମୋ ଚଲାନ୍ତୁ",
@@ -1232,6 +1276,7 @@ def _t(lang: str, key: str) -> str:
             "scenario_ran": "Scenario executed",
             "created_count": "Transactions generated",
             "agent_done": "Assisted transaction processed.",
+            "change_log_exported": "Change log exported to",
             "trusted_required": "Trusted approval required",
             "contact_ending": "contact ending",
             "demo_code": "Demo approval code",
@@ -1258,6 +1303,7 @@ def _t(lang: str, key: str) -> str:
             "scenario_ran": "सीनारियो चलाया गया",
             "created_count": "निर्मित लेनदेन",
             "agent_done": "असिस्टेड लेनदेन प्रोसेस हुआ।",
+            "change_log_exported": "चेंज लॉग निर्यात हुआ",
             "trusted_required": "विश्वसनीय स्वीकृति आवश्यक",
             "contact_ending": "अंतिम अंक",
             "demo_code": "डेमो स्वीकृति कोड",
@@ -1284,6 +1330,7 @@ def _t(lang: str, key: str) -> str:
             "scenario_ran": "ପରିସ୍ଥିତି ଚାଲିଲା",
             "created_count": "ସୃଷ୍ଟି ହୋଇଥିବା ଟ୍ରାନ୍ଜାକ୍ସନ",
             "agent_done": "ସହାୟିତ ଟ୍ରାନ୍ଜାକ୍ସନ ପ୍ରସେସ୍ ହେଲା।",
+            "change_log_exported": "ଚେଞ୍ଜ ଲଗ୍ ନିର୍ଯାତ ହେଲା",
             "trusted_required": "ଭରସାଯୋଗ୍ୟ ସ୍ୱୀକୃତି ଆବଶ୍ୟକ",
             "contact_ending": "ଶେଷ ଅଙ୍କ",
             "demo_code": "ଡେମୋ ସ୍ୱୀକୃତି କୋଡ୍",

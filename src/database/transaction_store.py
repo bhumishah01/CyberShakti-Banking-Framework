@@ -12,6 +12,7 @@ from pathlib import Path
 from secrets import randbelow
 
 from src.audit.chain import append_audit_event
+from src.audit.change_log import log_change
 from src.auth.service import derive_session_key, get_user_auth_config, is_user_frozen
 from src.crypto.service import (
     canonical_json,
@@ -216,6 +217,37 @@ def create_secure_transaction(
                 "status": status,
             }
         ),
+        db_path=db_path,
+    )
+
+    log_change(
+        entity_type="transaction",
+        entity_id=tx_id,
+        field_name="status",
+        old_value="",
+        new_value=status,
+        actor=user_id,
+        source="transaction_create",
+        db_path=db_path,
+    )
+    log_change(
+        entity_type="transaction",
+        entity_id=tx_id,
+        field_name="amount",
+        old_value="",
+        new_value=f"{amount:.2f}",
+        actor=user_id,
+        source="transaction_create",
+        db_path=db_path,
+    )
+    log_change(
+        entity_type="transaction",
+        entity_id=tx_id,
+        field_name="recipient",
+        old_value="",
+        new_value=recipient.strip(),
+        actor=user_id,
+        source="transaction_create",
         db_path=db_path,
     )
 
@@ -647,6 +679,16 @@ def release_held_transaction(
     append_audit_event(
         event_type="TRANSACTION_RELEASED",
         event_data_enc=canonical_json({"tx_id": tx_id, "user_id": user_id}),
+        db_path=db_path,
+    )
+    log_change(
+        entity_type="transaction",
+        entity_id=tx_id,
+        field_name="status",
+        old_value=status,
+        new_value=new_status,
+        actor=user_id,
+        source="release_held_transaction",
         db_path=db_path,
     )
     return True

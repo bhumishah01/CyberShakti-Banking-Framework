@@ -12,3 +12,5 @@ def test_init_db_creates_file(tmp_path: Path) -> None:
         cursor = conn.cursor()
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='scenario_runs'")
         assert cursor.fetchone() is not None
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='change_log'")
+        assert cursor.fetchone() is not None
