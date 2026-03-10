@@ -22,6 +22,7 @@ Use this file to quickly locate any part of the project.
 - Step 17 professor demo walkthrough: `docs/STEPWISE PROGRESS/STEP_17_PROFESSOR_DEMO_WALKTHROUGH.md`
 - Step 18 change log export: `docs/STEPWISE PROGRESS/STEP_18_CHANGE_LOG_EXPORT.md`
 - Step 19 full multilingual UI: `docs/STEPWISE PROGRESS/STEP_19_FULL_I18N_UI.md`
+- Step 20 sync queue + night sync simulator: `docs/STEPWISE PROGRESS/STEP_20_SYNC_QUEUE_AND_NIGHT_SYNC.md`
 - Architecture: `docs/ARCHITECTURE.md`
 - Threat model: `docs/THREAT_MODEL.md`
 - Roadmap: `docs/ROADMAP.md`
