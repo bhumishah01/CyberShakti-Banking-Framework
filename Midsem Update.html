@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Midsem Update – RuralShield</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.5; padding: 24px; max-width: 980px; margin: 0 auto; }
+    h1, h2, h3 { margin-top: 24px; }
+    code { background: #f3f4f6; padding: 2px 4px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <pre style="white-space: pre-wrap; font-family: inherit;">
+# Midsem Update – RuralShield (Cybersecurity Framework for Rural Digital Banking)
+
+## Problem Statement (Official)
+<strong>Problem Statement ID:</strong> 25205  
+<strong>Title:</strong> Cybersecurity Framework for Rural Digital Banking  
+<strong>Description:</strong> Develop a lightweight cybersecurity framework to secure digital banking transactions for rural users, focusing on fraud detection and user authentication. The solution should be compatible with low-end smartphones and limited internet connectivity.  
+<strong>Expected Outcome:</strong> A software prototype reducing fraud incidents by 20% in rural banking, with a simple interface for users to authenticate transactions securely.  
+<strong>Technical Feasibility:</strong> Utilizes open-source encryption libraries and machine learning for anomaly detection, optimized for low-resource devices.  
+<strong>Organization:</strong> Government of Odisha  
+<strong>Department:</strong> E & IT Department  
+<strong>Category/Theme:</strong> Software — Blockchain & Cybersecurity
+
+
+## 1) Core Idea (Simple)
+RuralShield is an <strong>offline‑first</strong> security system for rural digital banking. It protects users by:
+- <strong>storing data safely on the phone first</strong> (SQLite),
+- <strong>detecting fraud locally</strong>,
+- <strong>requiring extra verification for risky transactions</strong>, and
+- <strong>syncing later</strong> when internet is available.
+
+This matches rural realities: low‑end phones, weak connectivity, and higher fraud risk.
+
+## 2) Original Problem Statement (Summary)
+From Smart India Hackathon – PSID 25205:
+- Build a lightweight cybersecurity framework for rural digital banking
+- Focus on <strong>fraud detection</strong> + <strong>user authentication</strong>
+- Must work with <strong>low‑end smartphones</strong> + <strong>limited internet</strong>
+- Expected outcome: reduce fraud and provide secure, simple transaction authentication
+
+## 3) What We Planned
+We designed a small system with:
+- <strong>Local encrypted storage</strong> (SQLite)
+- <strong>Fraud scoring rules</strong> for anomaly detection
+- <strong>Secure transaction flow</strong> with hold/block actions
+- <strong>Trusted contact approvals</strong> for risky transactions
+- <strong>Audit log & change log</strong> for transparency
+- <strong>Offline outbox + later sync</strong>
+- <strong>Simple web UI</strong> for demo and understanding
+- <strong>Multilingual UI</strong> for rural users
+
+## 4) What We Built (Everything Visible on Localhost)
+### A) Dashboard (Main Page)
+- Shows counts for users, transactions, pending sync, synced, held, blocked, high‑risk, audit events.
+- All data is read from the <strong>local SQLite database</strong>.
+- This page is controlled by:
+  - `src/ui/app.py`
+  - `src/ui/templates/index.html`
+  - `src/ui/static/styles.css`
+
+### B) Register / Replace User
+- Adds a new user locally with PIN‑based authentication.
+- PIN is <strong>hashed using scrypt</strong> (slow hash for security).
+- User record is written in SQLite.
+- File responsible:
+  - `src/auth/service.py` (`create_user`)
+
+### C) Create Secure Transaction
+- Takes user ID, PIN, amount, recipient.
+- Transaction is <strong>encrypted locally</strong> before saving.
+- Fraud rules run locally (no internet).
+- If safe: transaction goes into outbox.
+- If risky: transaction is <strong>held or blocked</strong>.
+- File responsible:
+  - `src/database/transaction_store.py` (`create_secure_transaction`)
+
+### D) Fraud Risk Detection
+- Fraud logic is <strong>rule‑based</strong> (amount, odd hour, new recipient, rapid burst, failed logins).
+- Gives a <strong>risk score</strong> + reasons.
+- File responsible:
+  - `src/fraud/engine.py`
+
+### E) Trusted Contact & Panic Freeze
+- Users can set a trusted contact for approvals.
+- Panic freeze blocks outgoing transfers for a set time.
+- Stored in user `auth_config` in SQLite.
+- File responsible:
+  - `src/auth/service.py`
+
+### F) Release Held Transaction (Step‑Up Verification)
+- Held transactions can be released if trusted approval code is valid.
+- This demonstrates <strong>extra authentication</strong> for high‑risk transfers.
+- File responsible:
+  - `src/database/transaction_store.py` (`release_held_transaction`)
+
+### G) Transaction List Page
+- Shows decrypted transaction details after PIN authentication.
+- If integrity check fails, transaction is shown as rejected.
+- File responsible:
+  - `src/database/transaction_store.py` (`list_secure_transactions`)
+  - `src/ui/templates/transactions.html`
+
+### H) Sync and Offline Queue
+- Transactions are first placed into the <strong>outbox queue</strong> (offline first).
+- Sync can be done later (manual or simulated).
+- Outbox status: PENDING, RETRYING, SYNCED, HOLD, BLOCKED.
+- File responsible:
+  - `src/sync/manager.py`
+  - `src/sync/client.py`
+
+### I) NEW: Sync Queue Page
+- A dedicated UI page that shows the local outbox queue.
+- Shows which transactions are waiting to sync.
+- A <strong>Simulate Night Sync</strong> button moves pending to synced for demo.
+- File responsible:
+  - `src/ui/app.py` (`/sync/queue`, `/sync/simulate`)
+  - `src/ui/templates/sync_queue.html`
+
+### J) Audit Chain
+- Every important action is stored in an <strong>append‑only audit log</strong>.
+- Shows tamper‑evidence (if data is edited, chain breaks).
+- File responsible:
+  - `src/audit/chain.py`
+
+### K) Change Log (Old/New Values)
+- Tracks edits locally (e.g., user replace, transaction status change).
+- Can be exported to CSV for Excel.
+- File responsible:
+  - `src/audit/change_log.py`
+
+### L) Fraud Impact Report
+- Shows simulator results for fraud controls.
+- Demonstrates how many risky transactions are held/blocked.
+- File responsible:
+  - `src/ui/templates/impact_report.html`
+  - `src/ui/app.py`
+
+### M) Demo Walkthrough (Professor Mode)
+- A scripted walkthrough page for explaining the demo.
+- Shows a deterministic demo scenario (low‑risk + high‑risk + freeze).
+- File responsible:
+  - `src/ui/templates/demo_walkthrough.html`
+
+### N) Audio Guidance (Voice)
+- When risk is detected, a voice button appears.
+- The app uses <strong>browser speech synthesis</strong> to read safety guidance aloud.
+- No internet is required.
+- File responsible:
+  - `src/ui/templates/index.html` (JS speechSynthesis)
+  - `src/ui/templates/agent.html` (same)
+
+### O) Multi‑Language UI
+- Supports English, Hindi, Odia, Gujarati, German.
+- All visible UI text switches based on language selection.
+- File responsible:
+  - `src/ui/app.py` (i18n bundles)
+  - templates use `{{ i18n.key }}`
+
+## 5) Tech Stack Used (Simple)
+- <strong>Python 3</strong> for all backend logic
+- <strong>FastAPI</strong> for the local web server
+- <strong>SQLite</strong> for offline‑first storage
+- <strong>Jinja2 templates</strong> for HTML pages
+- <strong>Cryptography library</strong> for encryption/signature
+- <strong>Browser SpeechSynthesis API</strong> for audio prompts
+
+## 6) How We Implemented (Simple Steps)
+1. <strong>Local DB created</strong> with tables: users, transactions, outbox, audit_log, change_log.
+2. <strong>Users created</strong> with hashed PINs and settings stored locally.
+3. <strong>Transactions created</strong>: encrypted, scored for fraud, then queued for sync.
+4. <strong>Fraud decisions</strong>: allow, step‑up, hold, or block.
+5. <strong>Trusted contact</strong> used for approvals in risky cases.
+6. <strong>Audit & change logs</strong> record every critical action.
+7. <strong>UI built</strong> to show all flows in one demo‑friendly portal.
+8. <strong>Offline queue page</strong> added to show pending sync + simulate night sync.
+
+## 7) Languages and Tools Used
+- <strong>Language:</strong> Python
+- <strong>Database:</strong> SQLite
+- <strong>Framework:</strong> FastAPI
+- <strong>Frontend:</strong> HTML + CSS (Jinja2 templates)
+- <strong>Security:</strong> Hashing (scrypt), encryption (cryptography)
+- <strong>Audio:</strong> Browser SpeechSynthesis API
+
+## 8) What I Can Explain Tomorrow (Quick Points)
+- “We store data locally first to handle low internet.”
+- “We encrypt sensitive data before saving.”
+- “We run fraud checks locally and explain why it is risky.”
+- “High‑risk payments require step‑up approval.”
+- “Outbox queue shows pending transactions waiting for sync.”
+- “Night sync simulator demonstrates delayed syncing.”
+- “Audit log + change log ensure transparency.”
+- “UI is multilingual and can speak safety guidance aloud.”
+
+## 9) Future Work (After Tomorrow)
+- Real OTP delivery instead of simulated approval codes
+- Real device keystore integration
+- Fraud model upgrade (ML / anomaly detection)
+- PDF signed audit report
+- Regional fraud heatmap
+
+---
+End of Midsem Update
+  </pre>
+</body>
+</html>
