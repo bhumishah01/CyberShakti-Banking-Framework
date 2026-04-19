@@ -11,7 +11,6 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 COPY src /app/src
 COPY data /app/data
 
-# Render/Railway/Fly set PORT; default to 8502 for local Docker runs.
-EXPOSE 8502
-CMD ["sh", "-c", "uvicorn src.ui.app:app --host 0.0.0.0 --port ${PORT:-8502}"]
-
+# Render/Railway/Fly set PORT; default to 8000 for server API.
+EXPOSE 8000
+CMD ["sh", "-c", "uvicorn src.server.app:app --host 0.0.0.0 --port ${PORT:-8000}"]

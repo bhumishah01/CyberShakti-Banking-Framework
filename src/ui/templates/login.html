@@ -15,6 +15,8 @@
           {{ i18n.customer_portal_title }}
         {% elif login_mode == "bank" %}
           {{ i18n.admin_portal_title }}
+        {% elif login_mode == "customer_register" %}
+          {{ i18n.customer_register_title }}
         {% else %}
           {{ i18n.login_title }}
         {% endif %}
@@ -24,6 +26,8 @@
           {{ i18n.customer_portal_subtitle }}
         {% elif login_mode == "bank" %}
           {{ i18n.admin_portal_subtitle }}
+        {% elif login_mode == "customer_register" %}
+          {{ i18n.customer_register_subtitle }}
         {% else %}
           {{ i18n.login_subtitle }}
         {% endif %}
@@ -54,9 +58,9 @@
     {% else %}
     <section class="auth-form-shell">
       <article class="card auth-card auth-form-card">
-        <form action="/login" method="post" class="face-login-form">
+        <form action="{{ '/customer/register' if login_mode == 'customer_register' else '/login' }}" method="post" class="face-login-form">
           <input type="hidden" name="lang" value="{{ lang }}">
-          <input type="hidden" name="role" value="{{ login_mode }}">
+          <input type="hidden" name="role" value="{{ 'customer' if login_mode == 'customer_register' else login_mode }}">
           <input type="hidden" name="face_image" class="face-image-input">
           <input type="hidden" name="device_id" class="device-id-input">
 
@@ -71,15 +75,22 @@
                 {% if login_mode == "customer" %}
                   <input name="user_id" placeholder="{{ i18n.ph_user_id }}" required>
                   <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
-          {% else %}
-            <input name="admin_username" placeholder="{{ i18n.admin_username }}" required>
-            <input name="admin_password" type="password" placeholder="{{ i18n.admin_password }}" required>
-          {% endif %}
+                  <a class="linkish" href="/customer/register?lang={{ lang }}">{{ i18n.customer_register_link }}</a>
+                {% elif login_mode == "customer_register" %}
+                  <input name="user_id" placeholder="{{ i18n.ph_user_id }}" required>
+                  <input name="phone" placeholder="{{ i18n.ph_phone_example }}" required>
+                  <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+                {% else %}
+                  <input name="admin_username" placeholder="{{ i18n.admin_username }}" required>
+                  <input name="admin_password" type="password" placeholder="{{ i18n.admin_password }}" required>
+                {% endif %}
               </div>
 
               <button type="submit" class="login-submit-btn">
                 {% if login_mode == "customer" %}
                   {{ i18n.customer_login_cta }}
+                {% elif login_mode == "customer_register" %}
+                  {{ i18n.customer_register_cta }}
                 {% else %}
                   {{ i18n.admin_login_cta }}
                 {% endif %}
@@ -178,7 +189,7 @@
         }
       });
 
-      captureBtn.addEventListener("click", () => {
+              captureBtn.addEventListener("click", () => {
         if (!video.videoWidth || !video.videoHeight) {
           status.textContent = "{{ i18n.face_camera_wait }}";
           return;
@@ -191,6 +202,7 @@
         hiddenInput.value = dataUrl;
         preview.src = dataUrl;
         preview.hidden = false;
+        video.hidden = true;
         status.textContent = "{{ i18n.face_captured_ok }}";
         stopStream();
       });

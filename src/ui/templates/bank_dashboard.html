@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ i18n.page_title_dashboard }}</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <div class="top-row">
+        <div>
+          <div class="eyebrow">{{ i18n.admin_portal_eyebrow }}</div>
+          <h1>{{ portal_title or i18n.title }}</h1>
+          <p>{{ portal_subtitle or i18n.subtitle }}</p>
+        </div>
+        <div class="header-actions">
+          <form action="/bank/dashboard" method="get" class="lang-form">
+            <label for="lang">{{ i18n.lang_label }}</label>
+            <select id="lang" name="lang" onchange="this.form.submit()">
+              {% for item in langs %}
+              <option value="{{ item.code }}" {% if item.code == lang %}selected{% endif %}>{{ item.label }}</option>
+              {% endfor %}
+            </select>
+          </form>
+          <a href="/guide?lang={{ lang }}" class="button secondary">{{ i18n.demo_guide }}</a>
+          <a href="/logout?lang={{ lang }}" class="button secondary">{{ i18n.logout }}</a>
+        </div>
+      </div>
+    </header>
+
+    {% if message %}
+      <section class="alert success">{{ message }}</section>
+    {% endif %}
+    {% if error %}
+      <section class="alert error">{{ error }}</section>
+    {% endif %}
+    {% if voice_text %}
+      <section class="card voice-card">
+        <button type="button" class="button secondary voice-btn" data-voice-text="{{ voice_text|e }}">{{ i18n.voice_play }}</button>
+      </section>
+    {% endif %}
+
+    <nav class="subnav">
+      <a href="#monitoring">{{ i18n.nav_monitoring }}</a>
+      <a href="#operations">{{ i18n.nav_operations }}</a>
+      <a href="#admin">{{ i18n.nav_admin }}</a>
+      <a href="#tools">{{ i18n.nav_tools }}</a>
+    </nav>
+
+    <section id="monitoring" class="card">
+      <h2>{{ i18n.nav_monitoring }}</h2>
+      <section class="stats-grid">
+        <a class="stat-card-link" href="/users/list?lang={{ lang }}">
+          <article class="stat-card"><h3>{{ i18n.users }}</h3><p>{{ stats.user_count }}</p></article>
+        </a>
+        <a class="stat-card-link" href="/transactions/all?lang={{ lang }}">
+          <article class="stat-card"><h3>{{ i18n.transactions }}</h3><p>{{ stats.tx_count }}</p></article>
+        </a>
+        <a class="stat-card-link" href="/transactions/list/pending?lang={{ lang }}">
+          <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p>{{ stats.pending_count }}</p></article>
+        </a>
+        <a class="stat-card-link" href="/transactions/list/held?lang={{ lang }}">
+          <article class="stat-card"><h3>{{ i18n.held }}</h3><p>{{ stats.held_count }}</p></article>
+        </a>
+        <a class="stat-card-link" href="/transactions/list/blocked?lang={{ lang }}">
+          <article class="stat-card"><h3>{{ i18n.blocked }}</h3><p>{{ stats.blocked_count }}</p></article>
+        </a>
+        <a class="stat-card-link" href="/transactions/list/high-risk?lang={{ lang }}">
+          <article class="stat-card"><h3>{{ i18n.high_risk }}</h3><p>{{ stats.high_risk_count }}</p></article>
+        </a>
+      </section>
+    </section>
+
+    <section id="operations" class="card">
+      <h2>{{ i18n.nav_operations }}</h2>
+      <div class="actions">
+        <a href="/sync/queue?lang={{ lang }}" class="button secondary">{{ i18n.sync_queue_open }}</a>
+        <a href="/audit/events?lang={{ lang }}" class="button secondary">{{ i18n.audit_events }}</a>
+        <a href="/change-log?lang={{ lang }}" class="button secondary">{{ i18n.change_log_full }}</a>
+      </div>
+      <form action="/sync" method="post" class="grid inline" style="margin-top:10px;">
+        <input type="hidden" name="lang" value="{{ lang }}">
+        <input name="server_url" placeholder="{{ i18n.ph_server_url }}" value="http://localhost:8000" required>
+        <button type="submit">{{ i18n.sync_pending }}</button>
+      </form>
+      <form action="/transactions/release" method="post" class="grid release-grid">
+        <input type="hidden" name="lang" value="{{ lang }}">
+        <input name="tx_id" placeholder="{{ i18n.ph_held_tx_id }}">
+        <input name="user_id" placeholder="{{ i18n.ph_user_id }}">
+        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4">
+        <input name="approval_code" placeholder="{{ i18n.ph_approval_code }}">
+        <button type="submit">{{ i18n.release_held }}</button>
+      </form>
+    </section>
+
+    <section id="admin" class="card">
+      <h2>{{ i18n.nav_admin }}</h2>
+      <details class="tools-panel">
+        <summary>{{ i18n.section_1 }}</summary>
+        <form action="/users" method="post" class="grid" style="margin-top:10px;">
+          <input type="hidden" name="lang" value="{{ lang }}">
+          <input name="user_id" placeholder="{{ i18n.ph_user_id_example }}" required>
+          <input name="phone" placeholder="{{ i18n.ph_phone_example }}" required>
+          <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin_4digit }}" maxlength="4" required>
+          <label class="checkbox"><input type="checkbox" name="replace" value="1"> {{ i18n.replace_user }}</label>
+          <button type="submit">{{ i18n.save_user }}</button>
+        </form>
+      </details>
+      <details class="tools-panel">
+        <summary>{{ i18n.section_2 }}</summary>
+        <form action="/transactions" method="post" class="grid" style="margin-top:10px;">
+          <input type="hidden" name="lang" value="{{ lang }}">
+          <input name="user_id" placeholder="{{ i18n.ph_user_id }}" required>
+          <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+          <input name="amount" placeholder="{{ i18n.ph_amount }}" type="number" step="0.01" min="1" required>
+          <input name="recipient" placeholder="{{ i18n.ph_recipient_name }}" required>
+          <button type="submit">{{ i18n.create_tx }}</button>
+        </form>
+      </details>
+      <details class="tools-panel">
+        <summary>{{ i18n.section_3 }}</summary>
+        <form action="/transactions" method="get" class="grid" style="margin-top:10px;">
+          <input type="hidden" name="lang" value="{{ lang }}">
+          <input name="user_id" placeholder="{{ i18n.ph_user_id }}" required>
+          <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+          <input name="limit" placeholder="{{ i18n.ph_limit }}" type="number" value="10" min="1" max="100" required>
+          <button type="submit">{{ i18n.open_tx_list }}</button>
+        </form>
+      </details>
+    </section>
+
+    <section id="tools" class="card">
+      <h2>{{ i18n.nav_tools }}</h2>
+      <div class="actions tool-actions">
+        <a href="/agent?lang={{ lang }}" class="button">{{ i18n.agent_mode }}</a>
+        <a href="/report/impact?lang={{ lang }}" class="button">{{ i18n.impact_report }}</a>
+        <a href="/demo/walkthrough?lang={{ lang }}" class="button">{{ i18n.demo_walkthrough }}</a>
+      </div>
+      <details class="tools-panel">
+        <summary>{{ i18n.more_tools }}</summary>
+        <div class="actions tool-actions">
+          <form action="/seed-demo?lang={{ lang }}" method="post"><button type="submit" class="button secondary">{{ i18n.seed_demo }}</button></form>
+          <a href="/export/report?lang={{ lang }}" class="button secondary">{{ i18n.export_report }}</a>
+          <form action="/export/change-log" method="post">
+            <input type="hidden" name="lang" value="{{ lang }}">
+            <button type="submit" class="button secondary">{{ i18n.export_change_log }}</button>
+          </form>
+          <a href="/reset?lang={{ lang }}" class="button secondary">{{ i18n.clear_messages }}</a>
+        </div>
+      </details>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      const btn = document.querySelector(".voice-btn");
+      if (!btn || !window.speechSynthesis) return;
+      btn.addEventListener("click", () => {
+        const text = btn.getAttribute("data-voice-text") || "";
+        if (!text) return;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+      });
+    })();
+  </script>
+</body>
+</html>
+

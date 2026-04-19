@@ -220,6 +220,26 @@ button:hover, .button:hover { background: var(--accent-2); }
 .tool-actions {
   margin-top: 8px;
 }
+.subnav {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 14px 0;
+}
+.subnav a {
+  text-decoration: none;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.9);
+  color: var(--muted);
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.subnav a:hover {
+  color: var(--text);
+  border-color: #c8d4ea;
+}
 .card-sim {
   border-left: 4px solid #f4a261;
 }
@@ -304,6 +324,16 @@ button:hover, .button:hover { background: var(--accent-2); }
   display: grid;
   gap: 12px;
 }
+.linkish {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--accent-2);
+  text-decoration: none;
+  font-weight: 600;
+}
+.linkish:hover {
+  text-decoration: underline;
+}
 .login-submit-btn {
   width: 100%;
 }
@@ -344,6 +374,7 @@ button:hover, .button:hover { background: var(--accent-2); }
   background: linear-gradient(180deg, #edf4ff, #f8fbff);
   border: 1px solid var(--border);
   padding: 10px;
+  position: relative;
 }
 .face-video,
 .face-preview {
@@ -354,6 +385,10 @@ button:hover, .button:hover { background: var(--accent-2); }
   background: #dfe8f4;
   aspect-ratio: 4 / 3;
   object-fit: cover;
+  position: absolute;
+  inset: 10px;
+  width: calc(100% - 20px);
+  height: calc(100% - 20px);
 }
 .face-actions {
   justify-content: flex-start;

@@ -68,7 +68,8 @@ def _ctx(
     lang: str = "en",
     voice_text: str = "",
 ) -> dict:
-    # Common context shared by all HTML pages.
+    # Common context shared by dashboard pages.
+    # NOTE: login pages should avoid this (it hits SQLite and can feel slow).
     stats = get_dashboard_stats(db_path=DEFAULT_DB)
     i18n = _bundle(lang)
     recent_changes = _load_recent_change_log()
@@ -87,8 +88,26 @@ def _ctx(
     }
 
 
+def _login_ctx(
+    request: Request,
+    message: str = "",
+    error: str = "",
+    lang: str = "en",
+) -> dict:
+    # Minimal context for login/entry pages (fast, no DB reads).
+    i18n = _bundle(lang)
+    return {
+        "request": request,
+        "message": message,
+        "error": error,
+        "lang": lang,
+        "i18n": i18n,
+        "langs": _language_choices(),
+    }
+
+
 def _login_context(request: Request, lang: str, mode: str, message: str = "", error: str = "") -> dict:
-    context = _ctx(request, message=message, error=error, lang=lang)
+    context = _login_ctx(request, message=message, error=error, lang=lang)
     context["login_mode"] = mode
     return context
 
@@ -259,6 +278,84 @@ def customer_login_page(request: Request):
     lang = _resolve_lang(request.query_params.get("lang", "en"))
     return templates.TemplateResponse("login.html", _login_context(request, lang=lang, mode="customer"))
 
+@app.get("/customer/register")
+def customer_register_page(request: Request):
+    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    return templates.TemplateResponse("login.html", _login_context(request, lang=lang, mode="customer_register"))
+
+
+@app.post("/customer/register")
+def customer_register(
+    request: Request,
+    user_id: str = Form(...),
+    phone: str = Form(...),
+    pin: str = Form(...),
+    face_image: str = Form(default=""),
+    device_id: str = Form(default=""),
+    lang: str = Form(default="en"),
+):
+    # Offline-first onboarding: create user locally + enroll face + enroll device.
+    lang = _resolve_lang(lang)
+    try:
+        capture_path = _store_face_capture(face_image, role="customer")
+        captured_algo, captured_hash = _face_hash_from_capture_path(capture_path)
+    except Exception:
+        return templates.TemplateResponse(
+            "login.html",
+            _login_context(request, lang=lang, mode="customer_register", error=_t(lang, "face_required")),
+            status_code=400,
+        )
+
+    try:
+        create_user(
+            user_id=user_id.strip(),
+            phone_number=phone.strip(),
+            pin=pin.strip(),
+            db_path=DEFAULT_DB,
+            replace_existing=False,
+        )
+    except Exception as exc:
+        # Likely user_exists; keep message simple.
+        return templates.TemplateResponse(
+            "login.html",
+            _login_context(request, lang=lang, mode="customer_register", error=str(exc)),
+            status_code=400,
+        )
+
+    ok_face, _ = enroll_or_verify_face_hash(
+        user_id=user_id.strip(),
+        pin=pin.strip(),
+        captured_algo=captured_algo,
+        captured_hash=captured_hash,
+        db_path=DEFAULT_DB,
+    )
+    if not ok_face:
+        return templates.TemplateResponse(
+            "login.html",
+            _login_context(request, lang=lang, mode="customer_register", error=_t(lang, "face_mismatch")),
+            status_code=400,
+        )
+
+    ok_dev, dev_reason = enroll_or_verify_device_id(
+        user_id=user_id.strip(),
+        pin=pin.strip(),
+        device_id=device_id,
+        db_path=DEFAULT_DB,
+    )
+    if not ok_dev:
+        return templates.TemplateResponse(
+            "login.html",
+            _login_context(request, lang=lang, mode="customer_register", error=_t(lang, "device_required")),
+            status_code=400,
+        )
+
+    response = RedirectResponse(url=f"/customer/dashboard?lang={lang}", status_code=303)
+    response.set_cookie(ROLE_COOKIE, "customer")
+    response.set_cookie(USER_COOKIE, user_id.strip())
+    response.set_cookie(FACE_COOKIE, "1")
+    response.set_cookie(DEVICE_COOKIE, "untrusted" if dev_reason == "new_device" else "trusted")
+    return response
+
 
 @app.get("/bank/login")
 def bank_login_page(request: Request):
@@ -388,7 +485,7 @@ def bank_dashboard(request: Request):
     if guard:
         return guard
     lang = _resolve_lang(request.query_params.get("lang", "en"))
-    return templates.TemplateResponse("index.html", _admin_dashboard_context(request, lang=lang))
+    return templates.TemplateResponse("bank_dashboard.html", _admin_dashboard_context(request, lang=lang))
 
 
 @app.get("/admin/dashboard")
@@ -1971,6 +2068,8 @@ def _bundle(lang: str) -> dict:
             "customer_portal_eyebrow": "Customer Portal",
             "customer_portal_title": "Customer Banking Portal",
             "customer_portal_subtitle": "Login with your user ID, PIN, and a face verification check.",
+            "customer_register_title": "Customer Registration",
+            "customer_register_subtitle": "Create your local account offline, then enroll face + device for safer banking.",
             "customer_welcome": "Logged in as",
             "customer_tx_title": "Create Secure Transaction",
             "customer_safety_title": "Safety Controls",
@@ -1980,6 +2079,8 @@ def _bundle(lang: str) -> dict:
             "admin_portal_subtitle": "Central controls for fraud review, sync monitoring, and audit visibility.",
             "customer_login_cta": "Enter Customer Portal",
             "admin_login_cta": "Enter Admin Portal",
+            "customer_register_cta": "Create Account",
+            "customer_register_link": "New here? Create an offline account",
             "login_credentials_title": "Login Credentials",
             "login_credentials_body": "Enter your secure credentials first, then complete the face capture on the right.",
             "admin_username": "Admin username",
@@ -2005,6 +2106,10 @@ def _bundle(lang: str) -> dict:
             "login_switch_body": "Use separate links for the customer and bank/admin sides of the system.",
             "customer_scope_error": "Customer portal can only open the logged-in user's transaction history.",
             "logout": "Logout",
+            "nav_monitoring": "Monitoring",
+            "nav_operations": "Operations",
+            "nav_admin": "Administration",
+            "nav_tools": "Tools",
             "users": "Users",
             "transactions": "Transactions",
             "pending_sync": "Pending Sync",

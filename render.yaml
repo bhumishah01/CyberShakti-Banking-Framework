@@ -7,5 +7,10 @@ services:
     healthCheckPath: /
     envVars:
       - key: PORT
-        value: "8502"
-
+        value: "8000"
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: FIELD_ENC_KEY
+        sync: false
