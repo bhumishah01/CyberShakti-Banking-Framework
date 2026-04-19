@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.server.db.base import Base
@@ -10,6 +10,9 @@ from src.server.db.base import Base
 
 class Transaction(Base):
     __tablename__ = "transactions"
+    __table_args__ = (
+        UniqueConstraint("user_id", "idempotency_key", name="uq_transactions_user_idem"),
+    )
 
     tx_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.user_id"), index=True)
@@ -29,4 +32,3 @@ class Transaction(Base):
     idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
 
     user = relationship("User", back_populates="transactions")
-

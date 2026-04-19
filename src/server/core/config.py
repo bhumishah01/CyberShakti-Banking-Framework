@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,5 +26,8 @@ class Settings(BaseSettings):
     field_enc_key: str  # 32+ chars; used to derive AES-GCM key
 
 
-settings = Settings()
-
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    # Lazy-load settings so importing modules doesn't crash tooling.
+    # FastAPI will still fail fast on startup if required env vars are missing.
+    return Settings()

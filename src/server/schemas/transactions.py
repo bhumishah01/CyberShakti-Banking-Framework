@@ -17,4 +17,5 @@ class TransactionResponse(BaseModel):
     risk_level: str
     reason_codes: list[str]
     status: str
-
+    decision: str = "ALLOW"
+    explanation: dict = {}

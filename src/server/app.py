@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from src.server.core.config import settings
+from src.server.core.config import get_settings
 from src.server.db.base import Base
 from src.server.db.session import engine
 from src.server.routers import agent, auth, fraud, sync, transactions
 
 
 def create_app() -> FastAPI:
+    settings = get_settings()
     app = FastAPI(title=settings.app_name, version="1.0.0")
 
     # For this project, create tables automatically. In production you’d use Alembic migrations.
@@ -28,4 +29,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

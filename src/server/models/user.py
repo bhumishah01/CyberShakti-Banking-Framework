@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
+import enum
 
-from sqlalchemy import DateTime, Enum, String, Text, func
+from sqlalchemy import DateTime, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.server.db.base import Base
 
 
-class UserRole(str, Enum):
+class UserRole(str, enum.Enum):
     customer = "customer"
     bank_officer = "bank_officer"
     agent = "agent"
@@ -26,4 +27,3 @@ class User(Base):
 
     devices = relationship("Device", back_populates="user", cascade="all,delete-orphan")
     transactions = relationship("Transaction", back_populates="user", cascade="all,delete-orphan")
-

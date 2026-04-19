@@ -3,10 +3,10 @@ from __future__ import annotations
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.server.core.config import settings
+from src.server.core.config import get_settings
 
 
-engine = create_engine(settings.database_url, pool_pre_ping=True)
+engine = create_engine(get_settings().database_url, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -16,4 +16,3 @@ def get_db():
         yield db
     finally:
         db.close()
-

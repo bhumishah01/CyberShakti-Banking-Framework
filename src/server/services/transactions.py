@@ -10,6 +10,8 @@ from src.server.core.security import encrypt_field
 from src.server.models.device import Device
 from src.server.models.transaction import Transaction
 from src.server.services.fraud import behavioral_profile, dynamic_risk_score, log_fraud
+from src.server.services.trust import trust_score as calc_trust_score
+from src.server.services.trust import trust_signals
 
 
 def create_transaction(
@@ -37,11 +39,14 @@ def create_transaction(
     new_device = bool(device_id) and (device is None or device.user_id != user_id or device.trust_level == "untrusted")
 
     profile = behavioral_profile(db, user_id=user_id)
-    risk_score, risk_level, reasons = dynamic_risk_score(
+    signals = trust_signals(db, user_id=user_id, device_id=device_id or "")
+    tscore = calc_trust_score(signals)
+    risk_score, risk_level, reasons, explanation = dynamic_risk_score(
         amount=amount,
         recipient_is_new=recipient_is_new,
         profile=profile,
         new_device=new_device,
+        trust_score=tscore,
     )
 
     status = "PENDING"
@@ -67,6 +72,7 @@ def create_transaction(
     db.commit()
     db.refresh(tx)
 
+    # Store explanation in fraud log detail; transaction stores only reason codes.
     log_fraud(
         db,
         log_id=uuid.uuid4().hex,
@@ -77,4 +83,3 @@ def create_transaction(
         reasons=reasons,
     )
     return tx
-

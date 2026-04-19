@@ -8,7 +8,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from jose import jwt
 from passlib.context import CryptContext
 
-from src.server.core.config import settings
+from src.server.core.config import get_settings
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -23,6 +23,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def create_access_token(subject: str, role: str) -> str:
+    settings = get_settings()
     now = datetime.now(UTC)
     exp = now + timedelta(minutes=settings.jwt_access_minutes)
     payload = {
@@ -35,11 +36,13 @@ def create_access_token(subject: str, role: str) -> str:
 
 
 def decode_token(token: str) -> dict:
+    settings = get_settings()
     return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
 
 
 def _aes_key() -> bytes:
     # Derive a stable 32-byte AES key from env config.
+    settings = get_settings()
     return hashlib.sha256(settings.field_enc_key.encode("utf-8")).digest()
 
 
@@ -57,4 +60,3 @@ def decrypt_field(token: str, *, aad: str) -> str:
     nonce, ct = raw[:12], raw[12:]
     pt = aesgcm.decrypt(nonce, ct, aad.encode("utf-8"))
     return pt.decode("utf-8")
-
