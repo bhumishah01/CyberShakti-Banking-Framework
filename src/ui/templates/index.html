@@ -11,11 +11,12 @@
     <header>
       <div class="top-row">
         <div>
-          <h1>{{ i18n.title }}</h1>
-          <p>{{ i18n.subtitle }}</p>
+          <div class="eyebrow">{{ i18n.admin_portal_eyebrow }}</div>
+          <h1>{{ portal_title or i18n.title }}</h1>
+          <p>{{ portal_subtitle or i18n.subtitle }}</p>
         </div>
         <div class="header-actions">
-          <form action="/" method="get" class="lang-form">
+          <form action="/bank/dashboard" method="get" class="lang-form">
             <label for="lang">{{ i18n.lang_label }}</label>
             <select id="lang" name="lang" onchange="this.form.submit()">
               {% for item in langs %}
@@ -24,6 +25,7 @@
             </select>
           </form>
           <a href="/guide?lang={{ lang }}" class="button secondary">{{ i18n.demo_guide }}</a>
+          <a href="/logout?lang={{ lang }}" class="button secondary">{{ i18n.logout }}</a>
         </div>
       </div>
     </header>
@@ -107,21 +109,21 @@
         <input type="hidden" name="lang" value="{{ lang }}">
         <input name="user_id" placeholder="{{ i18n.ph_user_id_example }}" required>
         <input name="phone" placeholder="{{ i18n.ph_phone_example }}" required>
-        <input name="pin" placeholder="{{ i18n.ph_pin_4digit }}" maxlength="4" required>
+        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin_4digit }}" maxlength="4" required>
         <label class="checkbox"><input type="checkbox" name="replace" value="1"> {{ i18n.replace_user }}</label>
         <button type="submit">{{ i18n.save_user }}</button>
       </form>
       <form action="/users/trusted-contact" method="post" class="grid release-grid">
         <input type="hidden" name="lang" value="{{ lang }}">
         <input name="user_id" placeholder="{{ i18n.ph_user_id_trusted }}">
-        <input name="pin" placeholder="{{ i18n.ph_pin }}" maxlength="4">
+        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4">
         <input name="trusted_contact" placeholder="{{ i18n.ph_trusted_contact }}">
         <button type="submit">{{ i18n.set_trusted }}</button>
       </form>
       <form action="/users/panic-freeze" method="post" class="grid release-grid">
         <input type="hidden" name="lang" value="{{ lang }}">
         <input name="user_id" placeholder="{{ i18n.ph_user_id_freeze }}">
-        <input name="pin" placeholder="{{ i18n.ph_pin }}" maxlength="4">
+        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4">
         <input name="minutes" type="number" min="1" value="60" placeholder="{{ i18n.ph_freeze_minutes }}">
         <button type="submit">{{ i18n.enable_freeze }}</button>
       </form>
@@ -132,7 +134,7 @@
       <form action="/transactions" method="post" class="grid">
         <input type="hidden" name="lang" value="{{ lang }}">
         <input name="user_id" placeholder="{{ i18n.ph_user_id }}" required>
-        <input name="pin" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
         <input name="amount" placeholder="{{ i18n.ph_amount }}" type="number" step="0.01" min="1" required>
         <input name="recipient" placeholder="{{ i18n.ph_recipient_name }}" required>
         <button type="submit">{{ i18n.create_tx }}</button>
@@ -144,7 +146,7 @@
       <form action="/transactions" method="get" class="grid">
         <input type="hidden" name="lang" value="{{ lang }}">
         <input name="user_id" placeholder="{{ i18n.ph_user_id }}" required>
-        <input name="pin" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
         <input name="limit" placeholder="{{ i18n.ph_limit }}" type="number" value="10" min="1" max="100" required>
         <button type="submit">{{ i18n.open_tx_list }}</button>
       </form>
@@ -161,7 +163,7 @@
         <input type="hidden" name="lang" value="{{ lang }}">
         <input name="tx_id" placeholder="{{ i18n.ph_held_tx_id }}">
         <input name="user_id" placeholder="{{ i18n.ph_user_id }}">
-        <input name="pin" placeholder="{{ i18n.ph_pin }}" maxlength="4">
+        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4">
         <input name="approval_code" placeholder="{{ i18n.ph_approval_code }}">
         <button type="submit">{{ i18n.release_held }}</button>
       </form>
@@ -191,7 +193,7 @@
       <form action="/simulate/scenario" method="post" class="grid">
         <input type="hidden" name="lang" value="{{ lang }}">
         <input name="user_id" placeholder="{{ i18n.scenario_user }}" required>
-        <input name="pin" placeholder="{{ i18n.scenario_pin }}" maxlength="4" required>
+        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.scenario_pin }}" maxlength="4" required>
         <input name="trusted_contact" placeholder="{{ i18n.scenario_contact }}">
         <select name="scenario_id" required>
           {% for item in scenarios %}

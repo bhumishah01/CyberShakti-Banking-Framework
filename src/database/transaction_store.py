@@ -65,6 +65,9 @@ def create_secure_transaction(
     risk_score_override: int | None = None,
     risk_level_override: str | None = None,
     timestamp: datetime | None = None,
+    extra_reason_codes: list[str] | None = None,
+    extra_risk_points: int = 0,
+    force_hold: bool = False,
 ) -> StoredTransaction:
     """Authenticate user, encrypt transaction fields, sign record, and enqueue for sync."""
     # Basic input checks
@@ -99,7 +102,19 @@ def create_secure_transaction(
     )
     risk_score = risk_score_override if risk_score_override is not None else risk["risk_score"]
     risk_level = risk_level_override if risk_level_override is not None else risk["risk_level"]
-    reason_codes = risk["reason_codes"]
+    reason_codes = list(risk["reason_codes"])
+    if extra_reason_codes:
+        for code in extra_reason_codes:
+            if code and code not in reason_codes:
+                reason_codes.append(code)
+    if extra_risk_points:
+        risk_score = min(100, max(0, int(risk_score) + int(extra_risk_points)))
+        if risk_score >= 70:
+            risk_level = "HIGH"
+        elif risk_score >= 40:
+            risk_level = "MEDIUM"
+        else:
+            risk_level = "LOW"
     # Decide allow/hold/block based on risk
     intervention = decide_intervention(risk_score=risk_score, risk_level=risk_level, reason_codes=reason_codes)
     action_decision = intervention["action"]
@@ -126,6 +141,15 @@ def create_secure_transaction(
         ]
         status = "BLOCKED_PANIC_FREEZE"
         sync_state = "BLOCKED"
+    elif force_hold:
+        action_decision = "HOLD"
+        intervention_title = "New device detected: transaction held for safety"
+        intervention_guidance = [
+            "This login was from a new device.",
+            "Hold the transfer until the device is confirmed or until night sync review.",
+        ] + list(intervention_guidance)
+        status = "HOLD_FOR_REVIEW"
+        sync_state = "HOLD"
     elif action_decision == "HOLD":
         status = "HOLD_FOR_REVIEW"
         sync_state = "HOLD"

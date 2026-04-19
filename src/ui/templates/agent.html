@@ -22,6 +22,7 @@
             {% endfor %}
           </select>
         </form>
+        <a href="/logout?lang={{ lang }}" class="button secondary">{{ i18n.logout }}</a>
       </div>
     </header>
 
@@ -37,7 +38,7 @@
         <input type="hidden" name="lang" value="{{ lang }}">
         <input name="user_id" placeholder="{{ i18n.agent_user }}" required>
         <input name="phone" placeholder="{{ i18n.agent_phone }}" required>
-        <input name="pin" placeholder="{{ i18n.agent_pin }}" maxlength="4" required>
+        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.agent_pin }}" maxlength="4" required>
         <input name="amount" type="number" min="1" step="0.01" placeholder="{{ i18n.agent_amount }}" required>
         <input name="recipient" placeholder="{{ i18n.agent_recipient }}" required>
         <input name="trusted_contact" placeholder="{{ i18n.agent_trusted }}">
@@ -74,7 +75,7 @@
     {% endif %}
 
     <section class="actions">
-      <a href="/?lang={{ lang }}" class="button secondary">{{ i18n.back_dashboard }}</a>
+      <a href="/bank/dashboard?lang={{ lang }}" class="button secondary">{{ i18n.back_dashboard }}</a>
       <a href="/report/impact?lang={{ lang }}" class="button secondary">{{ i18n.impact_report }}</a>
     </section>
   </main>

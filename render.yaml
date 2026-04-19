@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: ruralshield
+    env: docker
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: PORT
+        value: "8502"
+

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ i18n.page_title_customer_dashboard }}</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <div class="top-row">
+        <div>
+          <div class="eyebrow">{{ i18n.customer_portal_eyebrow }}</div>
+          <h1>{{ i18n.customer_portal_title }}</h1>
+          <p>{{ i18n.customer_welcome }} {{ active_user }}</p>
+        </div>
+        <div class="header-actions">
+          <div class="status-chip">{{ i18n.face_verified_label }}: {{ i18n.demo_yes if face_verified else i18n.demo_no }}</div>
+          <div class="status-chip">{{ i18n.device_trust_label }}: {{ i18n.device_untrusted if device_trust == "untrusted" else i18n.device_trusted }}</div>
+          <form action="/customer/dashboard" method="get" class="lang-form">
+            <label for="lang">{{ i18n.lang_label }}</label>
+            <select id="lang" name="lang" onchange="this.form.submit()">
+              {% for item in langs %}
+              <option value="{{ item.code }}" {% if item.code == lang %}selected{% endif %}>{{ item.label }}</option>
+              {% endfor %}
+            </select>
+          </form>
+          <a href="/logout?lang={{ lang }}" class="button secondary">{{ i18n.logout }}</a>
+        </div>
+      </div>
+    </header>
+
+    <section class="stats-grid">
+      <article class="stat-card"><h3>{{ i18n.transactions }}</h3><p>{{ customer_stats.total }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p>{{ customer_stats.pending }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.held }}</h3><p>{{ customer_stats.held }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.blocked }}</h3><p>{{ customer_stats.blocked }}</p></article>
+      <article class="stat-card"><h3>{{ i18n.synced }}</h3><p>{{ customer_stats.synced }}</p></article>
+    </section>
+
+    {% if message %}
+      <section class="alert success">{{ message }}</section>
+    {% endif %}
+    {% if error %}
+      <section class="alert error">{{ error }}</section>
+    {% endif %}
+    {% if voice_text %}
+      <section class="card voice-card">
+        <button type="button" class="button secondary voice-btn" data-voice-text="{{ voice_text|e }}">{{ i18n.voice_play }}</button>
+      </section>
+    {% endif %}
+
+    <section class="card">
+      <h2>{{ i18n.customer_tx_title }}</h2>
+      <form action="/customer/transactions" method="post" class="grid">
+        <input type="hidden" name="lang" value="{{ lang }}">
+        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+        <input name="amount" placeholder="{{ i18n.ph_amount }}" type="number" step="0.01" min="1" required>
+        <input name="recipient" placeholder="{{ i18n.ph_recipient_name }}" required>
+        <button type="submit">{{ i18n.create_tx }}</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>{{ i18n.customer_safety_title }}</h2>
+      <form action="/customer/trusted-contact" method="post" class="grid release-grid">
+        <input type="hidden" name="lang" value="{{ lang }}">
+        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+        <input name="trusted_contact" placeholder="{{ i18n.ph_trusted_contact }}" required>
+        <button type="submit">{{ i18n.set_trusted }}</button>
+      </form>
+      <form action="/customer/panic-freeze" method="post" class="grid release-grid">
+        <input type="hidden" name="lang" value="{{ lang }}">
+        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+        <input name="minutes" type="number" min="1" value="60" placeholder="{{ i18n.ph_freeze_minutes }}">
+        <button type="submit">{{ i18n.enable_freeze }}</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>{{ i18n.customer_history_title }}</h2>
+      <form action="/transactions" method="get" class="grid">
+        <input type="hidden" name="lang" value="{{ lang }}">
+        <input type="hidden" name="user_id" value="{{ active_user }}">
+        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+        <input name="limit" placeholder="{{ i18n.ph_limit }}" type="number" value="10" min="1" max="100" required>
+        <button type="submit">{{ i18n.open_tx_list }}</button>
+      </form>
+    </section>
+  </main>
+  <script>
+    (() => {
+      const btn = document.querySelector(".voice-btn");
+      if (!btn || !window.speechSynthesis) return;
+      btn.addEventListener("click", () => {
+        const text = btn.getAttribute("data-voice-text") || "";
+        if (!text) return;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+      });
+    })();
+  </script>
+</body>
+</html>

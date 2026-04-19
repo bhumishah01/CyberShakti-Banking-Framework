@@ -9,6 +9,8 @@ This file wires the HTML pages to the core security logic:
 
 from __future__ import annotations
 
+import base64
+import json
 import sqlite3
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -25,8 +27,11 @@ from src.auth.service import (
     authenticate_user,
     create_user,
     enable_panic_freeze,
+    enroll_or_verify_device_id,
+    enroll_or_verify_face_hash,
     set_trusted_contact,
 )
+from src.auth.biometric import compute_dhash64_from_png
 from src.database.init_db import init_db
 from src.database.transaction_store import (
     create_secure_transaction,
@@ -42,6 +47,13 @@ from src.sync.manager import sync_outbox
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_DB = Path("data/ruralshield.db")
 SUPPORTED_LANGS = {"en", "hi", "or", "gu", "de"}
+DEFAULT_BANK_USERNAME = "bank_admin"
+DEFAULT_BANK_PASSWORD = "admin123"
+ROLE_COOKIE = "ruralshield_role"
+USER_COOKIE = "ruralshield_user"
+FACE_COOKIE = "ruralshield_face_verified"
+DEVICE_COOKIE = "ruralshield_device_trust"
+FACE_CAPTURE_DIR = Path("data/face_captures")
 
 # FastAPI app + static assets + HTML templates
 app = FastAPI(title="RuralShield UI", version="1.0.0")
@@ -73,6 +85,96 @@ def _ctx(
         "scenarios": _scenario_choices(lang),
         "voice_text": voice_text,
     }
+
+
+def _login_context(request: Request, lang: str, mode: str, message: str = "", error: str = "") -> dict:
+    context = _ctx(request, message=message, error=error, lang=lang)
+    context["login_mode"] = mode
+    return context
+
+
+def _user_ctx(request: Request) -> dict:
+    # Session-like data is kept in cookies to keep the demo simple.
+    # Back-compat: older cookies used role=admin, but we now present it as bank portal.
+    role = request.cookies.get(ROLE_COOKIE, "")
+    if role == "admin":
+        role = "bank"
+    return {
+        "role": role,
+        "active_user": request.cookies.get(USER_COOKIE, ""),
+        "face_verified": request.cookies.get(FACE_COOKIE, "") == "1",
+        "device_trust": request.cookies.get(DEVICE_COOKIE, "trusted"),
+    }
+
+
+def _require_role(request: Request, expected_role: str) -> RedirectResponse | None:
+    if _user_ctx(request).get("role") != expected_role:
+        return RedirectResponse(url="/", status_code=303)
+    return None
+
+
+def _customer_stats(user_id: str) -> dict:
+    init_db(DEFAULT_DB)
+    stats = {"total": 0, "pending": 0, "held": 0, "blocked": 0, "synced": 0}
+    with sqlite3.connect(DEFAULT_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM transactions WHERE user_id = ?", (user_id,))
+        stats["total"] = int(cursor.fetchone()[0])
+        cursor.execute(
+            "SELECT COUNT(*) FROM transactions WHERE user_id = ? AND status = 'PENDING'",
+            (user_id,),
+        )
+        stats["pending"] = int(cursor.fetchone()[0])
+        cursor.execute(
+            "SELECT COUNT(*) FROM transactions WHERE user_id = ? AND status IN ('HOLD_FOR_REVIEW','AWAITING_TRUSTED_APPROVAL')",
+            (user_id,),
+        )
+        stats["held"] = int(cursor.fetchone()[0])
+        cursor.execute(
+            "SELECT COUNT(*) FROM transactions WHERE user_id = ? AND (status LIKE 'BLOCKED_%' OR status = 'BLOCKED_LOCAL')",
+            (user_id,),
+        )
+        stats["blocked"] = int(cursor.fetchone()[0])
+        cursor.execute(
+            "SELECT COUNT(*) FROM transactions WHERE user_id = ? AND status = 'SYNCED'",
+            (user_id,),
+        )
+        stats["synced"] = int(cursor.fetchone()[0])
+    return stats
+
+
+def _customer_dashboard_context(
+    request: Request,
+    lang: str,
+    message: str = "",
+    error: str = "",
+    voice_text: str = "",
+) -> dict:
+    context = _ctx(request, message=message, error=error, lang=lang, voice_text=voice_text)
+    session = _user_ctx(request)
+    context.update(session)
+    context["customer_stats"] = _customer_stats(session["active_user"]) if session["active_user"] else {
+        "total": 0,
+        "pending": 0,
+        "held": 0,
+        "blocked": 0,
+        "synced": 0,
+    }
+    return context
+
+
+def _admin_dashboard_context(
+    request: Request,
+    lang: str,
+    message: str = "",
+    error: str = "",
+    voice_text: str = "",
+) -> dict:
+    context = _ctx(request, message=message, error=error, lang=lang, voice_text=voice_text)
+    context.update(_user_ctx(request))
+    context["portal_title"] = _bundle(lang).get("admin_portal_title", "Bank/Admin Security Portal")
+    context["portal_subtitle"] = _bundle(lang).get("admin_portal_subtitle", "Central controls for fraud review, sync, and audit")
+    return context
 
 
 def _fetch_outbox_rows(limit: int = 200) -> list[dict]:
@@ -119,20 +221,192 @@ def _outbox_stats(rows: list[dict]) -> dict:
     }
 
 
+def _store_face_capture(data_url: str, role: str) -> str:
+    cleaned = (data_url or "").strip()
+    prefix = "data:image/png;base64,"
+    if not cleaned.startswith(prefix):
+        raise ValueError("Face capture is missing or invalid. Please capture your face before login.")
+    FACE_CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
+    payload = cleaned[len(prefix) :]
+    image_bytes = base64.b64decode(payload)
+    filename = f"{role}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.png"
+    path = FACE_CAPTURE_DIR / filename
+    path.write_bytes(image_bytes)
+    return str(path)
+
+
+def _face_hash_from_capture_path(capture_path: str) -> tuple[str, str]:
+    # Compute a lightweight perceptual hash from the captured PNG.
+    png_bytes = Path(capture_path).read_bytes()
+    face_hash = compute_dhash64_from_png(png_bytes)
+    return face_hash.algo, face_hash.hex64
+
+
 @app.get("/")
 def index(request: Request):
-    # Dashboard page
     init_db(DEFAULT_DB)
     lang = _resolve_lang(request.query_params.get("lang", "en"))
-    return templates.TemplateResponse("index.html", _ctx(request, lang=lang))
+    role = request.cookies.get(ROLE_COOKIE, "")
+    if role == "customer":
+        return RedirectResponse(url=f"/customer/dashboard?lang={lang}", status_code=303)
+    if role in {"admin", "bank"}:
+        return RedirectResponse(url=f"/bank/dashboard?lang={lang}", status_code=303)
+    return templates.TemplateResponse("login.html", _login_context(request, lang=lang, mode="choose"))
+
+
+@app.get("/customer/login")
+def customer_login_page(request: Request):
+    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    return templates.TemplateResponse("login.html", _login_context(request, lang=lang, mode="customer"))
+
+
+@app.get("/bank/login")
+def bank_login_page(request: Request):
+    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    return templates.TemplateResponse("login.html", _login_context(request, lang=lang, mode="bank"))
+
+
+@app.get("/admin/login")
+def admin_login_compat(request: Request):
+    # Back-compat route for old links.
+    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    return RedirectResponse(url=f"/bank/login?lang={lang}", status_code=303)
+
+
+@app.post("/login")
+def login(
+    request: Request,
+    role: str = Form(...),
+    lang: str = Form(default="en"),
+    user_id: str = Form(default=""),
+    pin: str = Form(default=""),
+    admin_username: str = Form(default=""),
+    admin_password: str = Form(default=""),
+    face_image: str = Form(default=""),
+    device_id: str = Form(default=""),
+):
+    lang = _resolve_lang(lang)
+    role = (role or "").strip().lower()
+    # Back-compat: older template posted role=admin. Treat it as bank login.
+    if role == "admin":
+        role = "bank"
+    if role not in {"customer", "bank"}:
+        context = _login_context(request, lang=lang, mode="choose", error=_t(lang, "invalid_role"))
+        return templates.TemplateResponse("login.html", context, status_code=400)
+
+    try:
+        capture_path = _store_face_capture(face_image, role=role)
+        captured_algo, captured_hash = _face_hash_from_capture_path(capture_path)
+    except Exception:
+        context = _login_context(request, lang=lang, mode=role, error=_t(lang, "face_required"))
+        return templates.TemplateResponse("login.html", context, status_code=400)
+
+    if role == "customer":
+        auth = authenticate_user(user_id=user_id.strip(), pin=pin.strip(), db_path=DEFAULT_DB)
+        if not auth.is_authenticated:
+            context = _login_context(request, lang=lang, mode="customer", error=_t(lang, "customer_login_failed"))
+            return templates.TemplateResponse("login.html", context, status_code=400)
+        ok, why = enroll_or_verify_face_hash(
+            user_id=user_id.strip(),
+            pin=pin.strip(),
+            captured_algo=captured_algo,
+            captured_hash=captured_hash,
+            db_path=DEFAULT_DB,
+        )
+        if not ok:
+            context = _login_context(request, lang=lang, mode="customer", error=_t(lang, "face_mismatch"))
+            return templates.TemplateResponse("login.html", context, status_code=400)
+        ok_dev, dev_reason = enroll_or_verify_device_id(
+            user_id=user_id.strip(),
+            pin=pin.strip(),
+            device_id=device_id,
+            db_path=DEFAULT_DB,
+        )
+        if not ok_dev:
+            context = _login_context(request, lang=lang, mode="customer", error=_t(lang, "device_required"))
+            return templates.TemplateResponse("login.html", context, status_code=400)
+        response = RedirectResponse(url=f"/customer/dashboard?lang={lang}", status_code=303)
+        response.set_cookie(ROLE_COOKIE, "customer")
+        response.set_cookie(USER_COOKIE, user_id.strip())
+        response.set_cookie(FACE_COOKIE, "1")
+        response.set_cookie(DEVICE_COOKIE, "untrusted" if dev_reason == "new_device" else "trusted")
+        return response
+
+    if role == "bank":
+        if admin_username.strip() != DEFAULT_BANK_USERNAME or admin_password.strip() != DEFAULT_BANK_PASSWORD:
+            context = _login_context(request, lang=lang, mode="bank", error=_t(lang, "admin_login_failed"))
+            return templates.TemplateResponse("login.html", context, status_code=400)
+        # For the demo, require the same face hash over time for bank login as well.
+        bank_face_path = Path("data/bank_face_hash.json")
+        if bank_face_path.exists():
+            try:
+                stored = json.loads(bank_face_path.read_text())
+                stored_algo = str(stored.get("algo", ""))
+                stored_hash = str(stored.get("hash", ""))
+            except Exception:
+                stored_algo, stored_hash = "", ""
+            if stored_algo and stored_hash:
+                from src.auth.biometric import hamming_distance_hex64
+
+                if stored_algo != captured_algo or hamming_distance_hex64(stored_hash, captured_hash) > 12:
+                    context = _login_context(request, lang=lang, mode="bank", error=_t(lang, "face_mismatch"))
+                    return templates.TemplateResponse("login.html", context, status_code=400)
+        else:
+            bank_face_path.parent.mkdir(parents=True, exist_ok=True)
+            bank_face_path.write_text(json.dumps({"algo": captured_algo, "hash": captured_hash}))
+        response = RedirectResponse(url=f"/bank/dashboard?lang={lang}", status_code=303)
+        response.set_cookie(ROLE_COOKIE, "bank")
+        response.set_cookie(USER_COOKIE, DEFAULT_BANK_USERNAME)
+        response.set_cookie(FACE_COOKIE, "1")
+        return response
+
+    context = _login_context(request, lang=lang, mode="choose", error=_t(lang, "invalid_role"))
+    return templates.TemplateResponse("login.html", context, status_code=400)
+
+
+@app.get("/logout")
+def logout(lang: str = "en"):
+    response = RedirectResponse(url=f"/?lang={_resolve_lang(lang)}", status_code=303)
+    response.delete_cookie(ROLE_COOKIE)
+    response.delete_cookie(USER_COOKIE)
+    response.delete_cookie(FACE_COOKIE)
+    return response
+
+
+@app.get("/customer/dashboard")
+def customer_dashboard(request: Request):
+    guard = _require_role(request, "customer")
+    if guard:
+        return guard
+    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    return templates.TemplateResponse("customer_dashboard.html", _customer_dashboard_context(request, lang=lang))
+
+
+@app.get("/bank/dashboard")
+def bank_dashboard(request: Request):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
+    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    return templates.TemplateResponse("index.html", _admin_dashboard_context(request, lang=lang))
+
+
+@app.get("/admin/dashboard")
+def admin_dashboard_compat(request: Request):
+    # Back-compat route for old links.
+    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    return RedirectResponse(url=f"/bank/dashboard?lang={lang}", status_code=303)
 
 
 @app.get("/agent")
 def agent_mode(request: Request):
     # Assisted agent/kiosk workflow page
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     init_db(DEFAULT_DB)
     lang = _resolve_lang(request.query_params.get("lang", "en"))
-    context = _ctx(request, lang=lang)
+    context = _admin_dashboard_context(request, lang=lang)
     context["agent_result"] = None
     return templates.TemplateResponse("agent.html", context)
 
@@ -147,6 +421,9 @@ def add_user(
     lang: str = Form(default="en"),
 ):
     # Create or replace a local user (stored in SQLite).
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(lang)
     try:
         create_user(
@@ -157,10 +434,10 @@ def add_user(
             replace_existing=bool(replace),
         )
         msg = f"User {'replaced' if replace else 'created'}: {user_id.strip()}"
-        return templates.TemplateResponse("index.html", _ctx(request, message=msg, lang=lang))
+        return templates.TemplateResponse("index.html", _admin_dashboard_context(request, message=msg, lang=lang))
     except Exception as exc:
         return templates.TemplateResponse(
-            "index.html", _ctx(request, error=str(exc), lang=lang), status_code=400
+            "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
         )
 
 
@@ -174,6 +451,9 @@ def add_transaction(
     lang: str = Form(default="en"),
 ):
     # Create a transaction: encrypt locally + risk score + add to outbox.
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(lang)
     try:
         stored = create_secure_transaction(
@@ -204,11 +484,117 @@ def add_transaction(
         )
         return templates.TemplateResponse(
             "index.html",
-            _ctx(request, message=msg, lang=lang, voice_text=voice_text),
+            _admin_dashboard_context(request, message=msg, lang=lang, voice_text=voice_text),
         )
     except Exception as exc:
         return templates.TemplateResponse(
-            "index.html", _ctx(request, error=str(exc), lang=lang), status_code=400
+            "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
+        )
+
+
+@app.post("/customer/transactions")
+def add_customer_transaction(
+    request: Request,
+    pin: str = Form(...),
+    amount: float = Form(...),
+    recipient: str = Form(...),
+    lang: str = Form(default="en"),
+):
+    guard = _require_role(request, "customer")
+    if guard:
+        return guard
+    lang = _resolve_lang(lang)
+    user_id = request.cookies.get(USER_COOKIE, "").strip()
+    device_untrusted = _user_ctx(request).get("device_trust") == "untrusted"
+    try:
+        stored = create_secure_transaction(
+            user_id=user_id,
+            pin=pin.strip(),
+            amount=amount,
+            recipient=recipient.strip(),
+            db_path=DEFAULT_DB,
+            extra_reason_codes=(["NEW_DEVICE"] if device_untrusted else None),
+            extra_risk_points=(35 if device_untrusted else 0),
+            force_hold=device_untrusted,
+        )
+        reason_text = ", ".join(_friendly_reason(code, lang=lang) for code in stored.reason_codes) or _t(lang, "no_alert")
+        msg = (
+            f"{_t(lang, 'tx_saved')} "
+            f"{_t(lang, 'risk_label')} {_friendly_risk(stored.risk_level, lang=lang)} ({stored.risk_score}/100). "
+            f"{_t(lang, 'decision_label')} {_friendly_action(stored.action_decision, lang=lang)}. "
+            f"{_t(lang, 'reason_label')} {reason_text}."
+        )
+        if stored.approval_required:
+            msg += f" {_t(lang, 'trusted_required')} ({_t(lang, 'contact_ending')} {stored.trusted_contact_hint}). {_t(lang, 'demo_code')}: {stored.approval_code_for_demo}"
+        voice_text = _build_voice_prompt(
+            lang=lang,
+            risk_level=stored.risk_level,
+            action=stored.action_decision,
+            guidance=list(stored.intervention_guidance),
+        )
+        return templates.TemplateResponse(
+            "customer_dashboard.html",
+            _customer_dashboard_context(request, lang=lang, message=msg, voice_text=voice_text),
+        )
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "customer_dashboard.html",
+            _customer_dashboard_context(request, lang=lang, error=str(exc)),
+            status_code=400,
+        )
+
+
+@app.post("/customer/trusted-contact")
+def update_customer_trusted_contact(
+    request: Request,
+    pin: str = Form(...),
+    trusted_contact: str = Form(...),
+    lang: str = Form(default="en"),
+):
+    guard = _require_role(request, "customer")
+    if guard:
+        return guard
+    lang = _resolve_lang(lang)
+    user_id = request.cookies.get(USER_COOKIE, "").strip()
+    try:
+        set_trusted_contact(user_id=user_id, pin=pin.strip(), trusted_contact=trusted_contact.strip(), db_path=DEFAULT_DB)
+        msg = f"{_t(lang, 'trusted_updated')} {user_id}."
+        return templates.TemplateResponse(
+            "customer_dashboard.html",
+            _customer_dashboard_context(request, lang=lang, message=msg),
+        )
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "customer_dashboard.html",
+            _customer_dashboard_context(request, lang=lang, error=str(exc)),
+            status_code=400,
+        )
+
+
+@app.post("/customer/panic-freeze")
+def customer_panic_freeze(
+    request: Request,
+    pin: str = Form(...),
+    minutes: int = Form(default=60),
+    lang: str = Form(default="en"),
+):
+    guard = _require_role(request, "customer")
+    if guard:
+        return guard
+    lang = _resolve_lang(lang)
+    user_id = request.cookies.get(USER_COOKIE, "").strip()
+    try:
+        freeze_until = enable_panic_freeze(user_id=user_id, pin=pin.strip(), minutes=minutes, db_path=DEFAULT_DB)
+        msg = f"{_t(lang, 'freeze_enabled')} {freeze_until} ({user_id})."
+        return templates.TemplateResponse(
+            "customer_dashboard.html",
+            _customer_dashboard_context(request, lang=lang, message=msg),
+        )
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "customer_dashboard.html",
+            _customer_dashboard_context(request, lang=lang, error=str(exc)),
+            status_code=400,
         )
 
 
@@ -224,6 +610,9 @@ def agent_assist(
     lang: str = Form(default="en"),
 ):
     # Agent flow: user + transaction in one screen.
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(lang)
     clean_user = user_id.strip()
     clean_pin = pin.strip()
@@ -237,6 +626,7 @@ def agent_assist(
         auth = authenticate_user(user_id=clean_user, pin=clean_pin, db_path=DEFAULT_DB)
         if not auth.is_authenticated:
             context = _ctx(request, error=_t(lang, "invalid_pin_existing"), lang=lang)
+            context.update(_user_ctx(request))
             context["agent_result"] = None
             return templates.TemplateResponse("agent.html", context, status_code=400)
     else:
@@ -250,6 +640,7 @@ def agent_assist(
             )
         except ValueError as exc:
             context = _ctx(request, error=str(exc), lang=lang)
+            context.update(_user_ctx(request))
             context["agent_result"] = None
             return templates.TemplateResponse("agent.html", context, status_code=400)
 
@@ -271,6 +662,7 @@ def agent_assist(
         )
     except Exception as exc:
         context = _ctx(request, error=str(exc), lang=lang)
+        context.update(_user_ctx(request))
         context["agent_result"] = None
         return templates.TemplateResponse("agent.html", context, status_code=400)
 
@@ -288,6 +680,7 @@ def agent_assist(
         f"{_t(lang, 'decision_label')} {_friendly_action(stored.action_decision, lang=lang)}."
     )
     context = _ctx(request, message=summary, lang=lang, voice_text=voice_text)
+    context.update(_user_ctx(request))
     context["agent_result"] = {
         "user_id": clean_user,
         "tx_id": stored.tx_id,
@@ -305,6 +698,10 @@ def agent_assist(
 @app.get("/transactions")
 def list_transactions(request: Request, user_id: str, pin: str, limit: int = 10, lang: str = "en"):
     lang = _resolve_lang(lang)
+    session = _user_ctx(request)
+    if session["role"] == "customer" and session["active_user"] and session["active_user"] != user_id.strip():
+        context = _customer_dashboard_context(request, lang=lang, error=_t(lang, "customer_scope_error"))
+        return templates.TemplateResponse("customer_dashboard.html", context, status_code=403)
     try:
         items = list_secure_transactions(
             user_id=user_id.strip(),
@@ -334,12 +731,12 @@ def list_transactions(request: Request, user_id: str, pin: str, limit: int = 10,
                 }
             )
 
-        context = _ctx(request, lang=lang)
+        context = _customer_dashboard_context(request, lang=lang) if _user_ctx(request).get("role") == "customer" else _admin_dashboard_context(request, lang=lang)
         context["transactions"] = formatted
         context["active_user"] = user_id.strip()
         return templates.TemplateResponse("transactions.html", context)
     except Exception as exc:
-        context = _ctx(request, error=str(exc), lang=lang)
+        context = _customer_dashboard_context(request, lang=lang, error=str(exc)) if _user_ctx(request).get("role") == "customer" else _admin_dashboard_context(request, error=str(exc), lang=lang)
         context["transactions"] = []
         context["active_user"] = user_id.strip()
         return templates.TemplateResponse("transactions.html", context, status_code=400)
@@ -347,6 +744,9 @@ def list_transactions(request: Request, user_id: str, pin: str, limit: int = 10,
 
 @app.get("/users/list")
 def list_users(request: Request, lang: str = "en"):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(lang)
     init_db(DEFAULT_DB)
     with sqlite3.connect(DEFAULT_DB) as conn:
@@ -380,23 +780,29 @@ def list_users(request: Request, lang: str = "en"):
                 "created_at": created_at or "",
             }
         )
-    context = _ctx(request, lang=lang)
+    context = _admin_dashboard_context(request, lang=lang)
     context["users"] = users
     return templates.TemplateResponse("users_list.html", context)
 
 
 @app.get("/transactions/all")
 def list_all_transactions(request: Request, lang: str = "en"):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     return list_transactions_by_kind(request, kind="all", lang=lang)
 
 
 @app.get("/transactions/list/{kind}")
 def list_transactions_by_kind(request: Request, kind: str, lang: str = "en"):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(lang)
     title_key, where_sql, params = _transaction_list_filter(kind)
     rows = _fetch_transaction_rows(where_sql, params)
     items = _format_transaction_rows(rows, lang=lang)
-    context = _ctx(request, lang=lang)
+    context = _admin_dashboard_context(request, lang=lang)
     context["transactions"] = items
     context["list_title"] = _bundle(lang).get(title_key, title_key)
     context["list_subtitle"] = _bundle(lang).get("list_subtitle", "")
@@ -406,6 +812,9 @@ def list_transactions_by_kind(request: Request, kind: str, lang: str = "en"):
 
 @app.get("/audit/events")
 def list_audit_events(request: Request, lang: str = "en", event_type: str = ""):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(lang)
     init_db(DEFAULT_DB)
     query = "SELECT created_at, log_id, event_type FROM audit_log"
@@ -422,7 +831,7 @@ def list_audit_events(request: Request, lang: str = "en", event_type: str = ""):
         {"created_at": _friendly_time(ts), "log_id": log_id, "event_type": etype}
         for ts, log_id, etype in rows
     ]
-    context = _ctx(request, lang=lang)
+    context = _admin_dashboard_context(request, lang=lang)
     context["events"] = events
     base_title = _bundle(lang).get("audit_events_title", "Audit Events")
     context["event_title"] = base_title if not event_type else f"{base_title}: {event_type}"
@@ -431,6 +840,9 @@ def list_audit_events(request: Request, lang: str = "en", event_type: str = ""):
 
 @app.get("/change-log")
 def list_change_log(request: Request, lang: str = "en"):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(lang)
     init_db(DEFAULT_DB)
     with sqlite3.connect(DEFAULT_DB) as conn:
@@ -457,7 +869,7 @@ def list_change_log(request: Request, lang: str = "en"):
         }
         for ts, entity_type, entity_id, field_name, old_value, new_value, actor, source in rows
     ]
-    context = _ctx(request, lang=lang)
+    context = _admin_dashboard_context(request, lang=lang)
     context["entries"] = entries
     return templates.TemplateResponse("change_log.html", context)
 
@@ -468,6 +880,9 @@ def do_sync(
     server_url: str = Form("http://localhost:8000"),
     lang: str = Form(default="en"),
 ):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(lang)
     try:
         sender = make_http_sender(server_url.strip())
@@ -477,19 +892,22 @@ def do_sync(
             f"processed={summary.processed}, synced={summary.synced}, "
             f"duplicates={summary.duplicates}, retried={summary.retried}"
         )
-        return templates.TemplateResponse("index.html", _ctx(request, message=msg, lang=lang))
+        return templates.TemplateResponse("index.html", _admin_dashboard_context(request, message=msg, lang=lang))
     except Exception as exc:
         return templates.TemplateResponse(
-            "index.html", _ctx(request, error=str(exc), lang=lang), status_code=400
+            "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
         )
 
 
 @app.get("/sync/queue")
 def view_sync_queue(request: Request, lang: str = "en"):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     # Visualize local outbox queue for offline-first demo.
     lang = _resolve_lang(lang)
     rows = _fetch_outbox_rows()
-    context = _ctx(request, lang=lang)
+    context = _admin_dashboard_context(request, lang=lang)
     context["rows"] = rows
     context["stats"] = _outbox_stats(rows)
     return templates.TemplateResponse("sync_queue.html", context)
@@ -497,6 +915,9 @@ def view_sync_queue(request: Request, lang: str = "en"):
 
 @app.post("/sync/simulate")
 def simulate_night_sync(request: Request, lang: str = Form(default="en")):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     # Demo-only action: mark pending outbox entries as synced.
     lang = _resolve_lang(lang)
     init_db(DEFAULT_DB)
@@ -519,7 +940,7 @@ def simulate_night_sync(request: Request, lang: str = Form(default="en")):
             )
         conn.commit()
     rows = _fetch_outbox_rows()
-    context = _ctx(request, message=_t(lang, "night_sync_done").format(count=len(tx_ids)), lang=lang)
+    context = _admin_dashboard_context(request, message=_t(lang, "night_sync_done").format(count=len(tx_ids)), lang=lang)
     context["rows"] = rows
     context["stats"] = _outbox_stats(rows)
     return templates.TemplateResponse("sync_queue.html", context)
@@ -527,27 +948,38 @@ def simulate_night_sync(request: Request, lang: str = Form(default="en")):
 
 @app.get("/audit")
 def audit_status(request: Request):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(request.query_params.get("lang", "en"))
     result = verify_audit_chain(db_path=DEFAULT_DB)
     if result.is_valid:
         msg = f"{_t(lang, 'audit_valid')}. {_t(lang, 'entries_checked')}: {result.checked_entries}"
-        return templates.TemplateResponse("index.html", _ctx(request, message=msg, lang=lang))
+        return templates.TemplateResponse("index.html", _admin_dashboard_context(request, message=msg, lang=lang))
 
     err = f"{_t(lang, 'audit_invalid')}: {result.error}"
     return templates.TemplateResponse(
-        "index.html", _ctx(request, error=err, lang=lang), status_code=400
+        "index.html", _admin_dashboard_context(request, error=err, lang=lang), status_code=400
     )
 
 
 @app.get("/reset")
 def reset_to_home(request: Request):
     lang = _resolve_lang(request.query_params.get("lang", "en"))
+    role = request.cookies.get(ROLE_COOKIE, "")
+    if role == "customer":
+        return RedirectResponse(url=f"/customer/dashboard?lang={lang}", status_code=303)
+    if role in {"admin", "bank"}:
+        return RedirectResponse(url=f"/bank/dashboard?lang={lang}", status_code=303)
     return RedirectResponse(url=f"/?lang={lang}", status_code=303)
 
 
 @app.post("/seed-demo")
 def seed_demo_data(request: Request):
     """Insert a realistic demo user + transactions for live presentation."""
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(request.query_params.get("lang", "en"))
     try:
         user_id = "demo_user"
@@ -577,20 +1009,23 @@ def seed_demo_data(request: Request):
             )
 
         msg = _t(lang, "demo_seeded")
-        return templates.TemplateResponse("index.html", _ctx(request, message=msg, lang=lang))
+        return templates.TemplateResponse("index.html", _admin_dashboard_context(request, message=msg, lang=lang))
     except Exception as exc:
         return templates.TemplateResponse(
-            "index.html", _ctx(request, error=str(exc), lang=lang), status_code=400
+            "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
         )
 
 
 @app.get("/export/report")
 def export_report(request: Request):
     """Human-friendly security report page."""
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(request.query_params.get("lang", "en"))
     stats = get_dashboard_stats(db_path=DEFAULT_DB)
     audit = verify_audit_chain(db_path=DEFAULT_DB)
-    context = _ctx(request, lang=lang)
+    context = _admin_dashboard_context(request, lang=lang)
     context["report"] = {
         "generated_at": datetime.now(UTC).isoformat(),
         "stats": stats,
@@ -604,7 +1039,10 @@ def export_report(request: Request):
 
 
 @app.get("/export/report.json")
-def export_report_json():
+def export_report_json(request: Request):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     stats = get_dashboard_stats(db_path=DEFAULT_DB)
     audit = verify_audit_chain(db_path=DEFAULT_DB)
     payload = {
@@ -621,6 +1059,9 @@ def export_report_json():
 
 @app.post("/export/change-log")
 def export_change_log(request: Request, lang: str = Form(default="en")):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(lang)
     init_db(DEFAULT_DB)
     export_dir = Path("data/exports")
@@ -656,20 +1097,26 @@ def export_change_log(request: Request, lang: str = Form(default="en")):
         writer.writerows(rows)
 
     msg = f"{_t(lang, 'change_log_exported')} {export_path} ({len(rows)} records)."
-    return templates.TemplateResponse("index.html", _ctx(request, message=msg, lang=lang))
+    return templates.TemplateResponse("index.html", _admin_dashboard_context(request, message=msg, lang=lang))
 
 
 @app.get("/report/impact")
 def fraud_impact_report(request: Request):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(request.query_params.get("lang", "en"))
     impact = _load_impact_report_data()
-    context = _ctx(request, lang=lang)
+    context = _admin_dashboard_context(request, lang=lang)
     context["impact"] = impact
     return templates.TemplateResponse("impact_report.html", context)
 
 
 @app.post("/report/impact/seed")
 def seed_impact_report(request: Request, lang: str = Form(default="en")):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(lang)
     seed_user = "impact_demo"
     pin = "1234"
@@ -685,16 +1132,19 @@ def seed_impact_report(request: Request, lang: str = Form(default="en")):
         simulated = _simulate_scenario(scenario_id=scenario_id, user_id=seed_user, pin=pin)
         _record_scenario_run(scenario_id=scenario_id, user_id=seed_user, transactions=simulated)
     msg = "Impact report seeded with demo scenarios."
-    context = _ctx(request, message=msg, lang=lang)
+    context = _admin_dashboard_context(request, message=msg, lang=lang)
     context["impact"] = _load_impact_report_data()
     return templates.TemplateResponse("impact_report.html", context)
 
 
 @app.get("/demo/walkthrough")
 def professor_walkthrough(request: Request):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(request.query_params.get("lang", "en"))
     demo = _run_professor_walkthrough(lang=lang)
-    context = _ctx(request, lang=lang)
+    context = _admin_dashboard_context(request, lang=lang)
     context["demo"] = demo
     return templates.TemplateResponse("demo_walkthrough.html", context)
 
@@ -715,6 +1165,9 @@ def run_scenario(
     trusted_contact: str = Form(default=""),
     lang: str = Form(default="en"),
 ):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(lang)
     try:
         clean_user = user_id.strip()
@@ -748,11 +1201,11 @@ def run_scenario(
         )
         return templates.TemplateResponse(
             "index.html",
-            _ctx(request, message=summary, lang=lang, voice_text=voice_text),
+            _admin_dashboard_context(request, message=summary, lang=lang, voice_text=voice_text),
         )
     except Exception as exc:
         return templates.TemplateResponse(
-            "index.html", _ctx(request, error=str(exc), lang=lang), status_code=400
+            "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
         )
 
 
@@ -1220,6 +1673,9 @@ def release_transaction(
     approval_code: str = Form(default=""),
     lang: str = Form(default="en"),
 ):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(lang)
     try:
         released = release_held_transaction(
@@ -1232,24 +1688,27 @@ def release_transaction(
         if released:
             return templates.TemplateResponse(
                 "index.html",
-                _ctx(request, message=_t(lang, "release_success"), lang=lang),
+                _admin_dashboard_context(request, message=_t(lang, "release_success"), lang=lang),
             )
         return templates.TemplateResponse(
             "index.html",
-            _ctx(request, error=_t(lang, "release_failed"), lang=lang),
+            _admin_dashboard_context(request, error=_t(lang, "release_failed"), lang=lang),
             status_code=400,
         )
     except Exception as exc:
         return templates.TemplateResponse(
-            "index.html", _ctx(request, error=str(exc), lang=lang), status_code=400
+            "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
         )
 
 
 @app.get("/transactions/release")
 def release_transaction_help(request: Request):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(request.query_params.get("lang", "en"))
     msg = "Use the Release Held Transaction form on the dashboard."
-    return templates.TemplateResponse("index.html", _ctx(request, message=msg, lang=lang))
+    return templates.TemplateResponse("index.html", _admin_dashboard_context(request, message=msg, lang=lang))
 
 
 @app.post("/users/trusted-contact")
@@ -1260,6 +1719,9 @@ def update_trusted_contact(
     trusted_contact: str = Form(...),
     lang: str = Form(default="en"),
 ):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(lang)
     try:
         set_trusted_contact(
@@ -1270,11 +1732,11 @@ def update_trusted_contact(
         )
         return templates.TemplateResponse(
             "index.html",
-            _ctx(request, message=f"{_t(lang, 'trusted_updated')} {user_id.strip()}.", lang=lang),
+            _admin_dashboard_context(request, message=f"{_t(lang, 'trusted_updated')} {user_id.strip()}.", lang=lang),
         )
     except Exception as exc:
         return templates.TemplateResponse(
-            "index.html", _ctx(request, error=str(exc), lang=lang), status_code=400
+            "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
         )
 
 
@@ -1286,6 +1748,9 @@ def panic_freeze(
     minutes: int = Form(60),
     lang: str = Form(default="en"),
 ):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
     lang = _resolve_lang(lang)
     try:
         freeze_until = enable_panic_freeze(
@@ -1296,7 +1761,7 @@ def panic_freeze(
         )
         return templates.TemplateResponse(
             "index.html",
-            _ctx(
+            _admin_dashboard_context(
                 request,
                 message=f"{_t(lang, 'freeze_enabled')} {freeze_until} ({user_id.strip()}).",
                 lang=lang,
@@ -1304,7 +1769,7 @@ def panic_freeze(
         )
     except Exception as exc:
         return templates.TemplateResponse(
-            "index.html", _ctx(request, error=str(exc), lang=lang), status_code=400
+            "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
         )
 
 
@@ -1393,6 +1858,7 @@ def _friendly_reason(code: str, lang: str = "en") -> str:
             "ODD_HOUR": "Transaction at unusual hour",
             "RAPID_BURST": "Multiple rapid transactions",
             "AUTH_FAILURES": "Recent failed login attempts",
+            "NEW_DEVICE": "New device detected for this account",
         },
         "hi": {
             "NEW_RECIPIENT": "नया प्राप्तकर्ता पहले नहीं देखा गया",
@@ -1400,6 +1866,7 @@ def _friendly_reason(code: str, lang: str = "en") -> str:
             "ODD_HOUR": "असामान्य समय पर लेनदेन",
             "RAPID_BURST": "कम समय में कई लेनदेन",
             "AUTH_FAILURES": "हाल में लॉगिन विफल प्रयास",
+            "NEW_DEVICE": "इस खाते के लिए नया डिवाइस पाया गया",
         },
         "or": {
             "NEW_RECIPIENT": "ନୂତନ ପ୍ରାପ୍ତକର୍ତ୍ତା ପୂର୍ବରୁ ଦେଖାଯାଇନି",
@@ -1407,6 +1874,7 @@ def _friendly_reason(code: str, lang: str = "en") -> str:
             "ODD_HOUR": "ଅସାମାନ୍ୟ ସମୟରେ ଟ୍ରାନ୍ଜାକ୍ସନ",
             "RAPID_BURST": "କମ୍ ସମୟରେ ଅନେକ ଟ୍ରାନ୍ଜାକ୍ସନ",
             "AUTH_FAILURES": "ସମ୍ପ୍ରତି ଲଗଇନ ବିଫଳ ପ୍ରୟାସ",
+            "NEW_DEVICE": "ଏହି ଆକାଉଣ୍ଟ ପାଇଁ ନୂତନ ଡିଭାଇସ ଚିହ୍ନଟ",
         },
         "gu": {
             "NEW_RECIPIENT": "નવો પ્રાપ્તકર્તા અગાઉ જોયેલો નથી",
@@ -1414,6 +1882,7 @@ def _friendly_reason(code: str, lang: str = "en") -> str:
             "ODD_HOUR": "અસામાન્ય સમયે ટ્રાન્ઝેક્શન",
             "RAPID_BURST": "ઓછા સમયમાં ઘણા ટ્રાન્ઝેક્શન",
             "AUTH_FAILURES": "તાજેતરના લોગિન નિષ્ફળ પ્રયાસો",
+            "NEW_DEVICE": "આ ખાતા માટે નવું ડિવાઇસ મળ્યું",
         },
         "de": {
             "NEW_RECIPIENT": "Neuer Empfänger bisher unbekannt",
@@ -1421,6 +1890,7 @@ def _friendly_reason(code: str, lang: str = "en") -> str:
             "ODD_HOUR": "Transaktion zu ungewöhnlicher Uhrzeit",
             "RAPID_BURST": "Viele schnelle Transaktionen",
             "AUTH_FAILURES": "Letzte fehlgeschlagene Logins",
+            "NEW_DEVICE": "Neues Gerät für dieses Konto erkannt",
         },
     }.get(lang, {})
     return mapping.get(code, code.replace("_", " ").title())
@@ -1481,6 +1951,8 @@ def _bundle(lang: str) -> dict:
             "lang_label": "Language",
             "title": "RuralShield",
             "subtitle": "Offline-First Security Prototype for Rural Digital Banking",
+            "page_title_login": "Login - RuralShield",
+            "page_title_customer_dashboard": "Customer Portal - RuralShield",
             "page_title_dashboard": "RuralShield Demo",
             "page_title_users": "User List - RuralShield",
             "page_title_transactions": "Transactions - RuralShield",
@@ -1493,6 +1965,46 @@ def _bundle(lang: str) -> dict:
             "page_title_agent": "Agent Mode - RuralShield",
             "page_title_audit": "Audit Events - RuralShield",
             "page_title_sync_queue": "Sync Queue - RuralShield",
+            "login_eyebrow": "Secure Entry",
+            "login_title": "Choose Your Secure Portal",
+            "login_subtitle": "Separate customer banking actions from bank-side fraud monitoring and controls.",
+            "customer_portal_eyebrow": "Customer Portal",
+            "customer_portal_title": "Customer Banking Portal",
+            "customer_portal_subtitle": "Login with your user ID, PIN, and a face verification check.",
+            "customer_welcome": "Logged in as",
+            "customer_tx_title": "Create Secure Transaction",
+            "customer_safety_title": "Safety Controls",
+            "customer_history_title": "Personal Transaction History",
+            "admin_portal_eyebrow": "Bank/Admin Portal",
+            "admin_portal_title": "Bank/Admin Security Portal",
+            "admin_portal_subtitle": "Central controls for fraud review, sync monitoring, and audit visibility.",
+            "customer_login_cta": "Enter Customer Portal",
+            "admin_login_cta": "Enter Admin Portal",
+            "login_credentials_title": "Login Credentials",
+            "login_credentials_body": "Enter your secure credentials first, then complete the face capture on the right.",
+            "admin_username": "Admin username",
+            "admin_password": "Admin password",
+            "face_verified_label": "Face verified",
+            "device_trust_label": "Device trust",
+            "device_trusted": "Trusted",
+            "device_untrusted": "New device",
+            "face_placeholder_title": "Live Face Capture Security Step",
+            "face_placeholder_body": "This login flow now requires a real webcam capture before entry. The image is stored locally on the device for demo traceability and can later be replaced by full biometric matching.",
+            "face_capture_title": "Capture Face Before Login",
+            "face_capture_body": "Start the camera, look at the screen, and capture a photo to continue.",
+            "face_start": "Start Camera",
+            "face_capture": "Capture Face",
+            "face_not_captured": "No face captured yet.",
+            "face_camera_ready": "Camera is ready. Capture the face to continue.",
+            "face_camera_error": "Camera access failed. Please allow camera permission and try again.",
+            "face_camera_wait": "Camera is loading. Please wait a moment and try again.",
+            "face_captured_ok": "Face captured successfully. You can now log in.",
+            "face_mismatch": "Face verification failed. Please try again in good lighting and face the camera.",
+            "device_required": "Device verification is required. Please refresh and try again.",
+            "login_switch_title": "Portal Access",
+            "login_switch_body": "Use separate links for the customer and bank/admin sides of the system.",
+            "customer_scope_error": "Customer portal can only open the logged-in user's transaction history.",
+            "logout": "Logout",
             "users": "Users",
             "transactions": "Transactions",
             "pending_sync": "Pending Sync",
@@ -2518,6 +3030,10 @@ def _t(lang: str, key: str) -> str:
             "freeze_enabled": "Panic freeze enabled until",
             "invalid_pin_existing": "Invalid PIN for existing user.",
             "night_sync_done": "Night sync simulated: {count} transactions marked synced.",
+            "face_required": "Face verification is required before login.",
+            "customer_login_failed": "Customer login failed. Check user ID or PIN.",
+            "admin_login_failed": "Admin login failed. Check username or password.",
+            "invalid_role": "Invalid login role selected.",
         },
         "hi": {
             "no_alert": "कोई अलर्ट ट्रिगर नहीं",
@@ -2656,4 +3172,6 @@ def _t(lang: str, key: str) -> str:
             "night_sync_done": "Nachtsync simuliert: {count} Transaktionen als synchronisiert markiert.",
         },
     }
-    return dictionary.get(lang, dictionary["en"]).get(key, key)
+    base = dictionary["en"]
+    localized = dictionary.get(lang, {})
+    return {**base, **localized}.get(key, key)

@@ -22,6 +22,15 @@ body {
   margin: 0 auto;
   padding: 18px;
 }
+.eyebrow {
+  display: inline-block;
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+}
 header h1 {
   margin: 0;
   font-size: 1.8rem;
@@ -40,6 +49,15 @@ header p {
   display: flex;
   align-items: flex-end;
   gap: 12px;
+  flex-wrap: wrap;
+}
+.status-chip {
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-size: 0.88rem;
+  color: var(--muted);
 }
 .lang-form {
   display: flex;
@@ -208,6 +226,151 @@ button:hover, .button:hover { background: var(--accent-2); }
 .card-agent {
   border-left: 4px solid #2a9d8f;
 }
+.auth-shell {
+  max-width: 1080px;
+  min-height: 100vh;
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding-top: 40px;
+}
+.auth-hero {
+  padding: 20px 0 4px;
+}
+.auth-hero h1 {
+  margin: 0;
+  font-size: clamp(2.2rem, 4vw, 3.6rem);
+  line-height: 1;
+}
+.auth-hero p {
+  max-width: 640px;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+.auth-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+.auth-choice-grid .button {
+  margin-top: 8px;
+  width: 100%;
+}
+.auth-form-shell {
+  display: grid;
+  gap: 16px;
+}
+.auth-card {
+  padding: 20px;
+  background: linear-gradient(160deg, rgba(255,255,255,0.98), rgba(239,247,255,0.95));
+}
+.auth-form-card {
+  max-width: 980px;
+}
+.face-login-form {
+  display: grid;
+  gap: 18px;
+}
+.login-panel-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(320px, 1fr);
+  gap: 18px;
+  align-items: stretch;
+}
+.login-credentials,
+.face-capture-box {
+  min-width: 0;
+}
+.login-credentials {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(245,249,255,0.95));
+}
+.login-card-head h2,
+.auth-footer-note h3 {
+  margin: 0 0 6px;
+}
+.login-card-head p,
+.auth-footer-note p {
+  margin: 0;
+  color: var(--muted);
+}
+.login-inputs {
+  display: grid;
+  gap: 12px;
+}
+.login-submit-btn {
+  width: 100%;
+}
+.admin-card {
+  background: linear-gradient(160deg, rgba(255,255,255,0.98), rgba(239,248,244,0.95));
+}
+.auth-note {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+}
+.auth-lang {
+  min-width: 160px;
+}
+.face-capture-box {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  background: linear-gradient(180deg, rgba(247,251,255,0.9), rgba(255,255,255,0.95));
+}
+.face-capture-head h3 {
+  margin: 0 0 6px;
+}
+.face-capture-head p {
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+.face-frame {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #edf4ff, #f8fbff);
+  border: 1px solid var(--border);
+  padding: 10px;
+}
+.face-video,
+.face-preview {
+  width: 100%;
+  max-width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #dfe8f4;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+.face-actions {
+  justify-content: flex-start;
+}
+.face-status {
+  margin-top: 0;
+}
+.auth-footer-note {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: #f8fbff;
+  border: 1px solid var(--border);
+}
 .voice-card {
   padding: 12px 16px;
   border-left: 4px solid #457b9d;
@@ -276,5 +439,21 @@ tbody tr:nth-child(odd) {
   }
   .header-actions {
     align-items: stretch;
+  }
+  .auth-note {
+    flex-direction: column;
+  }
+  .login-panel-grid {
+    grid-template-columns: 1fr;
+  }
+  .auth-footer-note {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .face-frame {
+    min-height: 220px;
+  }
+  .face-actions .button {
+    flex: 1 1 auto;
   }
 }

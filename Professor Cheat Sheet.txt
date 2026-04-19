@@ -1,0 +1,32 @@
+RURALSHIELD – PROFESSOR CHEAT SHEET (1 PAGE)
+
+1) PROBLEM STATEMENT (ONE LINE)
+Cybersecurity Framework for Rural Digital Banking (SIH PSID 25205): offline‑first, fraud detection + secure authentication for low‑end phones and weak internet.
+
+2) CORE IDEA (ONE LINE)
+Store locally first → detect fraud locally → sync later when network is safe.
+
+3) WHAT I BUILT (KEY FEATURES)
+- Local encrypted storage in SQLite
+- Fraud scoring rules (new recipient, high amount, odd hour, rapid burst, failed logins)
+- Actions: allow / hold / block
+- Trusted contact approvals for risky cases
+- Audit log + change log (old/new values)
+- Offline outbox + sync queue + night sync simulator
+- Multilingual UI + voice safety prompt
+
+4) DEMO FLOW (WHAT I’LL SHOW)
+- Create user
+- Create transaction (shows risk + action)
+- Open transaction list
+- Open sync queue (pending items)
+- Simulate night sync (pending → synced)
+
+5) TECH STACK
+Python, FastAPI, SQLite, Jinja2 templates, cryptography library, browser SpeechSynthesis API.
+
+6) WHY IT MATCHES RURAL NEEDS
+Works offline, low‑resource, stops fraud before sync, simple UI.
+
+7) FUTURE WORK (1 LINE)
+Real OTP delivery + ML anomaly detection + signed audit reports.

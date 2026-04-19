@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ i18n.page_title_login }}</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="container auth-shell">
+    <section class="auth-hero">
+      <div class="eyebrow">{{ i18n.login_eyebrow }}</div>
+      <h1>
+        {% if login_mode == "customer" %}
+          {{ i18n.customer_portal_title }}
+        {% elif login_mode == "bank" %}
+          {{ i18n.admin_portal_title }}
+        {% else %}
+          {{ i18n.login_title }}
+        {% endif %}
+      </h1>
+      <p>
+        {% if login_mode == "customer" %}
+          {{ i18n.customer_portal_subtitle }}
+        {% elif login_mode == "bank" %}
+          {{ i18n.admin_portal_subtitle }}
+        {% else %}
+          {{ i18n.login_subtitle }}
+        {% endif %}
+      </p>
+    </section>
+
+    {% if message %}
+      <section class="alert success">{{ message }}</section>
+    {% endif %}
+    {% if error %}
+      <section class="alert error">{{ error }}</section>
+    {% endif %}
+
+    {% if login_mode == "choose" %}
+    <section class="auth-grid auth-choice-grid">
+      <article class="card auth-card">
+        <h2>{{ i18n.customer_portal_title }}</h2>
+        <p class="muted">{{ i18n.customer_portal_subtitle }}</p>
+        <a href="/customer/login?lang={{ lang }}" class="button">{{ i18n.customer_login_cta }}</a>
+      </article>
+
+      <article class="card auth-card admin-card">
+        <h2>{{ i18n.admin_portal_title }}</h2>
+        <p class="muted">{{ i18n.admin_portal_subtitle }}</p>
+        <a href="/bank/login?lang={{ lang }}" class="button">{{ i18n.admin_login_cta }}</a>
+      </article>
+    </section>
+    {% else %}
+    <section class="auth-form-shell">
+      <article class="card auth-card auth-form-card">
+        <form action="/login" method="post" class="face-login-form">
+          <input type="hidden" name="lang" value="{{ lang }}">
+          <input type="hidden" name="role" value="{{ login_mode }}">
+          <input type="hidden" name="face_image" class="face-image-input">
+          <input type="hidden" name="device_id" class="device-id-input">
+
+          <div class="login-panel-grid">
+            <section class="login-credentials">
+              <div class="login-card-head">
+                <h2>{{ i18n.login_credentials_title }}</h2>
+                <p>{{ i18n.login_credentials_body }}</p>
+              </div>
+
+              <div class="login-inputs">
+                {% if login_mode == "customer" %}
+                  <input name="user_id" placeholder="{{ i18n.ph_user_id }}" required>
+                  <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+          {% else %}
+            <input name="admin_username" placeholder="{{ i18n.admin_username }}" required>
+            <input name="admin_password" type="password" placeholder="{{ i18n.admin_password }}" required>
+          {% endif %}
+              </div>
+
+              <button type="submit" class="login-submit-btn">
+                {% if login_mode == "customer" %}
+                  {{ i18n.customer_login_cta }}
+                {% else %}
+                  {{ i18n.admin_login_cta }}
+                {% endif %}
+              </button>
+            </section>
+
+            <section class="face-capture-box">
+              <div class="face-capture-head">
+                <h3>{{ i18n.face_capture_title }}</h3>
+                <p>{{ i18n.face_capture_body }}</p>
+              </div>
+              <div class="face-frame">
+                <video class="face-video" autoplay playsinline muted></video>
+                <img class="face-preview" alt="Face capture preview" hidden>
+              </div>
+              <canvas class="face-canvas" hidden></canvas>
+              <div class="actions face-actions">
+                <button type="button" class="button secondary face-start-btn">{{ i18n.face_start }}</button>
+                <button type="button" class="button secondary face-capture-btn" disabled>{{ i18n.face_capture }}</button>
+              </div>
+              <p class="muted face-status">{{ i18n.face_not_captured }}</p>
+            </section>
+          </div>
+
+          <div class="auth-footer-note">
+            <div>
+              <h3>{{ i18n.face_placeholder_title }}</h3>
+              <p>{{ i18n.face_placeholder_body }}</p>
+            </div>
+            <div class="actions">
+              <a href="/?lang={{ lang }}" class="button secondary">{{ i18n.back_dashboard }}</a>
+            </div>
+          </div>
+        </form>
+      </article>
+    </section>
+    {% endif %}
+
+    <section class="card auth-note">
+      <div>
+        <h2>{{ i18n.login_switch_title }}</h2>
+        <p>{{ i18n.login_switch_body }}</p>
+      </div>
+      <form action="{% if login_mode == 'customer' %}/customer/login{% elif login_mode == 'bank' %}/bank/login{% else %}/{% endif %}" method="get" class="lang-form auth-lang">
+        <label for="lang">{{ i18n.lang_label }}</label>
+        <select id="lang" name="lang" onchange="this.form.submit()">
+          {% for item in langs %}
+          <option value="{{ item.code }}" {% if item.code == lang %}selected{% endif %}>{{ item.label }}</option>
+          {% endfor %}
+        </select>
+      </form>
+    </section>
+  </main>
+  <script>
+    (() => {
+      const form = document.querySelector(".face-login-form");
+      if (!form) return;
+
+      const deviceField = form.querySelector(".device-id-input");
+      const video = form.querySelector(".face-video");
+      const canvas = form.querySelector(".face-canvas");
+      const preview = form.querySelector(".face-preview");
+      const startBtn = form.querySelector(".face-start-btn");
+      const captureBtn = form.querySelector(".face-capture-btn");
+      const hiddenInput = form.querySelector(".face-image-input");
+      const status = form.querySelector(".face-status");
+      let stream = null;
+
+      // Stable device id stored locally (offline-first).
+      try {
+        const key = "ruralshield_device_id";
+        let deviceId = window.localStorage.getItem(key);
+        if (!deviceId) {
+          deviceId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
+          window.localStorage.setItem(key, deviceId);
+        }
+        if (deviceField) deviceField.value = deviceId;
+      } catch (e) {
+        // If localStorage is blocked, server will treat device id as missing.
+      }
+
+      const stopStream = () => {
+        if (!stream) return;
+        stream.getTracks().forEach((track) => track.stop());
+        stream = null;
+      };
+
+      startBtn.addEventListener("click", async () => {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+          video.srcObject = stream;
+          captureBtn.disabled = false;
+          status.textContent = "{{ i18n.face_camera_ready }}";
+        } catch (err) {
+          status.textContent = "{{ i18n.face_camera_error }}";
+        }
+      });
+
+      captureBtn.addEventListener("click", () => {
+        if (!video.videoWidth || !video.videoHeight) {
+          status.textContent = "{{ i18n.face_camera_wait }}";
+          return;
+        }
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL("image/png");
+        hiddenInput.value = dataUrl;
+        preview.src = dataUrl;
+        preview.hidden = false;
+        status.textContent = "{{ i18n.face_captured_ok }}";
+        stopStream();
+      });
+
+      form.addEventListener("submit", (event) => {
+        if (!hiddenInput.value) {
+          event.preventDefault();
+          status.textContent = "{{ i18n.face_required }}";
+        }
+      });
+
+      window.addEventListener("beforeunload", stopStream);
+    })();
+  </script>
+</body>
+</html>

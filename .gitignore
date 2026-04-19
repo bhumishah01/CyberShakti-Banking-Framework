@@ -4,3 +4,6 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 .venv/
+data/exports/*.csv
+data/face_captures/*.png
+data/bank_face_hash.json

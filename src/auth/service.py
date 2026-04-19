@@ -61,6 +61,10 @@ def create_user(
         "step_up_enabled": True,
         "trusted_contact": "",
         "freeze_until": "",
+        # Biometric + device placeholders (offline prototype).
+        "face_hash_algo": "",
+        "face_hash": "",
+        "device_id": "",
     }
 
     change_events: list[dict] = []
@@ -379,3 +383,98 @@ def _update_auth_config(user_id: str, config: dict, db_path: Path) -> None:
             (json.dumps(config), user_id),
         )
         conn.commit()
+
+
+def enroll_or_verify_face_hash(
+    user_id: str,
+    pin: str,
+    captured_algo: str,
+    captured_hash: str,
+    *,
+    max_distance: int = 12,
+    db_path: Path = DB_PATH,
+) -> tuple[bool, str]:
+    """Enroll face hash on first use; verify on subsequent logins.
+
+    Returns (ok, reason):
+    - ok=True, reason='enrolled' when first-time enrollment happens
+    - ok=True, reason='verified' when match is within threshold
+    - ok=False, reason='mismatch' when match fails
+    """
+    # Require correct PIN before any biometric action.
+    _ = derive_session_key(user_id=user_id, pin=pin, db_path=db_path)
+
+    config = get_user_auth_config(user_id=user_id, db_path=db_path)
+    stored_algo = str(config.get("face_hash_algo", "") or "")
+    stored_hash = str(config.get("face_hash", "") or "")
+
+    captured_algo = (captured_algo or "").strip().lower()
+    captured_hash = (captured_hash or "").strip().lower()
+    if not captured_algo or not captured_hash:
+        return False, "missing"
+
+    if not stored_hash:
+        config["face_hash_algo"] = captured_algo
+        config["face_hash"] = captured_hash
+        _update_auth_config(user_id=user_id, config=config, db_path=db_path)
+        log_change(
+            entity_type="user",
+            entity_id=user_id,
+            field_name="face_hash",
+            old_value="",
+            new_value="<enrolled>",
+            actor=user_id,
+            source="face_enroll",
+            db_path=db_path,
+        )
+        return True, "enrolled"
+
+    if stored_algo != captured_algo:
+        return False, "algo_mismatch"
+
+    # Local import to avoid circular dependency from auth -> ui.
+    from src.auth.biometric import hamming_distance_hex64
+
+    distance = hamming_distance_hex64(stored_hash, captured_hash)
+    return (distance <= max_distance), ("verified" if distance <= max_distance else "mismatch")
+
+
+def enroll_or_verify_device_id(
+    user_id: str,
+    pin: str,
+    device_id: str,
+    *,
+    db_path: Path = DB_PATH,
+) -> tuple[bool, str]:
+    """Enroll device id on first use; flag new device on mismatch.
+
+    Returns (ok, reason):
+    - ok=True, reason='enrolled' when first-time enrollment happens
+    - ok=True, reason='verified' when the device matches
+    - ok=True, reason='new_device' when a different device is seen (not a hard-fail)
+    """
+    _ = derive_session_key(user_id=user_id, pin=pin, db_path=db_path)
+    device_id = (device_id or "").strip()
+    if not device_id:
+        return False, "missing"
+
+    config = get_user_auth_config(user_id=user_id, db_path=db_path)
+    stored = str(config.get("device_id", "") or "").strip()
+    if not stored:
+        config["device_id"] = device_id
+        _update_auth_config(user_id=user_id, config=config, db_path=db_path)
+        log_change(
+            entity_type="user",
+            entity_id=user_id,
+            field_name="device_id",
+            old_value="",
+            new_value="<enrolled>",
+            actor=user_id,
+            source="device_enroll",
+            db_path=db_path,
+        )
+        return True, "enrolled"
+
+    if stored == device_id:
+        return True, "verified"
+    return True, "new_device"
