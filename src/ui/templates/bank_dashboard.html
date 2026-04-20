@@ -168,6 +168,196 @@
       {% endif %}
     </section>
 
+    <section class="card">
+      <h2>{{ i18n.admin_overview_title }}</h2>
+      <section class="stats-grid">
+        <article class="stat-card"><h3>{{ i18n.users }}</h3><p>{{ local_admin.overview.user_count }}</p></article>
+        <article class="stat-card"><h3>{{ i18n.transactions }}</h3><p>{{ local_admin.overview.tx_count }}</p></article>
+        <article class="stat-card"><h3>{{ i18n.admin_allowed }}</h3><p>{{ local_admin.overview.allowed }}</p></article>
+        <article class="stat-card"><h3>{{ i18n.held }}</h3><p>{{ local_admin.overview.held }}</p></article>
+        <article class="stat-card"><h3>{{ i18n.blocked }}</h3><p>{{ local_admin.overview.blocked }}</p></article>
+        <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p>{{ local_admin.overview.pending_sync }}</p></article>
+      </section>
+    </section>
+
+    <section class="card">
+      <h2>{{ i18n.admin_fraud_trends }}</h2>
+      <div style="overflow:auto;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>{{ i18n.admin_day }}</th>
+              <th>{{ i18n.admin_alerts }}</th>
+              <th>{{ i18n.admin_high_risk_txs }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in local_admin.trends %}
+              <tr>
+                <td>{{ row.day }}</td>
+                <td>{{ row.alerts }}</td>
+                <td>{{ row.high_risk_txs }}</td>
+              </tr>
+            {% endfor %}
+            {% if (local_admin.trends|length) == 0 %}
+              <tr><td colspan="3" class="muted">{{ i18n.admin_no_trends }}</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>{{ i18n.admin_high_risk_users }}</h2>
+      <div style="overflow:auto;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>{{ i18n.admin_user }}</th>
+              <th>{{ i18n.admin_user_risk }}</th>
+              <th>{{ i18n.admin_last_activity }}</th>
+              <th>{{ i18n.admin_tx_count }}</th>
+              <th>{{ i18n.admin_avg_amount }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in local_admin.high_risk_users %}
+              <tr>
+                <td><code>{{ u.user_id }}</code></td>
+                <td>{{ u.user_risk_score }}/100</td>
+                <td>{{ u.last_tx_at }}</td>
+                <td>{{ u.tx_count }}</td>
+                <td>{{ "%.2f"|format(u.avg_amount) }}</td>
+              </tr>
+            {% endfor %}
+            {% if (local_admin.high_risk_users|length) == 0 %}
+              <tr><td colspan="5" class="muted">{{ i18n.admin_no_high_risk_users }}</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>{{ i18n.admin_suspicious_alerts }}</h2>
+      <div style="overflow:auto;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>{{ i18n.time }}</th>
+              <th>{{ i18n.admin_alert_type }}</th>
+              <th>{{ i18n.admin_severity }}</th>
+              <th>{{ i18n.admin_user }}</th>
+              <th>{{ i18n.admin_message }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in local_admin.alerts %}
+              <tr>
+                <td>{{ a.created_at }}</td>
+                <td>{{ a.alert_type }}</td>
+                <td>{{ a.severity }}</td>
+                <td><code>{{ a.user_id }}</code></td>
+                <td class="muted small">{{ a.message }}</td>
+              </tr>
+            {% endfor %}
+            {% if (local_admin.alerts|length) == 0 %}
+              <tr><td colspan="5" class="muted">{{ i18n.admin_no_alerts }}</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>{{ i18n.admin_device_monitoring }}</h2>
+      <div style="overflow:auto;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>{{ i18n.admin_user }}</th>
+              <th>{{ i18n.admin_device_id }}</th>
+              <th>{{ i18n.admin_trusted }}</th>
+              <th>{{ i18n.admin_first_seen }}</th>
+              <th>{{ i18n.admin_last_seen }}</th>
+              <th>{{ i18n.admin_seen_count }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in local_admin.devices %}
+              <tr>
+                <td><code>{{ d.user_id }}</code></td>
+                <td class="muted small"><code>{{ d.device_id }}</code></td>
+                <td>{{ i18n.demo_yes if d.is_trusted else i18n.demo_no }}</td>
+                <td>{{ d.first_seen }}</td>
+                <td>{{ d.last_seen }}</td>
+                <td>{{ d.seen_count }}</td>
+              </tr>
+            {% endfor %}
+            {% if (local_admin.devices|length) == 0 %}
+              <tr><td colspan="6" class="muted">{{ i18n.admin_no_devices }}</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>{{ i18n.admin_notifications }}</h2>
+      <ul class="list">
+        {% for n in local_admin.notifications %}
+          <li><strong>{{ n.title }}</strong> <span class="muted small">{{ n.body }}</span></li>
+        {% endfor %}
+        {% if (local_admin.notifications|length) == 0 %}
+          <li class="muted">{{ i18n.admin_no_notifications }}</li>
+        {% endif %}
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>{{ i18n.admin_transaction_monitoring }}</h2>
+      <div class="actions">
+        <a class="button secondary" href="/bank/dashboard?view=all&lang={{ lang }}">{{ i18n.admin_view_all }}</a>
+        <a class="button secondary" href="/bank/dashboard?view=held&lang={{ lang }}">{{ i18n.held }}</a>
+        <a class="button secondary" href="/bank/dashboard?view=blocked&lang={{ lang }}">{{ i18n.blocked }}</a>
+        <a class="button secondary" href="/bank/dashboard?view=allowed&lang={{ lang }}">{{ i18n.admin_allowed }}</a>
+      </div>
+      <p class="muted small" style="margin-top:8px;">{{ i18n.admin_tx_note }}</p>
+      <div style="overflow:auto; margin-top:10px;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>{{ i18n.time }}</th>
+              <th>{{ i18n.tx_id }}</th>
+              <th>{{ i18n.admin_user }}</th>
+              <th>{{ i18n.amount }}</th>
+              <th>{{ i18n.recipient }}</th>
+              <th>{{ i18n.risk }}</th>
+              <th>{{ i18n.reasons }}</th>
+              <th>{{ i18n.status }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for tx in local_admin.transactions %}
+              <tr>
+                <td>{{ tx.timestamp }}</td>
+                <td><code>{{ tx.tx_id }}</code></td>
+                <td><code>{{ tx.user_id }}</code></td>
+                <td>{{ tx.amount }}</td>
+                <td>{{ tx.recipient }}</td>
+                <td>{{ tx.risk_score }} ({{ tx.risk_level }})</td>
+                <td class="muted small">{{ (tx.reason_codes or [])|join(", ") }}</td>
+                <td>{{ tx.status }}</td>
+              </tr>
+            {% endfor %}
+            {% if (local_admin.transactions|length) == 0 %}
+              <tr><td colspan="8" class="muted">{{ i18n.admin_no_transactions }}</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <section id="operations" class="card">
       <h2>{{ i18n.nav_operations }}</h2>
       <div class="actions">

@@ -47,6 +47,8 @@ from src.database.transaction_store import (
 )
 from src.database.monitoring_store import list_notifications
 from src.database.profile_store import get_or_create_profile, preferred_hours
+from src.database.device_store import list_devices
+from src.database.monitoring_store import list_recent_alerts
 from src.sync.client import make_http_sender
 from src.sync.manager import sync_outbox
 
@@ -520,6 +522,174 @@ def _admin_dashboard_context(
     return context
 
 
+def _local_admin_overview(db_path: Path = DEFAULT_DB) -> dict:
+    # Lightweight overview for admin portal (local SQLite).
+    init_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM users")
+        user_count = int(cursor.fetchone()[0])
+        cursor.execute("SELECT COUNT(*) FROM transactions")
+        tx_count = int(cursor.fetchone()[0])
+        cursor.execute("SELECT COUNT(*) FROM transactions WHERE status = 'PENDING'")
+        pending = int(cursor.fetchone()[0])
+        cursor.execute("SELECT COUNT(*) FROM transactions WHERE status IN ('HOLD_FOR_REVIEW','AWAITING_TRUSTED_APPROVAL')")
+        held = int(cursor.fetchone()[0])
+        cursor.execute("SELECT COUNT(*) FROM transactions WHERE (status LIKE 'BLOCKED_%' OR status = 'BLOCKED_LOCAL')")
+        blocked = int(cursor.fetchone()[0])
+        allowed = max(0, tx_count - held - blocked)
+    return {
+        "user_count": user_count,
+        "tx_count": tx_count,
+        "allowed": allowed,
+        "held": held,
+        "blocked": blocked,
+        "pending_sync": pending,
+    }
+
+
+def _fraud_trends(db_path: Path = DEFAULT_DB, days: int = 7) -> list[dict]:
+    # Simple "chart-ready" grouped data.
+    init_db(db_path)
+    days = max(1, int(days))
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT substr(created_at, 1, 10) AS day, COUNT(*)
+            FROM alerts
+            GROUP BY day
+            ORDER BY day DESC
+            LIMIT {days}
+            """
+        )
+        alert_rows = cursor.fetchall()
+        cursor.execute(
+            f"""
+            SELECT substr(timestamp, 1, 10) AS day, COUNT(*)
+            FROM transactions
+            WHERE risk_score >= 70 OR risk_level = 'HIGH'
+            GROUP BY day
+            ORDER BY day DESC
+            LIMIT {days}
+            """
+        )
+        risk_rows = cursor.fetchall()
+    alert_map = {d: int(c) for d, c in alert_rows}
+    risk_map = {d: int(c) for d, c in risk_rows}
+    all_days = sorted(set(alert_map.keys()) | set(risk_map.keys()), reverse=True)[:days]
+    out = []
+    for d in all_days:
+        out.append({"day": d, "alerts": alert_map.get(d, 0), "high_risk_txs": risk_map.get(d, 0)})
+    return list(reversed(out))
+
+
+def _high_risk_users(db_path: Path = DEFAULT_DB, limit: int = 10) -> list[dict]:
+    init_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT user_id, user_risk_score, last_tx_at, tx_count, avg_amount
+            FROM user_profiles
+            ORDER BY user_risk_score DESC, updated_at DESC
+            LIMIT ?
+            """,
+            (int(limit),),
+        )
+        rows = cursor.fetchall()
+    items = []
+    for user_id, risk, last_tx_at, tx_count, avg_amount in rows:
+        items.append(
+            {
+                "user_id": user_id,
+                "user_risk_score": int(risk or 0),
+                "last_tx_at": _friendly_time(last_tx_at) if last_tx_at else "-",
+                "tx_count": int(tx_count or 0),
+                "avg_amount": float(avg_amount or 0.0),
+            }
+        )
+    return items
+
+
+def _local_tx_amount_recipient(tx_ids: list[str], db_path: Path = DEFAULT_DB) -> dict[str, dict]:
+    # Pull "amount" and "recipient" from local change_log (demo visibility).
+    if not tx_ids:
+        return {}
+    init_db(db_path)
+    placeholders = ",".join("?" for _ in tx_ids)
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT c.entity_id, c.field_name, c.new_value
+            FROM change_log c
+            JOIN (
+              SELECT entity_id, field_name, MAX(created_at) AS mx
+              FROM change_log
+              WHERE entity_type = 'transaction'
+                AND field_name IN ('amount','recipient')
+              GROUP BY entity_id, field_name
+            ) m
+            ON c.entity_id = m.entity_id AND c.field_name = m.field_name AND c.created_at = m.mx
+            WHERE c.entity_type = 'transaction'
+              AND c.entity_id IN ({placeholders})
+            """,
+            (*tx_ids,),
+        )
+        rows = cursor.fetchall()
+    out: dict[str, dict] = {}
+    for entity_id, field_name, new_value in rows:
+        out.setdefault(entity_id, {})
+        out[entity_id][field_name] = new_value
+    return out
+
+
+def _local_transactions(db_path: Path = DEFAULT_DB, status_filter: str = "", limit: int = 100) -> list[dict]:
+    init_db(db_path)
+    status_filter = (status_filter or "").strip().upper()
+    where = ""
+    params: list[Any] = []
+    if status_filter == "HELD":
+        where = "WHERE status IN ('HOLD_FOR_REVIEW','AWAITING_TRUSTED_APPROVAL')"
+    elif status_filter == "BLOCKED":
+        where = "WHERE (status LIKE 'BLOCKED_%' OR status = 'BLOCKED_LOCAL')"
+    elif status_filter == "ALLOWED":
+        where = "WHERE status NOT IN ('HOLD_FOR_REVIEW','AWAITING_TRUSTED_APPROVAL') AND (status NOT LIKE 'BLOCKED_%' AND status != 'BLOCKED_LOCAL')"
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT tx_id, user_id, timestamp, risk_score, risk_level, status, reason_codes
+            FROM transactions
+            {where}
+            ORDER BY timestamp DESC
+            LIMIT ?
+            """,
+            (*params, int(limit)),
+        )
+        rows = cursor.fetchall()
+    tx_ids = [r[0] for r in rows]
+    extra = _local_tx_amount_recipient(tx_ids, db_path=db_path)
+    items = []
+    for tx_id, user_id, ts, risk_score, risk_level, status, reason_codes in rows:
+        meta = extra.get(tx_id, {})
+        items.append(
+            {
+                "tx_id": tx_id,
+                "user_id": user_id,
+                "timestamp": _friendly_time(ts),
+                "risk_score": int(risk_score or 0),
+                "risk_level": str(risk_level or ""),
+                "status": str(status or ""),
+                "reason_codes": _safe_parse_reason_codes(reason_codes if isinstance(reason_codes, str) else json.dumps(reason_codes or {})),
+                "amount": meta.get("amount", "-"),
+                "recipient": meta.get("recipient", "-"),
+            }
+        )
+    return items
+
+
 def _fetch_outbox_rows(limit: int = 200) -> list[dict]:
     # Read local sync queue (outbox) for the Sync Queue page.
     init_db(DEFAULT_DB)
@@ -919,17 +1089,30 @@ def bank_dashboard(request: Request):
     guard = _require_role(request, "bank")
     if guard:
         return guard
-    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    lang = _lang_from_request(request)
     context = _admin_dashboard_context(request, lang=lang)
     token = _jwt_from_request(request)
     context["server"] = {"connected": False, "error": "", "transactions": [], "fraud_logs": [], "sync_status": {}}
+    # Local admin panels (always available offline).
+    view = (request.query_params.get("view") or "").strip().lower()
+    status_filter = {"held": "HELD", "blocked": "BLOCKED", "allowed": "ALLOWED"}.get(view, "")
+    context["local_admin"] = {
+        "overview": _local_admin_overview(DEFAULT_DB),
+        "trends": _fraud_trends(DEFAULT_DB, days=7),
+        "high_risk_users": _high_risk_users(DEFAULT_DB, limit=10),
+        "alerts": list_recent_alerts(DEFAULT_DB, limit=20),
+        "devices": list_devices(DEFAULT_DB, limit=50),
+        "notifications": list_notifications(role="bank", user_id=None, db_path=DEFAULT_DB, limit=20),
+        "transactions": _local_transactions(DEFAULT_DB, status_filter=status_filter, limit=120),
+        "view": view or "all",
+    }
     if token:
         try:
             data = _server_dashboard_bank_data(token)
             context["server"] = {"connected": True, "error": "", **data}
         except Exception as exc:
             context["server"] = {"connected": False, "error": str(exc), "transactions": [], "fraud_logs": [], "sync_status": {}}
-    return templates.TemplateResponse(request, "bank_dashboard.html", context)
+    return render_template(request, "bank_dashboard.html", context)
 
 
 @app.post("/bank/server/tx/review")
@@ -945,15 +1128,18 @@ def bank_review_server_tx(
     lang = _resolve_lang(lang)
     token = _jwt_from_request(request)
     if not token:
-        return templates.TemplateResponse(
-            request, "bank_dashboard.html", _admin_dashboard_context(request, error="Missing server session. Please re-login.", lang=lang), status_code=400
+        return render_template(
+            request,
+            "bank_dashboard.html",
+            _admin_dashboard_context(request, error="Missing server session. Please re-login.", lang=lang),
+            status_code=400,
         )
     try:
         _api_call("POST", f"/transactions/{tx_id}/review", token=token, json_body={"decision": decision})
         return RedirectResponse(url=f"/bank/dashboard?lang={lang}", status_code=303)
     except Exception as exc:
         ctx = _admin_dashboard_context(request, error=str(exc), lang=lang)
-        return templates.TemplateResponse(request, "bank_dashboard.html", ctx, status_code=400)
+        return render_template(request, "bank_dashboard.html", ctx, status_code=400)
 
 
 @app.post("/customer/server/transactions")
@@ -2606,6 +2792,13 @@ def _safe_parse_reason_codes(raw: str | None) -> list[str]:
     # Local helper for UI-only displays (mini statement / alerts).
     if not raw:
         return []
+    if isinstance(raw, dict):
+        try:
+            codes = raw.get("reason_codes", [])
+            if isinstance(codes, list):
+                return [str(x) for x in codes]
+        except Exception:
+            return []
     try:
         payload = json.loads(raw)
         if isinstance(payload, dict):
@@ -2742,6 +2935,39 @@ def _bundle(lang: str) -> dict:
             "back_to_dashboard": "Back to Dashboard",
             "back_to_home": "Back to Home",
             "logout": "Logout",
+            # Admin portal (local analytics)
+            "admin_overview_title": "Admin Overview (Local Offline Data)",
+            "admin_allowed": "Allowed",
+            "admin_fraud_trends": "Fraud Trends (Local)",
+            "admin_day": "Day",
+            "admin_alerts": "Alerts",
+            "admin_high_risk_txs": "High-Risk Tx",
+            "admin_no_trends": "No trend data yet.",
+            "admin_high_risk_users": "High-Risk Users",
+            "admin_user": "User",
+            "admin_user_risk": "User Risk",
+            "admin_last_activity": "Last Activity",
+            "admin_tx_count": "Tx Count",
+            "admin_avg_amount": "Avg Amount",
+            "admin_no_high_risk_users": "No high-risk users yet.",
+            "admin_suspicious_alerts": "Suspicious Pattern Alerts",
+            "admin_alert_type": "Alert Type",
+            "admin_severity": "Severity",
+            "admin_message": "Message",
+            "admin_no_alerts": "No alerts yet.",
+            "admin_device_monitoring": "Device Monitoring",
+            "admin_device_id": "Device ID",
+            "admin_trusted": "Trusted",
+            "admin_first_seen": "First Seen",
+            "admin_last_seen": "Last Seen",
+            "admin_seen_count": "Seen",
+            "admin_no_devices": "No devices recorded yet.",
+            "admin_notifications": "Admin Notifications",
+            "admin_no_notifications": "No admin notifications yet.",
+            "admin_transaction_monitoring": "Transaction Monitoring (Local)",
+            "admin_view_all": "View All",
+            "admin_tx_note": "Amounts/recipients are shown from the local change-log (demo visibility). Encrypted storage remains in the transactions table.",
+            "admin_no_transactions": "No transactions yet.",
             "error_title": "Something went wrong",
             "error_subtitle": "The portal hit an unexpected error. Use the links below to continue.",
             "error_hint": "If this repeats, restart the server and re-open the Customer Portal from Home.",
