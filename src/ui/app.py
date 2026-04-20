@@ -285,6 +285,20 @@ def index(request: Request):
     )
 
 
+@app.get("/customer")
+def customer_entry(request: Request):
+    # Clean, memorable entry URL for the customer portal.
+    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    return RedirectResponse(url=f"/customer/login?lang={lang}", status_code=303)
+
+
+@app.get("/bank")
+def bank_entry(request: Request):
+    # Clean, memorable entry URL for the bank portal.
+    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    return RedirectResponse(url=f"/bank/login?lang={lang}", status_code=303)
+
+
 @app.get("/customer/login")
 def customer_login_page(request: Request):
     lang = _resolve_lang(request.query_params.get("lang", "en"))
