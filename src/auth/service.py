@@ -293,6 +293,29 @@ def authenticate_user(
             (next_failed_attempts, next_lockout_until, user_id),
         )
         conn.commit()
+        # Suspicious pattern alert: multiple failed login attempts.
+        if next_failed_attempts in {3, 5}:
+            try:
+                from src.database.monitoring_store import create_alert, create_notification
+
+                create_alert(
+                    alert_type="FAILED_LOGINS",
+                    severity="MEDIUM" if next_failed_attempts == 3 else "HIGH",
+                    message=f"{user_id}: {next_failed_attempts} failed login attempts",
+                    user_id=user_id,
+                    metadata={"failed_attempts": next_failed_attempts},
+                    db_path=db_path,
+                )
+                create_notification(
+                    notif_type="suspicious_activity",
+                    title="Suspicious login attempts",
+                    body=f"{next_failed_attempts} failed login attempts detected. If this wasn't you, freeze the account.",
+                    role="customer",
+                    user_id=user_id,
+                    db_path=db_path,
+                )
+            except Exception:
+                pass
         return AuthResult(
             is_authenticated=False,
             reason=reason,
@@ -464,6 +487,12 @@ def enroll_or_verify_device_id(
     if not stored:
         config["device_id"] = device_id
         _update_auth_config(user_id=user_id, config=config, db_path=db_path)
+        try:
+            from src.database.device_store import upsert_device
+
+            upsert_device(user_id=user_id, device_id=device_id, is_trusted=True, db_path=db_path)
+        except Exception:
+            pass
         log_change(
             entity_type="user",
             entity_id=user_id,
@@ -477,5 +506,17 @@ def enroll_or_verify_device_id(
         return True, "enrolled"
 
     if stored == device_id:
+        try:
+            from src.database.device_store import upsert_device
+
+            upsert_device(user_id=user_id, device_id=device_id, is_trusted=True, db_path=db_path)
+        except Exception:
+            pass
         return True, "verified"
+    try:
+        from src.database.device_store import upsert_device
+
+        upsert_device(user_id=user_id, device_id=device_id, is_trusted=False, db_path=db_path)
+    except Exception:
+        pass
     return True, "new_device"
