@@ -170,7 +170,12 @@
         }
         if (deviceField) deviceField.value = deviceId;
       } catch (e) {
-        // If localStorage is blocked, server will treat device id as missing.
+        // If localStorage is blocked (private mode / restrictions), still send a fallback device id
+        // so device binding can proceed.
+        try {
+          const fallback = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
+          if (deviceField) deviceField.value = fallback;
+        } catch (e2) {}
       }
 
       const stopStream = () => {
