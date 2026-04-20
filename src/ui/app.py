@@ -34,7 +34,7 @@ from src.auth.service import (
     set_trusted_contact,
 )
 from src.auth.biometric import compute_dhash64_from_png
-from src.database.init_db import init_db
+from src.database.init_db import DB_PATH, init_db
 from src.database.transaction_store import (
     create_secure_transaction,
     get_dashboard_stats,
@@ -48,7 +48,7 @@ from src.sync.manager import sync_outbox
 
 # === App configuration ===
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_DB = Path("data/ruralshield.db")
+DEFAULT_DB = DB_PATH  # absolute, stable path (prevents “user not found” due to different cwd)
 DEFAULT_SERVER_URL = os.environ.get("RURALSHIELD_SERVER_URL", "http://localhost:8000")
 SUPPORTED_LANGS = {"en", "hi", "or", "gu", "de"}
 DEFAULT_BANK_USERNAME = "bank_admin"
@@ -61,7 +61,7 @@ JWT_COOKIE = "ruralshield_jwt"
 FLASH_MSG_COOKIE = "ruralshield_flash_msg"
 FLASH_ERR_COOKIE = "ruralshield_flash_err"
 FLASH_VOICE_COOKIE = "ruralshield_flash_voice"
-FACE_CAPTURE_DIR = Path("data/face_captures")
+FACE_CAPTURE_DIR = DB_PATH.parent / "face_captures"
 
 # FastAPI app + static assets + HTML templates
 app = FastAPI(title="RuralShield UI", version="1.0.0")
@@ -79,6 +79,13 @@ def _server_api_url() -> str:
 
 def _jwt_from_request(request: Request) -> str:
     return request.cookies.get(JWT_COOKIE, "")
+
+def _tf(lang: str, key: str, **kwargs) -> str:
+    # Translate + safe format (for templates we prefer pre-formatted strings).
+    try:
+        return str(_t(lang, key)).format(**kwargs)
+    except Exception:
+        return str(_t(lang, key))
 
 
 def _flash_redirect(url: str, *, message: str = "", error: str = "", voice_text: str = "") -> RedirectResponse:
@@ -692,7 +699,7 @@ def login(
             context = _login_context(request, lang=lang, mode="bank", error=_t(lang, "admin_login_failed"))
             return templates.TemplateResponse(request, "login.html", context, status_code=400)
         # For the demo, require the same face hash over time for bank login as well.
-        bank_face_path = Path("data/bank_face_hash.json")
+        bank_face_path = DB_PATH.parent / "bank_face_hash.json"
         if bank_face_path.exists():
             try:
                 stored = json.loads(bank_face_path.read_text())
@@ -764,6 +771,26 @@ def customer_home(request: Request):
             context["server"] = {"connected": True, "error": "", "balance": float(data.get("balance", 0.0))}
         except Exception as exc:
             context["server"] = {"connected": False, "error": str(exc), "balance": 0.0}
+    # Build customer alert strings server-side (avoid template .format on missing keys).
+    alerts: list[str] = []
+    if context.get("device_trust") == "untrusted":
+        alerts.append(f"{_t(lang, 'cust_alert_new_device_title')} {_t(lang, 'cust_alert_new_device_body')}")
+    try:
+        held = int((context.get("customer_stats") or {}).get("held", 0))
+    except Exception:
+        held = 0
+    try:
+        pending = int((context.get("customer_stats") or {}).get("pending", 0))
+    except Exception:
+        pending = 0
+    if held > 0:
+        alerts.append(f"{_t(lang, 'cust_alert_held_title')} {_tf(lang, 'cust_alert_held_body', count=held)}")
+    if pending > 0:
+        alerts.append(f"{_t(lang, 'cust_alert_pending_title')} {_tf(lang, 'cust_alert_pending_body', count=pending)}")
+    if not alerts:
+        alerts.append(f"{_t(lang, 'cust_alert_clear_title')} {_t(lang, 'cust_alert_clear_body')}")
+    context["alerts"] = alerts
+
     context = _read_and_clear_flash(request, context)
     resp = templates.TemplateResponse(request, "customer_home.html", context)
     resp.delete_cookie(FLASH_MSG_COOKIE)

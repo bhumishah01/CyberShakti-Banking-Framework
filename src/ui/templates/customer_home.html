@@ -70,18 +70,9 @@
     <section class="card">
       <h2>{{ i18n.cust_alerts }}</h2>
       <ul class="list">
-        {% if device_trust == "untrusted" %}
-          <li><strong>{{ i18n.cust_alert_new_device_title }}</strong> {{ i18n.cust_alert_new_device_body }}</li>
-        {% endif %}
-        {% if customer_stats.held > 0 %}
-          <li><strong>{{ i18n.cust_alert_held_title }}</strong> {{ i18n.cust_alert_held_body.format(count=customer_stats.held) }}</li>
-        {% endif %}
-        {% if customer_stats.pending > 0 %}
-          <li><strong>{{ i18n.cust_alert_pending_title }}</strong> {{ i18n.cust_alert_pending_body.format(count=customer_stats.pending) }}</li>
-        {% endif %}
-        {% if device_trust != "untrusted" and customer_stats.held == 0 and customer_stats.pending == 0 %}
-          <li><strong>{{ i18n.cust_alert_clear_title }}</strong> {{ i18n.cust_alert_clear_body }}</li>
-        {% endif %}
+        {% for line in alerts %}
+          <li>{{ line }}</li>
+        {% endfor %}
       </ul>
     </section>
 
