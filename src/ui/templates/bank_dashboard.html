@@ -103,10 +103,10 @@
                   <td>{{ tx.created_at }}</td>
                   <td><code>{{ tx.tx_id }}</code></td>
                   <td>{{ tx.user_id }}</td>
-                  <td>{{ \"%.2f\"|format(tx.amount) }}</td>
+                  <td>{{ "%.2f"|format(tx.amount) }}</td>
                   <td>{{ tx.recipient }}</td>
                   <td>{{ tx.risk_score }} ({{ tx.risk_level }})</td>
-                  <td class="muted small">{{ (tx.reason_codes or [])|join(\", \") }}</td>
+                  <td class="muted small">{{ (tx.reason_codes or [])|join(", ") }}</td>
                   <td>{{ tx.status }}</td>
                   <td>
                     {% if tx.status == 'HOLD_FOR_REVIEW' %}
@@ -148,7 +148,7 @@
                   <td><code>{{ row.tx_id }}</code></td>
                   <td>{{ row.user_id }}</td>
                   <td>{{ row.risk_score }} ({{ row.risk_level }})</td>
-                  <td class="muted small">{{ (row.reasons or [])|join(\", \") }}</td>
+                  <td class="muted small">{{ (row.reasons or [])|join(", ") }}</td>
                 </tr>
               {% endfor %}
               {% if (server.fraud_logs|length) == 0 %}
@@ -159,7 +159,7 @@
         </div>
       {% else %}
         <p class="muted">
-          Server ops not connected. Start Server API at <code>{{ server_url or \"http://localhost:8000\" }}</code>
+          Server ops not connected. Start Server API at <code>{{ server_url or "http://localhost:8000" }}</code>
           and re-login to mint a bank_officer JWT.
         </p>
         {% if server and server.error %}
