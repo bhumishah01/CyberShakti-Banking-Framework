@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RuralShield After Midsem</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="top-row">
+        <header>
+          <span class="eyebrow">After Midsem Build</span>
+          <h1>RuralShield</h1>
+          <p>Offline-first security + server-grade APIs for rural digital banking.</p>
+        </header>
+
+        <div class="header-actions">
+          <a class="button secondary" href="/guide?lang={{ lang }}">Demo Guide</a>
+          <form class="lang-form" method="get" action="/">
+            <label for="lang">{{ i18n.language_label }}</label>
+            <select id="lang" name="lang" onchange="this.form.submit()">
+              {% for item in langs %}
+                <option value="{{ item.code }}" {% if item.code == lang %}selected{% endif %}>{{ item.label }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </div>
+      </div>
+
+      <div class="card note">
+        <h2>What You Can Demo Today</h2>
+        <div class="grid">
+          <div class="card compact-card">
+            <h3>Customer Portal</h3>
+            <p class="muted">Offline login + device binding + face verification, then view transactions.</p>
+            <div class="actions">
+              <a class="button" href="/customer/login?lang={{ lang }}">Customer Login</a>
+              <a class="button secondary" href="/customer/register?lang={{ lang }}">Register</a>
+            </div>
+          </div>
+
+          <div class="card compact-card">
+            <h3>Bank Portal</h3>
+            <p class="muted">Create transactions, hold/block high-risk, view audit integrity + sync queue.</p>
+            <div class="actions">
+              <a class="button" href="/bank/login?lang={{ lang }}">Bank Login</a>
+              <a class="button secondary" href="/bank/dashboard?lang={{ lang }}">Dashboard</a>
+            </div>
+          </div>
+
+          <div class="card compact-card">
+            <h3>Agent / Kiosk</h3>
+            <p class="muted">Assisted onboarding + guided transaction creation for low-literacy users.</p>
+            <div class="actions">
+              <a class="button" href="/agent?lang={{ lang }}">Open Agent Mode</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>After Midsem Upgrades (Server-Grade)</h2>
+        <p class="muted">
+          This build also includes a production-style Server API (Postgres + JWT + RBAC + sync logs).
+          The offline UI still writes to local SQLite first (rural constraint), and syncs later.
+        </p>
+        <div class="actions">
+          <a class="button secondary" href="{{ server_url }}/health" target="_blank" rel="noreferrer">Server Health</a>
+          <a class="button" href="{{ server_url }}/docs" target="_blank" rel="noreferrer">Server API Docs (Swagger)</a>
+        </div>
+        <p class="muted small">
+          Server URL: <code>{{ server_url }}</code>
+        </p>
+      </div>
+
+      <div class="card">
+        <h2>Why This Solves the Rural Problem</h2>
+        <ul class="list">
+          <li><strong>Offline-first:</strong> data stored locally in SQLite, not over the internet.</li>
+          <li><strong>Fraud controls:</strong> risk scoring + hold/block + trusted contact patterns.</li>
+          <li><strong>Integrity:</strong> encrypted payloads + audit chain checks.</li>
+          <li><strong>Low bandwidth:</strong> sync queue with retries; server supports compressed sync v2.</li>
+        </ul>
+      </div>
+    </div>
+  </body>
+</html>
+

@@ -199,6 +199,14 @@ button:hover, .button:hover { background: var(--accent-2); }
   margin-top: 10px;
   flex-wrap: wrap;
 }
+.small { font-size: 0.9rem; }
+.list {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+}
+.list li { margin: 6px 0; }
+.list strong { color: var(--text); }
 .actions form {
   margin: 0;
 }

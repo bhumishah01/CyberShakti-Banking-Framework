@@ -269,14 +269,20 @@ def _face_hash_from_capture_path(capture_path: str) -> tuple[str, str]:
 
 @app.get("/")
 def index(request: Request):
-    init_db(DEFAULT_DB)
     lang = _resolve_lang(request.query_params.get("lang", "en"))
-    role = request.cookies.get(ROLE_COOKIE, "")
-    if role == "customer":
-        return RedirectResponse(url=f"/customer/dashboard?lang={lang}", status_code=303)
-    if role in {"admin", "bank"}:
-        return RedirectResponse(url=f"/bank/dashboard?lang={lang}", status_code=303)
-    return templates.TemplateResponse(request, "login.html", _login_context(request, lang=lang, mode="choose"))
+    # After-midsem home: make it obvious this is the upgraded build and link to server API docs.
+    i18n = _bundle(lang)
+    return templates.TemplateResponse(
+        request,
+        "after_home.html",
+        {
+            "request": request,
+            "lang": lang,
+            "i18n": i18n,
+            "langs": _language_choices(),
+            "server_url": DEFAULT_SERVER_URL.rstrip("/"),
+        },
+    )
 
 
 @app.get("/customer/login")
