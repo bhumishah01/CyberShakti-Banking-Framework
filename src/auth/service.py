@@ -391,7 +391,8 @@ def enroll_or_verify_face_hash(
     captured_algo: str,
     captured_hash: str,
     *,
-    max_distance: int = 12,
+    # Slightly relaxed threshold improves stability across low-end webcams / lighting changes.
+    max_distance: int = 18,
     db_path: Path = DB_PATH,
 ) -> tuple[bool, str]:
     """Enroll face hash on first use; verify on subsequent logins.
