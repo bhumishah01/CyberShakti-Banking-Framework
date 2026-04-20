@@ -30,14 +30,15 @@
 
     <section class="card">
       <p class="muted small">{{ i18n.error_hint }}</p>
+      <p class="muted small">Path: <code>{{ path }}</code></p>
       <pre class="code-block">{{ error }}</pre>
       <div class="actions">
         <a class="button secondary" href="/?lang={{ lang }}">{{ i18n.back_to_home }}</a>
         <a class="button" href="/customer/login?lang={{ lang }}">{{ i18n.customer_login_cta }}</a>
       </div>
       <p class="muted small" style="margin-top:12px;">Build: <code>{{ build_id }}</code></p>
+      <p class="muted small">Debug log: <code>data/ui_errors.log</code></p>
     </section>
   </main>
 </body>
 </html>
-

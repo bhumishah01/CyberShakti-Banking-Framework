@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import logging
+import traceback
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -87,6 +88,18 @@ logger = logging.getLogger("ruralshield.ui")
 @app.exception_handler(Exception)
 async def _unhandled_exception(request: Request, exc: Exception):
     # Never show a blank/black 500 screen during demo; render a friendly page and log details.
+    # Also write a local file so a student can show exact errors without digging in terminal.
+    try:
+        log_path = DB_PATH.parent / "ui_errors.log"
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write("\n" + "=" * 80 + "\n")
+            f.write(f"time_utc={datetime.now(UTC).isoformat()}\n")
+            f.write(f"path={request.url.path} method={request.method}\n")
+            f.write(f"user={request.cookies.get(USER_COOKIE, '')} role={request.cookies.get(ROLE_COOKIE, '')}\n")
+            f.write(f"error={type(exc).__name__}: {exc}\n")
+            f.write(traceback.format_exc() + "\n")
+    except Exception:
+        pass
     try:
         logger.exception("UI error path=%s method=%s user=%s", request.url.path, request.method, request.cookies.get(USER_COOKIE, ""))
     except Exception:
@@ -102,6 +115,7 @@ async def _unhandled_exception(request: Request, exc: Exception):
                 "i18n": _bundle(lang),
                 "langs": _language_choices(),
                 "error": str(exc),
+                "path": request.url.path,
                 "build_id": BUILD_ID,
             },
             status_code=500,
@@ -1140,6 +1154,89 @@ def bank_review_server_tx(
     except Exception as exc:
         ctx = _admin_dashboard_context(request, error=str(exc), lang=lang)
         return render_template(request, "bank_dashboard.html", ctx, status_code=400)
+
+
+@app.post("/bank/local/tx/review")
+def bank_review_local_tx(
+    request: Request,
+    tx_id: str = Form(...),
+    decision: str = Form(...),
+    lang: str = Form(default="en"),
+):
+    """Approve/reject a locally HELD transaction (offline admin workflow)."""
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
+    lang = _resolve_lang(lang)
+    tx_id = tx_id.strip()
+    decision = (decision or "").strip().lower()
+    if decision not in {"approve", "reject"}:
+        return RedirectResponse(url=f"/bank/dashboard?lang={lang}", status_code=303)
+
+    init_db(DEFAULT_DB)
+    with sqlite3.connect(DEFAULT_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT user_id, status FROM transactions WHERE tx_id = ?",
+            (tx_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return RedirectResponse(url=f"/bank/dashboard?lang={lang}", status_code=303)
+        user_id, status = row
+        if status not in {"HOLD_FOR_REVIEW", "AWAITING_TRUSTED_APPROVAL"}:
+            return RedirectResponse(url=f"/bank/dashboard?lang={lang}", status_code=303)
+
+        if decision == "approve":
+            cursor.execute(
+                "UPDATE transactions SET status = 'PENDING' WHERE tx_id = ?",
+                (tx_id,),
+            )
+            cursor.execute("UPDATE outbox SET sync_state = 'PENDING' WHERE tx_id = ?", (tx_id,))
+            conn.commit()
+            try:
+                from src.database.monitoring_store import create_notification
+
+                create_notification(
+                    notif_type="held_approved",
+                    title="Held transaction approved",
+                    body=f"Transaction {tx_id[:8]}... for {user_id} approved and queued for sync.",
+                    role="bank",
+                    user_id=str(user_id),
+                    db_path=DEFAULT_DB,
+                )
+            except Exception:
+                pass
+        else:
+            cursor.execute(
+                "UPDATE transactions SET status = 'BLOCKED_MANUAL_REJECT' WHERE tx_id = ?",
+                (tx_id,),
+            )
+            cursor.execute("UPDATE outbox SET sync_state = 'BLOCKED' WHERE tx_id = ?", (tx_id,))
+            conn.commit()
+            try:
+                from src.database.monitoring_store import create_alert, create_notification
+
+                create_alert(
+                    alert_type="HELD_REJECTED",
+                    severity="MEDIUM",
+                    message=f"{user_id}: bank rejected held transaction {tx_id}",
+                    user_id=str(user_id),
+                    metadata={"tx_id": tx_id},
+                    db_path=DEFAULT_DB,
+                )
+                create_notification(
+                    notif_type="held_rejected",
+                    title="Held transaction rejected",
+                    body=f"Transaction {tx_id[:8]}... for {user_id} rejected (blocked locally).",
+                    role="bank",
+                    user_id=str(user_id),
+                    db_path=DEFAULT_DB,
+                )
+            except Exception:
+                pass
+
+    return RedirectResponse(url=f"/bank/dashboard?lang={lang}&view=held", status_code=303)
 
 
 @app.post("/customer/server/transactions")
@@ -2968,6 +3065,8 @@ def _bundle(lang: str) -> dict:
             "admin_view_all": "View All",
             "admin_tx_note": "Amounts/recipients are shown from the local change-log (demo visibility). Encrypted storage remains in the transactions table.",
             "admin_no_transactions": "No transactions yet.",
+            "admin_approve": "Approve",
+            "admin_reject": "Reject",
             "error_title": "Something went wrong",
             "error_subtitle": "The portal hit an unexpected error. Use the links below to continue.",
             "error_hint": "If this repeats, restart the server and re-open the Customer Portal from Home.",

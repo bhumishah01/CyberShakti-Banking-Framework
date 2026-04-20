@@ -347,7 +347,17 @@
                 <td>{{ tx.recipient }}</td>
                 <td>{{ tx.risk_score }} ({{ tx.risk_level }})</td>
                 <td class="muted small">{{ (tx.reason_codes or [])|join(", ") }}</td>
-                <td>{{ tx.status }}</td>
+                <td>
+                  {{ tx.status }}
+                  {% if tx.status in ['HOLD_FOR_REVIEW','AWAITING_TRUSTED_APPROVAL'] %}
+                    <form action="/bank/local/tx/review" method="post" style="display:flex; gap:8px; margin-top:6px;">
+                      <input type="hidden" name="lang" value="{{ lang }}">
+                      <input type="hidden" name="tx_id" value="{{ tx.tx_id }}">
+                      <button class="button secondary" type="submit" name="decision" value="approve">{{ i18n.admin_approve }}</button>
+                      <button class="button secondary" type="submit" name="decision" value="reject">{{ i18n.admin_reject }}</button>
+                    </form>
+                  {% endif %}
+                </td>
               </tr>
             {% endfor %}
             {% if (local_admin.transactions|length) == 0 %}
