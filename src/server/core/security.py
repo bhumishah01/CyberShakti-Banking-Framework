@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from jose import jwt
@@ -37,7 +38,16 @@ def create_access_token(subject: str, role: str) -> str:
 
 def decode_token(token: str) -> dict:
     settings = get_settings()
-    return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    # Defensive normalization: some callers may accidentally pass a dict-like payload.
+    # The jose library expects a string and will call `.split('.')` internally.
+    raw: Any = token
+    if isinstance(raw, dict):
+        raw = raw.get("access_token") or raw.get("token") or ""
+    if isinstance(raw, (bytes, bytearray)):
+        raw = raw.decode("utf-8", errors="ignore")
+    if not isinstance(raw, str):
+        raise ValueError("invalid_token_type")
+    return jwt.decode(raw, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
 
 
 def _aes_key() -> bytes:
