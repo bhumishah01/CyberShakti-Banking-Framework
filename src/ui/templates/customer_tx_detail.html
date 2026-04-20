@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ i18n.cust_tx_details }} - RuralShield</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="container">
+    <header class="top-row">
+      <div>
+        <div class="eyebrow">{{ i18n.customer_portal_eyebrow }}</div>
+        <h1>{{ i18n.cust_tx_details }}</h1>
+        <p class="muted">{{ i18n.tx_id }}: <code>{{ tx_id }}</code></p>
+      </div>
+      <div class="header-actions">
+        <a href="/dashboard/customer?lang={{ lang }}" class="button secondary">{{ i18n.back_dashboard }}</a>
+      </div>
+    </header>
+
+    {% if message %}
+      <section class="alert success">{{ message }}</section>
+    {% endif %}
+    {% if error %}
+      <section class="alert error">{{ error }}</section>
+    {% endif %}
+
+    {% if details %}
+      <section class="card">
+        <h2>{{ i18n.cust_details }}</h2>
+        <section class="stats-grid">
+          <article class="stat-card"><h3>{{ i18n.amount }}</h3><p>{{ details.amount }}</p></article>
+          <article class="stat-card"><h3>{{ i18n.recipient }}</h3><p>{{ details.recipient }}</p></article>
+          <article class="stat-card"><h3>{{ i18n.risk }}</h3><p>{{ details.risk_score }} ({{ details.risk_level }})</p></article>
+          <article class="stat-card"><h3>{{ i18n.status }}</h3><p>{{ details.status }}</p></article>
+        </section>
+        <p class="muted small" style="margin-top:10px;">
+          {{ i18n.cust_why_title }}:
+          <strong>{{ details.reason_text }}</strong>
+        </p>
+        {% if details.guidance and details.guidance|length > 0 %}
+          <div class="card note" style="margin-top:10px;">
+            <h3>{{ i18n.guidance }}</h3>
+            <ul class="list">
+              {% for g in details.guidance %}
+                <li>{{ g }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+      </section>
+    {% else %}
+      <section class="card">
+        <h2>{{ i18n.cust_unlock }}</h2>
+        <p class="muted">{{ i18n.cust_enter_pin_to_view }}</p>
+        <form action="/customer/tx/{{ tx_id }}" method="post" class="grid">
+          <input type="hidden" name="lang" value="{{ lang }}">
+          <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+          <button type="submit">{{ i18n.cust_view }}</button>
+        </form>
+      </section>
+    {% endif %}
+  </main>
+</body>
+</html>
+

@@ -39,6 +39,7 @@ from src.database.transaction_store import (
     create_secure_transaction,
     get_dashboard_stats,
     list_secure_transactions,
+    read_secure_transaction,
     release_held_transaction,
 )
 from src.sync.client import make_http_sender
@@ -377,9 +378,17 @@ def _customer_dashboard_context(
     if session.get("active_user"):
         context["mini_statement"] = _recent_tx_meta(session["active_user"], limit=5)
         context["last_sync_at"] = _last_sync_time()
+        # Simple user risk indicator for low-literacy UX.
+        stats = context["customer_stats"]
+        device_untrusted = context.get("device_trust") == "untrusted"
+        if device_untrusted or int(stats.get("held", 0)) > 0 or int(stats.get("blocked", 0)) > 0:
+            context["user_risk_badge"] = "warning"
+        else:
+            context["user_risk_badge"] = "safe"
     else:
         context["mini_statement"] = []
         context["last_sync_at"] = "-"
+        context["user_risk_badge"] = "safe"
     return context
 
 
@@ -1013,6 +1022,56 @@ def customer_panic_freeze(
         return _customer_redirect(lang, message=msg)
     except Exception as exc:
         return _customer_redirect(lang, error=str(exc))
+
+
+@app.get("/customer/tx/{tx_id}")
+def customer_tx_detail_page(request: Request, tx_id: str, lang: str = "en"):
+    guard = _require_role(request, "customer")
+    if guard:
+        return guard
+    lang = _resolve_lang(lang)
+    context = _customer_dashboard_context(request, lang=lang)
+    context.update({"tx_id": tx_id, "details": None})
+    return templates.TemplateResponse(request, "customer_tx_detail.html", context)
+
+
+@app.post("/customer/tx/{tx_id}")
+def customer_tx_detail_view(
+    request: Request,
+    tx_id: str,
+    pin: str = Form(...),
+    lang: str = Form(default="en"),
+):
+    guard = _require_role(request, "customer")
+    if guard:
+        return guard
+    lang = _resolve_lang(lang)
+    user_id = request.cookies.get(USER_COOKIE, "").strip()
+    context = _customer_dashboard_context(request, lang=lang)
+    context["tx_id"] = tx_id
+    try:
+        row = read_secure_transaction(tx_id=tx_id, user_id=user_id, pin=pin.strip(), db_path=DEFAULT_DB)
+        reason_codes = row.get("reason_codes", []) or []
+        reason_text = ", ".join(_friendly_reason(str(c), lang=lang) for c in reason_codes) or _t(lang, "no_alert")
+        guidance = []
+        try:
+            guidance = list((row.get("intervention", {}) or {}).get("guidance", []) or [])
+        except Exception:
+            guidance = []
+        context["details"] = {
+            "amount": row.get("amount", ""),
+            "recipient": row.get("recipient", ""),
+            "risk_score": row.get("risk_score", 0),
+            "risk_level": row.get("risk_level", ""),
+            "status": row.get("status", ""),
+            "reason_text": reason_text,
+            "guidance": guidance,
+        }
+        return templates.TemplateResponse(request, "customer_tx_detail.html", context)
+    except Exception as exc:
+        context["details"] = None
+        context["error"] = str(exc)
+        return templates.TemplateResponse(request, "customer_tx_detail.html", context, status_code=400)
 
 
 @app.post("/agent/assist")
@@ -2409,6 +2468,14 @@ def _bundle(lang: str) -> dict:
             "cust_send_result_note": "Result will show: Allowed, Held (under review), or Blocked (suspicious).",
             "cust_tx_history": "Transaction History",
             "cust_history_privacy_note": "For privacy, enter PIN to view decrypted history.",
+            "cust_risk_safe": "Safe",
+            "cust_risk_warning": "Warning",
+            "cust_details": "Details",
+            "cust_view": "View",
+            "cust_tx_details": "Transaction Details",
+            "cust_unlock": "Unlock Details",
+            "cust_enter_pin_to_view": "Enter your PIN to view the decrypted amount and recipient.",
+            "cust_why_title": "Why this status",
             "admin_portal_eyebrow": "Bank/Admin Portal",
             "admin_portal_title": "Bank/Admin Security Portal",
             "admin_portal_subtitle": "Central controls for fraud review, sync monitoring, and audit visibility.",
@@ -3534,6 +3601,14 @@ def _t(lang: str, key: str) -> str:
             "cust_send_result_note": "परिणाम: अनुमति, समीक्षा हेतु रोक, या सुरक्षा हेतु ब्लॉक।",
             "cust_tx_history": "लेनदेन इतिहास",
             "cust_history_privacy_note": "गोपनीयता के लिए, PIN डालकर डिक्रिप्टेड इतिहास देखें।",
+            "cust_risk_safe": "सुरक्षित",
+            "cust_risk_warning": "चेतावनी",
+            "cust_details": "विवरण",
+            "cust_view": "देखें",
+            "cust_tx_details": "लेनदेन विवरण",
+            "cust_unlock": "विवरण खोलें",
+            "cust_enter_pin_to_view": "राशि और प्राप्तकर्ता देखने के लिए PIN डालें।",
+            "cust_why_title": "स्थिति का कारण",
         },
         "or": {
             "no_alert": "କୌଣସି ଆଲର୍ଟ ଟ୍ରିଗର ହୋଇନି",
@@ -3594,6 +3669,14 @@ def _t(lang: str, key: str) -> str:
             "cust_send_result_note": "ପରିଣାମ: ଅନୁମତି, ସମୀକ୍ଷା ପାଇଁ ରୋକ, କିମ୍ବା ସୁରକ୍ଷା ପାଇଁ ବ୍ଲକ୍।",
             "cust_tx_history": "ଟ୍ରାନ୍ଜାକ୍ସନ ଇତିହାସ",
             "cust_history_privacy_note": "ଗୋପନୀୟତା ପାଇଁ, PIN ଦେଇ ଡିକ୍ରିପ୍ଟ ଇତିହାସ ଦେଖନ୍ତୁ।",
+            "cust_risk_safe": "ସୁରକ୍ଷିତ",
+            "cust_risk_warning": "ସତର୍କ",
+            "cust_details": "ବିବରଣୀ",
+            "cust_view": "ଦେଖନ୍ତୁ",
+            "cust_tx_details": "ଟ୍ରାନ୍ଜାକ୍ସନ ବିବରଣୀ",
+            "cust_unlock": "ବିବରଣୀ ଅନଲକ୍ କରନ୍ତୁ",
+            "cust_enter_pin_to_view": "ରାଶି ଏବଂ ପ୍ରାପ୍ତକର୍ତ୍ତା ଦେଖିବା ପାଇଁ PIN ଦିଅନ୍ତୁ।",
+            "cust_why_title": "ଏହି ସ୍ଥିତି କାହିଁକି",
         },
         "gu": {
             "no_alert": "કોઈ એલર્ટ ટ્રિગર નથી",
@@ -3654,6 +3737,14 @@ def _t(lang: str, key: str) -> str:
             "cust_send_result_note": "પરિણામ: મંજૂરી, સમીક્ષા માટે રોકો, અથવા સુરક્ષા માટે બ્લોક.",
             "cust_tx_history": "લેનદેન ઇતિહાસ",
             "cust_history_privacy_note": "પ્રાઈવસી માટે, PIN નાખીને ડિક્રિપ્ટેડ ઇતિહાસ જુઓ.",
+            "cust_risk_safe": "સુરક્ષિત",
+            "cust_risk_warning": "ચેતવણી",
+            "cust_details": "વિગતો",
+            "cust_view": "જુઓ",
+            "cust_tx_details": "ટ્રાન્ઝેક્શન વિગતો",
+            "cust_unlock": "વિગતો અનલોક",
+            "cust_enter_pin_to_view": "રકમ અને પ્રાપ્તકર્તા જોવા માટે PIN નાખો.",
+            "cust_why_title": "આ સ્થિતિ કેમ",
         },
         "de": {
             "no_alert": "Keine Alarme ausgelöst",
@@ -3714,6 +3805,14 @@ def _t(lang: str, key: str) -> str:
             "cust_send_result_note": "Ergebnis: erlaubt, gehalten (Prüfung) oder blockiert (verdächtig).",
             "cust_tx_history": "Transaktionsverlauf",
             "cust_history_privacy_note": "Aus Datenschutzgründen PIN eingeben, um den Verlauf zu entschlüsseln.",
+            "cust_risk_safe": "Sicher",
+            "cust_risk_warning": "Warnung",
+            "cust_details": "Details",
+            "cust_view": "Ansehen",
+            "cust_tx_details": "Transaktionsdetails",
+            "cust_unlock": "Details entsperren",
+            "cust_enter_pin_to_view": "PIN eingeben, um Betrag und Empfänger zu entschlüsseln.",
+            "cust_why_title": "Warum dieser Status",
         },
     }
     base = dictionary["en"]

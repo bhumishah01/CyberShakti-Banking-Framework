@@ -46,6 +46,13 @@
         <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p>{{ customer_stats.pending }}</p></article>
         <article class="stat-card"><h3>{{ i18n.held }}</h3><p>{{ customer_stats.held }}</p></article>
       </section>
+      <div style="margin-top:10px;">
+        {% if user_risk_badge == "warning" %}
+          <span class="status-chip warn">{{ i18n.cust_risk_warning }}</span>
+        {% else %}
+          <span class="status-chip ok">{{ i18n.cust_risk_safe }}</span>
+        {% endif %}
+      </div>
       <p class="muted small" style="margin-top:10px;">
         {{ i18n.cust_offline_first_note }}
       </p>
@@ -89,6 +96,7 @@
               <th>{{ i18n.tx_id }}</th>
               <th>{{ i18n.risk }}</th>
               <th>{{ i18n.status }}</th>
+              <th>{{ i18n.cust_details }}</th>
             </tr>
           </thead>
           <tbody>
@@ -98,10 +106,11 @@
                 <td><code>{{ tx.tx_id }}</code></td>
                 <td>{{ tx.risk_score }} ({{ tx.risk_level }})</td>
                 <td>{{ tx.status }}</td>
+                <td><a class="linkish" href="/customer/tx/{{ tx.tx_id }}?lang={{ lang }}">{{ i18n.cust_view }}</a></td>
               </tr>
             {% endfor %}
             {% if (mini_statement|length) == 0 %}
-              <tr><td colspan="4" class="muted">{{ i18n.cust_no_transactions }}</td></tr>
+              <tr><td colspan="5" class="muted">{{ i18n.cust_no_transactions }}</td></tr>
             {% endif %}
           </tbody>
         </table>
