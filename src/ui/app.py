@@ -61,6 +61,10 @@ FACE_CAPTURE_DIR = Path("data/face_captures")
 app = FastAPI(title="RuralShield UI", version="1.0.0")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+# Workaround for a cache-key issue that can surface with newer Starlette/Jinja2 combos
+# where an unhashable dict ends up in the template cache key.
+# Disabling cache is fine for this project/demo and avoids 500s on template load.
+templates.env.cache = None
 
 
 def _ctx(
