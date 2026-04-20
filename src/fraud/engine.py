@@ -9,6 +9,9 @@ def score_transaction(
     transaction: dict,
     history: list[dict],
     recent_failed_attempts: int = 0,
+    *,
+    profile: dict | None = None,
+    rapid_count_2m: int = 0,
 ) -> dict:
     """
     Compute risk score and explainable reasons.
@@ -27,9 +30,20 @@ def score_transaction(
     recipient = str(transaction["recipient"]).strip().lower()
     tx_time = _parse_time(transaction["timestamp"])
 
+    # Rule 1: absolute high amount (simple baseline rule)
     if amount >= 3000:
         score += 35
         reasons.append("HIGH_AMOUNT")
+
+    # Adaptive rule: compare to user's own baseline (behavior profiling)
+    try:
+        avg_amount = float((profile or {}).get("avg_amount", 0.0) or 0.0)
+        tx_count = int((profile or {}).get("tx_count", 0) or 0)
+    except Exception:
+        avg_amount, tx_count = 0.0, 0
+    if tx_count >= 3 and avg_amount > 0 and amount >= (avg_amount * 2.5):
+        score += 25
+        reasons.append("HIGH_AMOUNT_VS_AVG")
 
     previous_recipients = {
         str(item.get("recipient", "")).strip().lower()
@@ -40,9 +54,20 @@ def score_transaction(
         score += 20
         reasons.append("NEW_RECIPIENT")
 
+    # Rule: odd hour baseline
     if tx_time.hour < 6 or tx_time.hour >= 22:
         score += 15
         reasons.append("ODD_HOUR")
+
+    # Adaptive rule: unusual time vs preferred hours
+    try:
+        preferred_hours = (profile or {}).get("preferred_hours", []) or []
+        preferred_hours = [int(x) for x in preferred_hours if isinstance(x, (int, str))]
+    except Exception:
+        preferred_hours = []
+    if tx_count >= 5 and preferred_hours and (tx_time.hour not in set(preferred_hours)):
+        score += 10
+        reasons.append("UNUSUAL_TIME")
 
     recent_cutoff = tx_time - timedelta(minutes=10)
     recent_count = 0
@@ -56,6 +81,11 @@ def score_transaction(
     if recent_count >= 3:
         score += 20
         reasons.append("RAPID_BURST")
+
+    # Suspicious pattern: 5+ transactions within 2 minutes
+    if int(rapid_count_2m or 0) >= 5:
+        score += 25
+        reasons.append("FIVE_IN_2_MIN")
 
     if recent_failed_attempts >= 3:
         score += 20

@@ -30,6 +30,8 @@ from src.crypto.service import (
     verify_signature,
 )
 from src.database.init_db import DB_PATH, init_db
+from src.database.monitoring_store import create_alert, create_notification
+from src.database.profile_store import get_or_create_profile, preferred_hours, update_profile_after_tx
 from src.fraud.engine import decide_intervention, score_transaction
 
 # === Risk approval rules ===
@@ -91,6 +93,14 @@ def create_secure_transaction(
     # Local fraud scoring uses recent history + failed attempts (offline-first).
     history = _load_user_history(user_id=user_id, enc_key=enc_key, db_path=db_path)
     recent_failed_attempts = _load_failed_attempts(user_id=user_id, db_path=db_path)
+    profile_obj = get_or_create_profile(user_id=user_id, db_path=db_path)
+    profile = {
+        "avg_amount": profile_obj.avg_amount,
+        "tx_count": profile_obj.tx_count,
+        "preferred_hours": preferred_hours(profile_obj, top_n=3),
+        "user_risk_score": profile_obj.user_risk_score,
+    }
+    rapid_2m = _count_recent_transactions(user_id=user_id, since_minutes=2, db_path=db_path, now_iso=tx_time)
     risk = score_transaction(
         transaction={
             "amount": amount,
@@ -99,6 +109,8 @@ def create_secure_transaction(
         },
         history=history,
         recent_failed_attempts=recent_failed_attempts,
+        profile=profile,
+        rapid_count_2m=rapid_2m,
     )
     risk_score = risk_score_override if risk_score_override is not None else risk["risk_score"]
     risk_level = risk_level_override if risk_level_override is not None else risk["risk_level"]
@@ -252,6 +264,80 @@ def create_secure_transaction(
             )
         conn.commit()
 
+    # Update behavior profile + per-user risk score after storing tx.
+    updated_profile = update_profile_after_tx(
+        user_id=user_id,
+        amount=float(amount),
+        timestamp_iso=tx_time,
+        tx_risk_score=int(risk_score),
+        db_path=db_path,
+    )
+
+    # Notifications (customer) and suspicious pattern alerts (bank/admin).
+    # Keep it explainable and lightweight.
+    decision = action_decision
+    if status.startswith("BLOCKED"):
+        create_notification(
+            notif_type="transaction_blocked",
+            title="Transaction blocked",
+            body=f"Your transfer was blocked for safety (risk {risk_score}/100).",
+            role="customer",
+            user_id=user_id,
+            db_path=db_path,
+        )
+    elif status in {"HOLD_FOR_REVIEW", "AWAITING_TRUSTED_APPROVAL"}:
+        create_notification(
+            notif_type="transaction_held",
+            title="Transaction held",
+            body=f"Your transfer is held for review (risk {risk_score}/100).",
+            role="customer",
+            user_id=user_id,
+            db_path=db_path,
+        )
+    else:
+        create_notification(
+            notif_type="transaction_success",
+            title="Transaction queued",
+            body=f"Transfer queued offline and will sync later (risk {risk_score}/100).",
+            role="customer",
+            user_id=user_id,
+            db_path=db_path,
+        )
+
+    # Suspicious pattern: 5+ tx in 2 minutes.
+    if rapid_2m >= 5:
+        create_alert(
+            alert_type="RAPID_TRANSACTIONS",
+            severity="HIGH",
+            message=f"{user_id}: {rapid_2m} transactions within 2 minutes",
+            user_id=user_id,
+            metadata={"count": rapid_2m, "window_minutes": 2},
+            db_path=db_path,
+        )
+
+    # Suspicious pattern: repeated high-risk transactions in recent history.
+    high_recent = _count_recent_high_risk(user_id=user_id, limit=5, db_path=db_path)
+    if high_recent >= 3:
+        create_alert(
+            alert_type="REPEATED_HIGH_RISK",
+            severity="MEDIUM",
+            message=f"{user_id}: {high_recent} high-risk transactions in the last 5",
+            user_id=user_id,
+            metadata={"count": high_recent, "last_n": 5},
+            db_path=db_path,
+        )
+
+    # Keep bank view informed too (aggregate notifications).
+    if status.startswith("BLOCKED") or status.startswith("HOLD"):
+        create_notification(
+            notif_type="suspicious_activity",
+            title="Customer suspicious activity",
+            body=f"{user_id}: {status} risk={risk_score}/100 userRisk={updated_profile.user_risk_score}/100",
+            role="bank",
+            user_id=user_id,
+            db_path=db_path,
+        )
+
     # Audit chain (tamper-evidence)
     append_audit_event(
         event_type="TRANSACTION_CREATED",
@@ -315,6 +401,49 @@ def create_secure_transaction(
         trusted_contact_hint=trusted_contact_hint,
         approval_code_for_demo=approval_code_for_demo,
     )
+
+
+def _count_recent_transactions(
+    *, user_id: str, since_minutes: int, db_path: Path, now_iso: str
+) -> int:
+    """Count user transactions in the last N minutes (used for suspicious patterns)."""
+    init_db(db_path)
+    try:
+        now = datetime.fromisoformat(now_iso)
+    except Exception:
+        now = datetime.now(UTC)
+    cutoff = (now - timedelta(minutes=int(since_minutes))).isoformat()
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT COUNT(*) FROM transactions WHERE user_id = ? AND timestamp >= ?",
+            (user_id, cutoff),
+        )
+        return int(cursor.fetchone()[0])
+
+
+def _count_recent_high_risk(*, user_id: str, limit: int, db_path: Path) -> int:
+    init_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT risk_score FROM transactions
+            WHERE user_id = ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+            """,
+            (user_id, int(limit)),
+        )
+        rows = cursor.fetchall()
+    count = 0
+    for (risk_score,) in rows:
+        try:
+            if int(risk_score or 0) >= 70:
+                count += 1
+        except Exception:
+            continue
+    return count
 
 
 def read_secure_transaction(
