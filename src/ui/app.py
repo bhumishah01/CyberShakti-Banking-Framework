@@ -553,7 +553,14 @@ def login(
             )
             return templates.TemplateResponse(request, "login.html", context, status_code=400)
         if not auth.is_authenticated:
-            context = _login_context(request, lang=lang, mode="customer", error=_t(lang, "customer_login_failed"))
+            reason = getattr(auth, "reason", "") or ""
+            if reason == "user_not_found":
+                err = "User not found. Please register first."
+            elif reason in {"invalid_pin", "lockout_started", "locked_out"}:
+                err = "Incorrect PIN or account temporarily locked. Please try again."
+            else:
+                err = _t(lang, "customer_login_failed")
+            context = _login_context(request, lang=lang, mode="customer", error=err)
             return templates.TemplateResponse(request, "login.html", context, status_code=400)
         ok, why = enroll_or_verify_face_hash(
             user_id=user_id.strip(),

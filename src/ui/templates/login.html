@@ -86,7 +86,7 @@
                 {% endif %}
               </div>
 
-              <button type="submit" class="login-submit-btn">
+              <button type="submit" class="login-submit-btn" disabled>
                 {% if login_mode == "customer" %}
                   {{ i18n.customer_login_cta }}
                 {% elif login_mode == "customer_register" %}
@@ -157,6 +157,7 @@
       const captureBtn = form.querySelector(".face-capture-btn");
       const hiddenInput = form.querySelector(".face-image-input");
       const status = form.querySelector(".face-status");
+      const submitBtn = form.querySelector(".login-submit-btn");
       let stream = null;
 
       // Stable device id stored locally (offline-first).
@@ -204,6 +205,7 @@
         preview.hidden = false;
         video.hidden = true;
         status.textContent = "{{ i18n.face_captured_ok }}";
+        if (submitBtn) submitBtn.disabled = false;
         stopStream();
       });
 
