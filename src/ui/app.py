@@ -57,6 +57,9 @@ USER_COOKIE = "ruralshield_user"
 FACE_COOKIE = "ruralshield_face_verified"
 DEVICE_COOKIE = "ruralshield_device_trust"
 JWT_COOKIE = "ruralshield_jwt"
+FLASH_MSG_COOKIE = "ruralshield_flash_msg"
+FLASH_ERR_COOKIE = "ruralshield_flash_err"
+FLASH_VOICE_COOKIE = "ruralshield_flash_voice"
 FACE_CAPTURE_DIR = Path("data/face_captures")
 
 # FastAPI app + static assets + HTML templates
@@ -75,6 +78,36 @@ def _server_api_url() -> str:
 
 def _jwt_from_request(request: Request) -> str:
     return request.cookies.get(JWT_COOKIE, "")
+
+
+def _flash_redirect(url: str, *, message: str = "", error: str = "", voice_text: str = "") -> RedirectResponse:
+    # Very small "flash" system via short-lived cookies.
+    resp = RedirectResponse(url=url, status_code=303)
+    if message:
+        resp.set_cookie(FLASH_MSG_COOKIE, message, max_age=15, samesite="lax")
+    if error:
+        resp.set_cookie(FLASH_ERR_COOKIE, error, max_age=15, samesite="lax")
+    if voice_text:
+        resp.set_cookie(FLASH_VOICE_COOKIE, voice_text, max_age=15, samesite="lax")
+    return resp
+
+
+def _customer_redirect(lang: str, *, message: str = "", error: str = "", voice_text: str = "") -> RedirectResponse:
+    return _flash_redirect(f"/dashboard/customer?lang={lang}", message=message, error=error, voice_text=voice_text)
+
+
+def _read_and_clear_flash(request: Request, context: dict) -> dict:
+    # Populate context with flash values. Caller must delete cookies on the Response.
+    msg = request.cookies.get(FLASH_MSG_COOKIE, "")
+    err = request.cookies.get(FLASH_ERR_COOKIE, "")
+    v = request.cookies.get(FLASH_VOICE_COOKIE, "")
+    if msg and not context.get("message"):
+        context["message"] = msg
+    if err and not context.get("error"):
+        context["error"] = err
+    if v and not context.get("voice_text"):
+        context["voice_text"] = v
+    return context
 
 
 def _api_call(
@@ -280,6 +313,50 @@ def _customer_stats(user_id: str) -> dict:
     return stats
 
 
+def _recent_tx_meta(user_id: str, limit: int = 5) -> list[dict]:
+    # Mini statement without decrypting amounts/recipients (privacy-first).
+    init_db(DEFAULT_DB)
+    with sqlite3.connect(DEFAULT_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT tx_id, timestamp, risk_score, risk_level, status, reason_codes
+            FROM transactions
+            WHERE user_id = ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+            """,
+            (user_id, limit),
+        )
+        rows = cursor.fetchall()
+    items = []
+    for tx_id, ts, risk_score, risk_level, status, reason_codes in rows:
+        items.append(
+            {
+                "tx_id": tx_id,
+                "timestamp": _friendly_time(ts),
+                "risk_score": int(risk_score),
+                "risk_level": str(risk_level),
+                "status": str(status),
+                "reason_codes": _parse_reason_codes(reason_codes),
+            }
+        )
+    return items
+
+
+def _last_sync_time() -> str:
+    init_db(DEFAULT_DB)
+    with sqlite3.connect(DEFAULT_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT created_at FROM audit_log WHERE event_type = 'SYNC_RESULT' ORDER BY created_at DESC LIMIT 1"
+        )
+        row = cursor.fetchone()
+    if not row:
+        return "-"
+    return _friendly_time(row[0])
+
+
 def _customer_dashboard_context(
     request: Request,
     lang: str,
@@ -297,6 +374,12 @@ def _customer_dashboard_context(
         "blocked": 0,
         "synced": 0,
     }
+    if session.get("active_user"):
+        context["mini_statement"] = _recent_tx_meta(session["active_user"], limit=5)
+        context["last_sync_at"] = _last_sync_time()
+    else:
+        context["mini_statement"] = []
+        context["last_sync_at"] = "-"
     return context
 
 
@@ -641,6 +724,9 @@ def logout(lang: str = "en"):
     response.delete_cookie(USER_COOKIE)
     response.delete_cookie(FACE_COOKIE)
     response.delete_cookie(JWT_COOKIE)
+    response.delete_cookie(FLASH_MSG_COOKIE)
+    response.delete_cookie(FLASH_ERR_COOKIE)
+    response.delete_cookie(FLASH_VOICE_COOKIE)
     return response
 
 
@@ -669,7 +755,12 @@ def customer_home(request: Request):
             context["server"] = {"connected": True, "error": "", "balance": float(data.get("balance", 0.0))}
         except Exception as exc:
             context["server"] = {"connected": False, "error": str(exc), "balance": 0.0}
-    return templates.TemplateResponse(request, "customer_home.html", context)
+    context = _read_and_clear_flash(request, context)
+    resp = templates.TemplateResponse(request, "customer_home.html", context)
+    resp.delete_cookie(FLASH_MSG_COOKIE)
+    resp.delete_cookie(FLASH_ERR_COOKIE)
+    resp.delete_cookie(FLASH_VOICE_COOKIE)
+    return resp
 
 
 @app.get("/bank/dashboard")
@@ -728,8 +819,7 @@ def customer_create_server_tx(
     lang = _resolve_lang(lang)
     token = _jwt_from_request(request)
     if not token:
-        ctx = _customer_dashboard_context(request, error="Missing server session. Please re-login.", lang=lang)
-        return templates.TemplateResponse(request, "customer_dashboard.html", ctx, status_code=400)
+        return _customer_redirect(lang, error="Missing server session. Please re-login.")
     try:
         _api_call(
             "POST",
@@ -737,10 +827,9 @@ def customer_create_server_tx(
             token=token,
             json_body={"amount": float(amount), "recipient": recipient.strip(), "device_id": device_id.strip()},
         )
-        return RedirectResponse(url=f"/dashboard/customer?lang={lang}", status_code=303)
+        return _customer_redirect(lang, message="Server transaction created.")
     except Exception as exc:
-        ctx = _customer_dashboard_context(request, error=str(exc), lang=lang)
-        return templates.TemplateResponse(request, "customer_dashboard.html", ctx, status_code=400)
+        return _customer_redirect(lang, error=str(exc))
 
 
 @app.get("/admin/dashboard")
@@ -881,14 +970,9 @@ def add_customer_transaction(
             action=stored.action_decision,
             guidance=list(stored.intervention_guidance),
         )
-        return templates.TemplateResponse(request, "customer_dashboard.html",
-            _customer_dashboard_context(request, lang=lang, message=msg, voice_text=voice_text),
-        )
+        return _customer_redirect(lang, message=msg, voice_text=voice_text)
     except Exception as exc:
-        return templates.TemplateResponse(request, "customer_dashboard.html",
-            _customer_dashboard_context(request, lang=lang, error=str(exc)),
-            status_code=400,
-        )
+        return _customer_redirect(lang, error=str(exc))
 
 
 @app.post("/customer/trusted-contact")
@@ -906,14 +990,9 @@ def update_customer_trusted_contact(
     try:
         set_trusted_contact(user_id=user_id, pin=pin.strip(), trusted_contact=trusted_contact.strip(), db_path=DEFAULT_DB)
         msg = f"{_t(lang, 'trusted_updated')} {user_id}."
-        return templates.TemplateResponse(request, "customer_dashboard.html",
-            _customer_dashboard_context(request, lang=lang, message=msg),
-        )
+        return _customer_redirect(lang, message=msg)
     except Exception as exc:
-        return templates.TemplateResponse(request, "customer_dashboard.html",
-            _customer_dashboard_context(request, lang=lang, error=str(exc)),
-            status_code=400,
-        )
+        return _customer_redirect(lang, error=str(exc))
 
 
 @app.post("/customer/panic-freeze")
@@ -931,14 +1010,9 @@ def customer_panic_freeze(
     try:
         freeze_until = enable_panic_freeze(user_id=user_id, pin=pin.strip(), minutes=minutes, db_path=DEFAULT_DB)
         msg = f"{_t(lang, 'freeze_enabled')} {freeze_until} ({user_id})."
-        return templates.TemplateResponse(request, "customer_dashboard.html",
-            _customer_dashboard_context(request, lang=lang, message=msg),
-        )
+        return _customer_redirect(lang, message=msg)
     except Exception as exc:
-        return templates.TemplateResponse(request, "customer_dashboard.html",
-            _customer_dashboard_context(request, lang=lang, error=str(exc)),
-            status_code=400,
-        )
+        return _customer_redirect(lang, error=str(exc))
 
 
 @app.post("/agent/assist")
@@ -2308,6 +2382,33 @@ def _bundle(lang: str) -> dict:
             "customer_tx_title": "Create Secure Transaction",
             "customer_safety_title": "Safety Controls",
             "customer_history_title": "Personal Transaction History",
+            # Customer home (after-midsem customer portal)
+            "cust_account_overview": "Account Overview",
+            "cust_balance_demo_label": "Balance (Demo)",
+            "cust_offline_first_note": "Offline-first: transactions are stored safely on your phone first and synced later when internet is available.",
+            "cust_quick_actions": "Quick Actions",
+            "cust_send_money": "Send Money",
+            "cust_view_transactions": "View Transactions",
+            "cust_safety_settings": "Safety Settings",
+            "cust_alerts": "Alerts",
+            "cust_alert_new_device_title": "New device detected:",
+            "cust_alert_new_device_body": "Some transactions may be held for review.",
+            "cust_alert_held_title": "Transactions held:",
+            "cust_alert_held_body": "{count} transaction(s) are waiting for review or trusted contact approval.",
+            "cust_alert_pending_title": "Pending sync:",
+            "cust_alert_pending_body": "{count} transaction(s) will sync when internet is available.",
+            "cust_alert_clear_title": "All clear:",
+            "cust_alert_clear_body": "No urgent security alerts right now.",
+            "cust_mini_statement": "Mini Statement (Last 5)",
+            "cust_mini_statement_note": "Privacy-first: amounts and recipients stay encrypted unless you unlock details with PIN.",
+            "cust_no_transactions": "No transactions yet.",
+            "cust_sync_status": "Sync Status",
+            "cust_last_sync": "Last Sync",
+            "cust_offline_mode": "Working Offline: transactions will be queued and synced later.",
+            "cust_send_money_offline": "Send Money (Offline-First)",
+            "cust_send_result_note": "Result will show: Allowed, Held (under review), or Blocked (suspicious).",
+            "cust_tx_history": "Transaction History",
+            "cust_history_privacy_note": "For privacy, enter PIN to view decrypted history.",
             "admin_portal_eyebrow": "Bank/Admin Portal",
             "admin_portal_title": "Bank/Admin Security Portal",
             "admin_portal_subtitle": "Central controls for fraud review, sync monitoring, and audit visibility.",
@@ -3407,6 +3508,32 @@ def _t(lang: str, key: str) -> str:
             "freeze_enabled": "पैनिक फ्रीज़ सक्रिय, समय तक",
             "invalid_pin_existing": "मौजूदा उपयोगकर्ता के लिए PIN अमान्य है।",
             "night_sync_done": "नाइट सिंक सिम्युलेट हुआ: {count} लेनदेन सिंक चिह्नित।",
+            "cust_account_overview": "खाता सारांश",
+            "cust_balance_demo_label": "बैलेंस (डेमो)",
+            "cust_offline_first_note": "ऑफलाइन-फर्स्ट: लेनदेन पहले फोन में सुरक्षित सहेजे जाते हैं और इंटरनेट मिलने पर सिंक होते हैं।",
+            "cust_quick_actions": "त्वरित कार्य",
+            "cust_send_money": "पैसे भेजें",
+            "cust_view_transactions": "लेनदेन देखें",
+            "cust_safety_settings": "सुरक्षा सेटिंग्स",
+            "cust_alerts": "अलर्ट",
+            "cust_alert_new_device_title": "नया डिवाइस मिला:",
+            "cust_alert_new_device_body": "कुछ लेनदेन समीक्षा के लिए रोके जा सकते हैं।",
+            "cust_alert_held_title": "रोके गए लेनदेन:",
+            "cust_alert_held_body": "{count} लेनदेन समीक्षा/विश्वसनीय स्वीकृति के लिए प्रतीक्षा में है।",
+            "cust_alert_pending_title": "सिंक लंबित:",
+            "cust_alert_pending_body": "{count} लेनदेन इंटरनेट मिलने पर सिंक होंगे।",
+            "cust_alert_clear_title": "सब ठीक:",
+            "cust_alert_clear_body": "अभी कोई तात्कालिक सुरक्षा अलर्ट नहीं।",
+            "cust_mini_statement": "मिनी स्टेटमेंट (अंतिम 5)",
+            "cust_mini_statement_note": "गोपनीयता: PIN के बिना राशि/प्राप्तकर्ता डिक्रिप्ट नहीं दिखते।",
+            "cust_no_transactions": "अभी कोई लेनदेन नहीं।",
+            "cust_sync_status": "सिंक स्थिति",
+            "cust_last_sync": "अंतिम सिंक",
+            "cust_offline_mode": "ऑफलाइन मोड: लेनदेन कतार में रहेगा और बाद में सिंक होगा।",
+            "cust_send_money_offline": "पैसे भेजें (ऑफलाइन-फर्स्ट)",
+            "cust_send_result_note": "परिणाम: अनुमति, समीक्षा हेतु रोक, या सुरक्षा हेतु ब्लॉक।",
+            "cust_tx_history": "लेनदेन इतिहास",
+            "cust_history_privacy_note": "गोपनीयता के लिए, PIN डालकर डिक्रिप्टेड इतिहास देखें।",
         },
         "or": {
             "no_alert": "କୌଣସି ଆଲର୍ଟ ଟ୍ରିଗର ହୋଇନି",
@@ -3441,6 +3568,32 @@ def _t(lang: str, key: str) -> str:
             "freeze_enabled": "ପ୍ୟାନିକ ଫ୍ରିଜ୍ ସକ୍ରିୟ, ସମୟ ପର୍ଯ୍ୟନ୍ତ",
             "invalid_pin_existing": "ପୂର୍ବରୁ ଥିବା ବ୍ୟବହାରକାରୀ ପାଇଁ PIN ଅବୈଧ।",
             "night_sync_done": "ନାଇଟ୍ ସିଙ୍କ ସିମ୍ୟୁଲେଟ୍: {count} ଟ୍ରାନ୍ଜାକ୍ସନ ସିଙ୍କ ଚିହ୍ନିତ।",
+            "cust_account_overview": "ଆକାଉଣ୍ଟ ସାରାଂଶ",
+            "cust_balance_demo_label": "ବ୍ୟାଲାନ୍ସ (ଡେମୋ)",
+            "cust_offline_first_note": "ଅଫଲାଇନ-ଫର୍ଷ୍ଟ: ଟ୍ରାନ୍ଜାକ୍ସନ ପ୍ରଥମେ ଫୋନରେ ସୁରକ୍ଷିତ ସେଭ୍ ହୁଏ, ପରେ ଇଣ୍ଟରନେଟ ମିଳିଲେ ସିଙ୍କ ହୁଏ।",
+            "cust_quick_actions": "ତ୍ୱରିତ କାର୍ଯ୍ୟ",
+            "cust_send_money": "ଟଙ୍କା ପଠାନ୍ତୁ",
+            "cust_view_transactions": "ଟ୍ରାନ୍ଜାକ୍ସନ ଦେଖନ୍ତୁ",
+            "cust_safety_settings": "ସୁରକ୍ଷା ସେଟିଙ୍ଗ୍ସ",
+            "cust_alerts": "ଆଲର୍ଟ",
+            "cust_alert_new_device_title": "ନୂଆ ଡିଭାଇସ ଚିହ୍ନଟ:",
+            "cust_alert_new_device_body": "କିଛି ଟ୍ରାନ୍ଜାକ୍ସନ ସମୀକ୍ଷା ପାଇଁ ରୋକାଯାଇପାରେ।",
+            "cust_alert_held_title": "ହେଲ୍ଡ ଟ୍ରାନ୍ଜାକ୍ସନ:",
+            "cust_alert_held_body": "{count} ଟ୍ରାନ୍ଜାକ୍ସନ ସମୀକ୍ଷା/ଭରସାଯୋଗ୍ୟ ଅନୁମୋଦନ ପାଇଁ ଅପେକ୍ଷାରତ।",
+            "cust_alert_pending_title": "ସିଙ୍କ ଅପେକ୍ଷାରତ:",
+            "cust_alert_pending_body": "{count} ଟ୍ରାନ୍ଜାକ୍ସନ ଇଣ୍ଟରନେଟ ମିଳିଲେ ସିଙ୍କ ହେବ।",
+            "cust_alert_clear_title": "ସବୁ ଠିକ୍:",
+            "cust_alert_clear_body": "ବର୍ତ୍ତମାନ କୌଣସି ତ୍ୱରିତ ସୁରକ୍ଷା ଆଲର୍ଟ ନାହିଁ।",
+            "cust_mini_statement": "ମିନି ଷ୍ଟେଟମେଣ୍ଟ (ଶେଷ 5)",
+            "cust_mini_statement_note": "ଗୋପନୀୟତା: PIN ବିନା ରାଶି/ପ୍ରାପ୍ତକର୍ତ୍ତା ଡିକ୍ରିପ୍ଟ ହେବ ନାହିଁ।",
+            "cust_no_transactions": "ଏଯାବତ କୌଣସି ଟ୍ରାନ୍ଜାକ୍ସନ ନାହିଁ।",
+            "cust_sync_status": "ସିଙ୍କ ସ୍ଥିତି",
+            "cust_last_sync": "ଶେଷ ସିଙ୍କ",
+            "cust_offline_mode": "ଅଫଲାଇନ ମୋଡ୍: ଟ୍ରାନ୍ଜାକ୍ସନ କ୍ୟୁ ହେବ ଏବଂ ପରେ ସିଙ୍କ ହେବ।",
+            "cust_send_money_offline": "ଟଙ୍କା ପଠାନ୍ତୁ (ଅଫଲାଇନ-ଫର୍ଷ୍ଟ)",
+            "cust_send_result_note": "ପରିଣାମ: ଅନୁମତି, ସମୀକ୍ଷା ପାଇଁ ରୋକ, କିମ୍ବା ସୁରକ୍ଷା ପାଇଁ ବ୍ଲକ୍।",
+            "cust_tx_history": "ଟ୍ରାନ୍ଜାକ୍ସନ ଇତିହାସ",
+            "cust_history_privacy_note": "ଗୋପନୀୟତା ପାଇଁ, PIN ଦେଇ ଡିକ୍ରିପ୍ଟ ଇତିହାସ ଦେଖନ୍ତୁ।",
         },
         "gu": {
             "no_alert": "કોઈ એલર્ટ ટ્રિગર નથી",
@@ -3475,6 +3628,32 @@ def _t(lang: str, key: str) -> str:
             "freeze_enabled": "પેનિક ફ્રીઝ સક્રિય થયું જ્યાં સુધી",
             "invalid_pin_existing": "હાજર વપરાશકર્તા માટે PIN અમાન્ય છે.",
             "night_sync_done": "નાઇટ સિંક સિમ્યુલેટ થયું: {count} ટ્રાન્ઝેક્શન સિંક તરીકે ચિહ્નિત.",
+            "cust_account_overview": "ખાતાનું સારાંશ",
+            "cust_balance_demo_label": "બેલેન્સ (ડેમો)",
+            "cust_offline_first_note": "ઓફલાઇન-ફર્સ્ટ: લેનદેન પહેલા ફોનમાં સુરક્ષિત સંગ્રહાય છે અને ઇન્ટરનેટ મળતા જ સિંક થાય છે.",
+            "cust_quick_actions": "ઝડપી ક્રિયાઓ",
+            "cust_send_money": "પૈસા મોકલો",
+            "cust_view_transactions": "લેનદેન જુઓ",
+            "cust_safety_settings": "સેફ્ટી સેટિંગ્સ",
+            "cust_alerts": "અલર્ટ્સ",
+            "cust_alert_new_device_title": "નવું ડિવાઇસ મળ્યું:",
+            "cust_alert_new_device_body": "કેટલાંક લેનદેન સમીક્ષા માટે રોકાઈ શકે છે.",
+            "cust_alert_held_title": "રોકાયેલ લેનદેન:",
+            "cust_alert_held_body": "{count} લેનદેન સમીક્ષા/વિશ્વસનીય મંજૂરી માટે રાહ જોઈ રહ્યું છે.",
+            "cust_alert_pending_title": "સિંક બાકી:",
+            "cust_alert_pending_body": "{count} લેનદેન ઇન્ટરનેટ મળતા જ સિંક થશે.",
+            "cust_alert_clear_title": "બધું ઠીક:",
+            "cust_alert_clear_body": "હમણાં કોઈ તાત્કાલિક સુરક્ષા અલર્ટ નથી.",
+            "cust_mini_statement": "મિની સ્ટેટમેન્ટ (છેલ્લા 5)",
+            "cust_mini_statement_note": "પ્રાઈવસી: PIN વગર રકમ/પ્રાપ્તકર્તા ડિક્રિપ્ટ દેખાતું નથી.",
+            "cust_no_transactions": "હજી કોઈ લેનદેન નથી.",
+            "cust_sync_status": "સિંક સ્થિતિ",
+            "cust_last_sync": "છેલ્લો સિંક",
+            "cust_offline_mode": "ઓફલાઇન: લેનદેન કતારમાં રહેશે અને પછી સિંક થશે.",
+            "cust_send_money_offline": "પૈસા મોકલો (ઓફલાઇન-ફર્સ્ટ)",
+            "cust_send_result_note": "પરિણામ: મંજૂરી, સમીક્ષા માટે રોકો, અથવા સુરક્ષા માટે બ્લોક.",
+            "cust_tx_history": "લેનદેન ઇતિહાસ",
+            "cust_history_privacy_note": "પ્રાઈવસી માટે, PIN નાખીને ડિક્રિપ્ટેડ ઇતિહાસ જુઓ.",
         },
         "de": {
             "no_alert": "Keine Alarme ausgelöst",
@@ -3509,6 +3688,32 @@ def _t(lang: str, key: str) -> str:
             "freeze_enabled": "Panik-Freeze aktiv bis",
             "invalid_pin_existing": "Ungültige PIN für bestehenden Benutzer.",
             "night_sync_done": "Nachtsync simuliert: {count} Transaktionen als synchronisiert markiert.",
+            "cust_account_overview": "Kontoübersicht",
+            "cust_balance_demo_label": "Kontostand (Demo)",
+            "cust_offline_first_note": "Offline-first: Transaktionen werden zuerst sicher auf dem Gerät gespeichert und später synchronisiert, wenn Internet verfügbar ist.",
+            "cust_quick_actions": "Schnellaktionen",
+            "cust_send_money": "Geld senden",
+            "cust_view_transactions": "Transaktionen ansehen",
+            "cust_safety_settings": "Sicherheitseinstellungen",
+            "cust_alerts": "Warnungen",
+            "cust_alert_new_device_title": "Neues Gerät erkannt:",
+            "cust_alert_new_device_body": "Einige Transaktionen können zur Prüfung gehalten werden.",
+            "cust_alert_held_title": "Gehaltene Transaktionen:",
+            "cust_alert_held_body": "{count} Transaktion(en) warten auf Prüfung oder Vertrauensfreigabe.",
+            "cust_alert_pending_title": "Sync ausstehend:",
+            "cust_alert_pending_body": "{count} Transaktion(en) werden synchronisiert, sobald Internet verfügbar ist.",
+            "cust_alert_clear_title": "Alles ok:",
+            "cust_alert_clear_body": "Derzeit keine dringenden Sicherheitswarnungen.",
+            "cust_mini_statement": "Mini-Auszug (letzte 5)",
+            "cust_mini_statement_note": "Datenschutz: Betrag/Empfänger bleiben verschlüsselt, bis du mit PIN entsperrst.",
+            "cust_no_transactions": "Noch keine Transaktionen.",
+            "cust_sync_status": "Sync-Status",
+            "cust_last_sync": "Letzter Sync",
+            "cust_offline_mode": "Offline-Modus: Transaktionen werden zwischengespeichert und später synchronisiert.",
+            "cust_send_money_offline": "Geld senden (Offline-First)",
+            "cust_send_result_note": "Ergebnis: erlaubt, gehalten (Prüfung) oder blockiert (verdächtig).",
+            "cust_tx_history": "Transaktionsverlauf",
+            "cust_history_privacy_note": "Aus Datenschutzgründen PIN eingeben, um den Verlauf zu entschlüsseln.",
         },
     }
     base = dictionary["en"]

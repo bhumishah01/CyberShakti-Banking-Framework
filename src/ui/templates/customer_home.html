@@ -39,47 +39,89 @@
     {% endif %}
 
     <section class="card">
-      <h2>Account Overview</h2>
+      <h2>{{ i18n.cust_account_overview }}</h2>
       <section class="stats-grid">
-        <article class="stat-card"><h3>Balance (Demo)</h3><p>{{ "%.2f"|format(server.balance if server.connected else 50000.0) }}</p></article>
+        <article class="stat-card"><h3>{{ i18n.cust_balance_demo_label }}</h3><p>{{ "%.2f"|format(server.balance if server.connected else 50000.0) }}</p></article>
         <article class="stat-card"><h3>{{ i18n.transactions }}</h3><p>{{ customer_stats.total }}</p></article>
         <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p>{{ customer_stats.pending }}</p></article>
         <article class="stat-card"><h3>{{ i18n.held }}</h3><p>{{ customer_stats.held }}</p></article>
       </section>
       <p class="muted small" style="margin-top:10px;">
-        Offline-first: transactions are stored safely on your phone first and synced later when internet is available.
+        {{ i18n.cust_offline_first_note }}
       </p>
     </section>
 
     <section class="card">
-      <h2>Quick Actions</h2>
+      <h2>{{ i18n.cust_quick_actions }}</h2>
       <div class="actions">
-        <a class="button" href="#send">Send Money</a>
-        <a class="button secondary" href="#history">View Transactions</a>
-        <a class="button secondary" href="#safety">Safety Settings</a>
+        <button class="button" type="button" data-scroll="#send">{{ i18n.cust_send_money }}</button>
+        <button class="button secondary" type="button" data-scroll="#history">{{ i18n.cust_view_transactions }}</button>
+        <button class="button secondary" type="button" data-scroll="#safety">{{ i18n.cust_safety_settings }}</button>
       </div>
     </section>
 
     <section class="card">
-      <h2>Alerts</h2>
+      <h2>{{ i18n.cust_alerts }}</h2>
       <ul class="list">
         {% if device_trust == "untrusted" %}
-          <li><strong>New device detected:</strong> Some transactions may be held for review.</li>
+          <li><strong>{{ i18n.cust_alert_new_device_title }}</strong> {{ i18n.cust_alert_new_device_body }}</li>
         {% endif %}
         {% if customer_stats.held > 0 %}
-          <li><strong>Transactions held:</strong> {{ customer_stats.held }} transaction(s) are waiting for review or trusted contact approval.</li>
+          <li><strong>{{ i18n.cust_alert_held_title }}</strong> {{ i18n.cust_alert_held_body.format(count=customer_stats.held) }}</li>
         {% endif %}
         {% if customer_stats.pending > 0 %}
-          <li><strong>Pending sync:</strong> {{ customer_stats.pending }} transaction(s) will sync when internet is available.</li>
+          <li><strong>{{ i18n.cust_alert_pending_title }}</strong> {{ i18n.cust_alert_pending_body.format(count=customer_stats.pending) }}</li>
         {% endif %}
         {% if device_trust != "untrusted" and customer_stats.held == 0 and customer_stats.pending == 0 %}
-          <li><strong>All clear:</strong> No urgent security alerts right now.</li>
+          <li><strong>{{ i18n.cust_alert_clear_title }}</strong> {{ i18n.cust_alert_clear_body }}</li>
         {% endif %}
       </ul>
     </section>
 
+    <section class="card">
+      <h2>{{ i18n.cust_mini_statement }}</h2>
+      <p class="muted small">{{ i18n.cust_mini_statement_note }}</p>
+      <div style="overflow:auto;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>{{ i18n.time }}</th>
+              <th>{{ i18n.tx_id }}</th>
+              <th>{{ i18n.risk }}</th>
+              <th>{{ i18n.status }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for tx in mini_statement %}
+              <tr>
+                <td>{{ tx.timestamp }}</td>
+                <td><code>{{ tx.tx_id }}</code></td>
+                <td>{{ tx.risk_score }} ({{ tx.risk_level }})</td>
+                <td>{{ tx.status }}</td>
+              </tr>
+            {% endfor %}
+            {% if (mini_statement|length) == 0 %}
+              <tr><td colspan="4" class="muted">{{ i18n.cust_no_transactions }}</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>{{ i18n.cust_sync_status }}</h2>
+      <div class="stats-grid">
+        <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p>{{ customer_stats.pending }}</p></article>
+        <article class="stat-card"><h3>{{ i18n.synced }}</h3><p>{{ customer_stats.synced }}</p></article>
+        <article class="stat-card"><h3>{{ i18n.cust_last_sync }}</h3><p>{{ last_sync_at }}</p></article>
+      </div>
+      <div class="alert warn offline-banner" hidden>
+        {{ i18n.cust_offline_mode }}
+      </div>
+    </section>
+
     <section id="send" class="card">
-      <h2>Send Money (Offline-First)</h2>
+      <h2>{{ i18n.cust_send_money_offline }}</h2>
       <form action="/customer/transactions" method="post" class="grid">
         <input type="hidden" name="lang" value="{{ lang }}">
         <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
@@ -88,13 +130,13 @@
         <button type="submit">{{ i18n.create_tx }}</button>
       </form>
       <p class="muted small" style="margin-top:8px;">
-        Result will show: Allowed, Held (under review), or Blocked (suspicious).
+        {{ i18n.cust_send_result_note }}
       </p>
     </section>
 
     <section id="history" class="card">
-      <h2>Transaction History</h2>
-      <p class="muted">For privacy, enter PIN to view decrypted history.</p>
+      <h2>{{ i18n.cust_tx_history }}</h2>
+      <p class="muted">{{ i18n.cust_history_privacy_note }}</p>
       <form action="/transactions" method="get" class="grid">
         <input type="hidden" name="lang" value="{{ lang }}">
         <input type="hidden" name="user_id" value="{{ active_user }}">
@@ -129,6 +171,29 @@
 
   <script>
     (() => {
+      // Quick action scrolling for low-literacy UX.
+      document.querySelectorAll('[data-scroll]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const sel = btn.getAttribute('data-scroll');
+          const el = sel ? document.querySelector(sel) : null;
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      });
+    })();
+
+    (() => {
+      // Offline banner
+      const banner = document.querySelector('.offline-banner');
+      if (!banner) return;
+      const update = () => {
+        banner.hidden = !!navigator.onLine;
+      };
+      window.addEventListener('online', update);
+      window.addEventListener('offline', update);
+      update();
+    })();
+
+    (() => {
       const btn = document.querySelector(".voice-btn");
       if (!btn || !window.speechSynthesis) return;
       btn.addEventListener("click", () => {
@@ -141,4 +206,3 @@
   </script>
 </body>
 </html>
-
