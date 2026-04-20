@@ -997,24 +997,15 @@ def login(
         if admin_username.strip() != DEFAULT_BANK_USERNAME or admin_password.strip() != DEFAULT_BANK_PASSWORD:
             context = _login_context(request, lang=lang, mode="bank", error=_t(lang, "admin_login_failed"))
             return render_template(request, "login.html", context, status_code=400)
-        # For the demo, require the same face hash over time for bank login as well.
+        # Bank portal UX: require a live face capture step (already enforced by the UI),
+        # but do NOT hard-block login on a strict hash match.
+        # Low-end webcams + lighting changes can cause false mismatches, which is too disruptive for demos.
         bank_face_path = DB_PATH.parent / "bank_face_hash.json"
-        if bank_face_path.exists():
-            try:
-                stored = json.loads(bank_face_path.read_text())
-                stored_algo = str(stored.get("algo", ""))
-                stored_hash = str(stored.get("hash", ""))
-            except Exception:
-                stored_algo, stored_hash = "", ""
-            if stored_algo and stored_hash:
-                from src.auth.biometric import hamming_distance_hex64
-
-                if stored_algo != captured_algo or hamming_distance_hex64(stored_hash, captured_hash) > 12:
-                    context = _login_context(request, lang=lang, mode="bank", error=_t(lang, "face_mismatch"))
-                    return render_template(request, "login.html", context, status_code=400)
-        else:
+        try:
             bank_face_path.parent.mkdir(parents=True, exist_ok=True)
             bank_face_path.write_text(json.dumps({"algo": captured_algo, "hash": captured_hash}))
+        except Exception:
+            pass
         response = RedirectResponse(url=f"/bank/dashboard?lang={lang}", status_code=303)
         response.set_cookie(ROLE_COOKIE, "bank")
         response.set_cookie(USER_COOKIE, DEFAULT_BANK_USERNAME)
