@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 import csv
 import os
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -55,6 +56,7 @@ ROLE_COOKIE = "ruralshield_role"
 USER_COOKIE = "ruralshield_user"
 FACE_COOKIE = "ruralshield_face_verified"
 DEVICE_COOKIE = "ruralshield_device_trust"
+JWT_COOKIE = "ruralshield_jwt"
 FACE_CAPTURE_DIR = Path("data/face_captures")
 
 # FastAPI app + static assets + HTML templates
@@ -65,6 +67,116 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 # where an unhashable dict ends up in the template cache key.
 # Disabling cache is fine for this project/demo and avoids 500s on template load.
 templates.env.cache = None
+
+
+def _server_api_url() -> str:
+    return DEFAULT_SERVER_URL.rstrip("/")
+
+
+def _jwt_from_request(request: Request) -> str:
+    return request.cookies.get(JWT_COOKIE, "")
+
+
+def _api_call(
+    method: str,
+    path: str,
+    *,
+    token: str = "",
+    json_body: dict | None = None,
+    timeout: float = 6.0,
+) -> dict:
+    """Server-side call from UI -> Server API. Uses JWT in Authorization header."""
+    import requests
+
+    url = f"{_server_api_url()}{path}"
+    headers: dict[str, str] = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    resp = requests.request(method, url, json=json_body, headers=headers, timeout=timeout)
+    resp.raise_for_status()
+    data = resp.json()
+    return data if isinstance(data, dict) else {"data": data}
+
+
+def _ensure_server_session_for_customer(user_id: str, pin: str, device_id: str) -> tuple[str, str]:
+    """Return (jwt, role) for server dashboards.
+
+    Demo choice: use the customer's PIN as the server password so the same login works.
+    """
+    try:
+        out = _api_call(
+            "POST",
+            "/auth/login",
+            json_body={"user_id": user_id, "password": pin, "device_id": device_id},
+        )
+        return str(out.get("access_token", "")), str(out.get("role", "customer"))
+    except Exception:
+        _api_call(
+            "POST",
+            "/auth/register",
+            json_body={"user_id": user_id, "phone": "+910000000000", "password": pin, "role": "customer"},
+        )
+        out = _api_call(
+            "POST",
+            "/auth/login",
+            json_body={"user_id": user_id, "password": pin, "device_id": device_id},
+        )
+        return str(out.get("access_token", "")), str(out.get("role", "customer"))
+
+
+def _ensure_server_session_for_bank() -> tuple[str, str]:
+    """Return (jwt, role) for bank dashboards.
+
+    Demo choice: auto-provision a bank_officer with the UI admin credentials.
+    """
+    user_id = DEFAULT_BANK_USERNAME
+    password = DEFAULT_BANK_PASSWORD
+    try:
+        out = _api_call(
+            "POST",
+            "/auth/login",
+            json_body={"user_id": user_id, "password": password, "device_id": ""},
+        )
+        return str(out.get("access_token", "")), str(out.get("role", "bank_officer"))
+    except Exception:
+        _api_call(
+            "POST",
+            "/auth/register",
+            json_body={"user_id": user_id, "phone": "+910000000001", "password": password, "role": "bank_officer"},
+        )
+        out = _api_call(
+            "POST",
+            "/auth/login",
+            json_body={"user_id": user_id, "password": password, "device_id": ""},
+        )
+        return str(out.get("access_token", "")), str(out.get("role", "bank_officer"))
+
+
+def _server_dashboard_customer_data(token: str) -> dict[str, Any]:
+    tx = _api_call("GET", "/transactions/me", token=token)
+    items = list(tx.get("items", [])) if isinstance(tx, dict) else []
+
+    spent = 0.0
+    for it in items:
+        try:
+            spent += float(it.get("amount", 0) or 0)
+        except Exception:
+            pass
+
+    balance = max(0.0, 50000.0 - spent)  # mock balance for demo
+    return {"balance": balance, "transactions": items}
+
+
+def _server_dashboard_bank_data(token: str, status: str = "") -> dict[str, Any]:
+    q = f"?status={status}" if status else ""
+    tx = _api_call("GET", f"/transactions{q}", token=token)
+    fraud = _api_call("GET", "/fraud/logs", token=token)
+    sync_status = _api_call("GET", "/sync/status", token=token)
+    return {
+        "transactions": list(tx.get("items", [])) if isinstance(tx, dict) else [],
+        "fraud_logs": list(fraud.get("items", [])) if isinstance(fraud, dict) else [],
+        "sync_status": sync_status if isinstance(sync_status, dict) else {},
+    }
 
 
 def _ctx(
@@ -376,6 +488,14 @@ def customer_register(
     response.set_cookie(USER_COOKIE, user_id.strip())
     response.set_cookie(FACE_COOKIE, "1")
     response.set_cookie(DEVICE_COOKIE, "untrusted" if dev_reason == "new_device" else "trusted")
+    # After-midsem: also create a server JWT session (PIN-as-password) so dashboards can fetch API data.
+    try:
+        token, _ = _ensure_server_session_for_customer(user_id.strip(), pin.strip(), device_id=device_id)
+        if token:
+            response.set_cookie(JWT_COOKIE, token, httponly=True, samesite="lax")
+    except Exception:
+        # Server may be offline during registration; UI still works in offline-only mode.
+        pass
     return response
 
 
@@ -449,6 +569,13 @@ def login(
         response.set_cookie(USER_COOKIE, user_id.strip())
         response.set_cookie(FACE_COOKIE, "1")
         response.set_cookie(DEVICE_COOKIE, "untrusted" if dev_reason == "new_device" else "trusted")
+        # After-midsem: mint server JWT session (PIN-as-password) for API-backed dashboard.
+        try:
+            token, _ = _ensure_server_session_for_customer(user_id.strip(), pin.strip(), device_id=device_id)
+            if token:
+                response.set_cookie(JWT_COOKIE, token, httponly=True, samesite="lax")
+        except Exception:
+            pass
         return response
 
     if role == "bank":
@@ -477,6 +604,13 @@ def login(
         response.set_cookie(ROLE_COOKIE, "bank")
         response.set_cookie(USER_COOKIE, DEFAULT_BANK_USERNAME)
         response.set_cookie(FACE_COOKIE, "1")
+        # After-midsem: bank portal uses server API via a bank_officer JWT.
+        try:
+            token, _ = _ensure_server_session_for_bank()
+            if token:
+                response.set_cookie(JWT_COOKIE, token, httponly=True, samesite="lax")
+        except Exception:
+            pass
         return response
 
     context = _login_context(request, lang=lang, mode="choose", error=_t(lang, "invalid_role"))
@@ -489,6 +623,7 @@ def logout(lang: str = "en"):
     response.delete_cookie(ROLE_COOKIE)
     response.delete_cookie(USER_COOKIE)
     response.delete_cookie(FACE_COOKIE)
+    response.delete_cookie(JWT_COOKIE)
     return response
 
 
@@ -498,7 +633,16 @@ def customer_dashboard(request: Request):
     if guard:
         return guard
     lang = _resolve_lang(request.query_params.get("lang", "en"))
-    return templates.TemplateResponse(request, "customer_dashboard.html", _customer_dashboard_context(request, lang=lang))
+    context = _customer_dashboard_context(request, lang=lang)
+    token = _jwt_from_request(request)
+    context["server"] = {"connected": False, "error": "", "balance": 0.0, "transactions": []}
+    if token:
+        try:
+            data = _server_dashboard_customer_data(token)
+            context["server"] = {"connected": True, "error": "", **data}
+        except Exception as exc:
+            context["server"] = {"connected": False, "error": str(exc), "balance": 0.0, "transactions": []}
+    return templates.TemplateResponse(request, "customer_dashboard.html", context)
 
 
 @app.get("/bank/dashboard")
@@ -507,7 +651,69 @@ def bank_dashboard(request: Request):
     if guard:
         return guard
     lang = _resolve_lang(request.query_params.get("lang", "en"))
-    return templates.TemplateResponse(request, "bank_dashboard.html", _admin_dashboard_context(request, lang=lang))
+    context = _admin_dashboard_context(request, lang=lang)
+    token = _jwt_from_request(request)
+    context["server"] = {"connected": False, "error": "", "transactions": [], "fraud_logs": [], "sync_status": {}}
+    if token:
+        try:
+            data = _server_dashboard_bank_data(token)
+            context["server"] = {"connected": True, "error": "", **data}
+        except Exception as exc:
+            context["server"] = {"connected": False, "error": str(exc), "transactions": [], "fraud_logs": [], "sync_status": {}}
+    return templates.TemplateResponse(request, "bank_dashboard.html", context)
+
+
+@app.post("/bank/server/tx/review")
+def bank_review_server_tx(
+    request: Request,
+    tx_id: str = Form(...),
+    decision: str = Form(...),
+    lang: str = Form(default="en"),
+):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
+    lang = _resolve_lang(lang)
+    token = _jwt_from_request(request)
+    if not token:
+        return templates.TemplateResponse(
+            request, "bank_dashboard.html", _admin_dashboard_context(request, error="Missing server session. Please re-login.", lang=lang), status_code=400
+        )
+    try:
+        _api_call("POST", f"/transactions/{tx_id}/review", token=token, json_body={"decision": decision})
+        return RedirectResponse(url=f"/bank/dashboard?lang={lang}", status_code=303)
+    except Exception as exc:
+        ctx = _admin_dashboard_context(request, error=str(exc), lang=lang)
+        return templates.TemplateResponse(request, "bank_dashboard.html", ctx, status_code=400)
+
+
+@app.post("/customer/server/transactions")
+def customer_create_server_tx(
+    request: Request,
+    amount: float = Form(...),
+    recipient: str = Form(...),
+    device_id: str = Form(default=""),
+    lang: str = Form(default="en"),
+):
+    guard = _require_role(request, "customer")
+    if guard:
+        return guard
+    lang = _resolve_lang(lang)
+    token = _jwt_from_request(request)
+    if not token:
+        ctx = _customer_dashboard_context(request, error="Missing server session. Please re-login.", lang=lang)
+        return templates.TemplateResponse(request, "customer_dashboard.html", ctx, status_code=400)
+    try:
+        _api_call(
+            "POST",
+            "/transactions",
+            token=token,
+            json_body={"amount": float(amount), "recipient": recipient.strip(), "device_id": device_id.strip()},
+        )
+        return RedirectResponse(url=f"/customer/dashboard?lang={lang}", status_code=303)
+    except Exception as exc:
+        ctx = _customer_dashboard_context(request, error=str(exc), lang=lang)
+        return templates.TemplateResponse(request, "customer_dashboard.html", ctx, status_code=400)
 
 
 @app.get("/admin/dashboard")

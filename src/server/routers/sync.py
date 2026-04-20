@@ -102,3 +102,17 @@ def logs(db: Session = Depends(get_db), user=Depends(require_roles("bank_officer
             for r in rows
         ]
     }
+
+
+@router.get("/status")
+def status(db: Session = Depends(get_db), user=Depends(require_roles("bank_officer"))):
+    # Lightweight operational visibility for the dashboard.
+    from sqlalchemy import func, select
+
+    from src.server.models.legacy_inbox import LegacySyncInbox
+    from src.server.models.sync import SyncLog, SyncQueue
+
+    queue_pending = db.execute(select(func.count()).select_from(SyncQueue)).scalar_one()
+    sync_logs = db.execute(select(func.count()).select_from(SyncLog)).scalar_one()
+    legacy_inbox = db.execute(select(func.count()).select_from(LegacySyncInbox)).scalar_one()
+    return {"queue_items": int(queue_pending), "sync_logs": int(sync_logs), "legacy_inbox": int(legacy_inbox)}

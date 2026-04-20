@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.server.core.security import encrypt_field
+from src.server.core.security import decrypt_field
 from src.server.models.device import Device
 from src.server.models.transaction import Transaction
 from src.server.services.fraud import behavioral_profile, dynamic_risk_score, log_fraud
@@ -82,4 +83,28 @@ def create_transaction(
         risk_level=risk_level,
         reasons=reasons,
     )
+    return tx
+
+
+def decrypt_recipient(tx: Transaction) -> str:
+    # For bank-side visibility in this prototype.
+    try:
+        return decrypt_field(tx.recipient_enc, aad=f"tx:{tx.tx_id}")
+    except Exception:
+        return "[unavailable]"
+
+
+def review_transaction(db: Session, *, tx_id: str, decision: str) -> Transaction | None:
+    tx = db.get(Transaction, tx_id)
+    if tx is None:
+        return None
+    d = decision.strip().lower()
+    if d == "approve":
+        tx.status = "APPROVED"
+    elif d == "reject":
+        tx.status = "REJECTED"
+    else:
+        raise ValueError("invalid_decision")
+    db.commit()
+    db.refresh(tx)
     return tx

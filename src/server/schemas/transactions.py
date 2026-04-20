@@ -19,3 +19,7 @@ class TransactionResponse(BaseModel):
     status: str
     decision: str = "ALLOW"
     explanation: dict = {}
+
+
+class TransactionReviewRequest(BaseModel):
+    decision: str = Field(pattern="^(approve|reject)$")

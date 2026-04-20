@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from src.server.api.deps import current_user
 from src.server.db.session import get_db
 from src.server.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
 from src.server.services.auth import login_user, register_user
@@ -39,3 +40,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse
     except PermissionError:
         raise HTTPException(status_code=401, detail="invalid_credentials")
 
+
+@router.get("/me")
+def me(user=Depends(current_user)) -> dict:
+    return {"user_id": user.user_id, "role": user.role}

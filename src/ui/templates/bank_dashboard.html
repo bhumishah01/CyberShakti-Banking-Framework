@@ -73,6 +73,101 @@
       </section>
     </section>
 
+    <section class="card">
+      <h2>After Midsem: Server Ops (Postgres + JWT + RBAC)</h2>
+      {% if server and server.connected %}
+        <div class="stats-grid" style="margin-bottom:10px;">
+          <article class="stat-card"><h3>Legacy Inbox</h3><p>{{ server.sync_status.legacy_inbox or 0 }}</p></article>
+          <article class="stat-card"><h3>Sync Queue</h3><p>{{ server.sync_status.queue_items or 0 }}</p></article>
+          <article class="stat-card"><h3>Sync Logs</h3><p>{{ server.sync_status.sync_logs or 0 }}</p></article>
+        </div>
+
+        <div style="overflow:auto;">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Tx</th>
+                <th>User</th>
+                <th>Amount</th>
+                <th>Recipient</th>
+                <th>Risk</th>
+                <th>Reasons</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for tx in server.transactions[:50] %}
+                <tr>
+                  <td>{{ tx.created_at }}</td>
+                  <td><code>{{ tx.tx_id }}</code></td>
+                  <td>{{ tx.user_id }}</td>
+                  <td>{{ \"%.2f\"|format(tx.amount) }}</td>
+                  <td>{{ tx.recipient }}</td>
+                  <td>{{ tx.risk_score }} ({{ tx.risk_level }})</td>
+                  <td class="muted small">{{ (tx.reason_codes or [])|join(\", \") }}</td>
+                  <td>{{ tx.status }}</td>
+                  <td>
+                    {% if tx.status == 'HOLD_FOR_REVIEW' %}
+                      <form action="/bank/server/tx/review" method="post" style="display:flex; gap:8px;">
+                        <input type="hidden" name="lang" value="{{ lang }}">
+                        <input type="hidden" name="tx_id" value="{{ tx.tx_id }}">
+                        <button class="button secondary" type="submit" name="decision" value="approve">Approve</button>
+                        <button class="button secondary" type="submit" name="decision" value="reject">Reject</button>
+                      </form>
+                    {% else %}
+                      <span class="muted">-</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+              {% if (server.transactions|length) == 0 %}
+                <tr><td colspan="9" class="muted">No server transactions yet. Use the customer portal to create some.</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+
+        <h3 style="margin-top:14px;">Fraud Logs (Explainable)</h3>
+        <div style="overflow:auto; margin-top:8px;">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Tx</th>
+                <th>User</th>
+                <th>Risk</th>
+                <th>Reasons</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in server.fraud_logs[:50] %}
+                <tr>
+                  <td>{{ row.created_at }}</td>
+                  <td><code>{{ row.tx_id }}</code></td>
+                  <td>{{ row.user_id }}</td>
+                  <td>{{ row.risk_score }} ({{ row.risk_level }})</td>
+                  <td class="muted small">{{ (row.reasons or [])|join(\", \") }}</td>
+                </tr>
+              {% endfor %}
+              {% if (server.fraud_logs|length) == 0 %}
+                <tr><td colspan="5" class="muted">No fraud logs yet.</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="muted">
+          Server ops not connected. Start Server API at <code>{{ server_url or \"http://localhost:8000\" }}</code>
+          and re-login to mint a bank_officer JWT.
+        </p>
+        {% if server and server.error %}
+          <p class="muted small">Error: <code>{{ server.error }}</code></p>
+        {% endif %}
+      {% endif %}
+    </section>
+
     <section id="operations" class="card">
       <h2>{{ i18n.nav_operations }}</h2>
       <div class="actions">
@@ -167,4 +262,3 @@
   </script>
 </body>
 </html>
-
