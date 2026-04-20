@@ -541,7 +541,17 @@ def login(
         return templates.TemplateResponse(request, "login.html", context, status_code=400)
 
     if role == "customer":
-        auth = authenticate_user(user_id=user_id.strip(), pin=pin.strip(), db_path=DEFAULT_DB)
+        try:
+            auth = authenticate_user(user_id=user_id.strip(), pin=pin.strip(), db_path=DEFAULT_DB)
+        except Exception as exc:
+            # Avoid 500s on malformed PIN etc; show a friendly error.
+            context = _login_context(
+                request,
+                lang=lang,
+                mode="customer",
+                error=f"{_t(lang, 'customer_login_failed')}: {str(exc)}",
+            )
+            return templates.TemplateResponse(request, "login.html", context, status_code=400)
         if not auth.is_authenticated:
             context = _login_context(request, lang=lang, mode="customer", error=_t(lang, "customer_login_failed"))
             return templates.TemplateResponse(request, "login.html", context, status_code=400)
