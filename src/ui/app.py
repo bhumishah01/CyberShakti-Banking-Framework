@@ -276,18 +276,18 @@ def index(request: Request):
         return RedirectResponse(url=f"/customer/dashboard?lang={lang}", status_code=303)
     if role in {"admin", "bank"}:
         return RedirectResponse(url=f"/bank/dashboard?lang={lang}", status_code=303)
-    return templates.TemplateResponse("login.html", _login_context(request, lang=lang, mode="choose"))
+    return templates.TemplateResponse(request, "login.html", _login_context(request, lang=lang, mode="choose"))
 
 
 @app.get("/customer/login")
 def customer_login_page(request: Request):
     lang = _resolve_lang(request.query_params.get("lang", "en"))
-    return templates.TemplateResponse("login.html", _login_context(request, lang=lang, mode="customer"))
+    return templates.TemplateResponse(request, "login.html", _login_context(request, lang=lang, mode="customer"))
 
 @app.get("/customer/register")
 def customer_register_page(request: Request):
     lang = _resolve_lang(request.query_params.get("lang", "en"))
-    return templates.TemplateResponse("login.html", _login_context(request, lang=lang, mode="customer_register"))
+    return templates.TemplateResponse(request, "login.html", _login_context(request, lang=lang, mode="customer_register"))
 
 
 @app.post("/customer/register")
@@ -306,8 +306,7 @@ def customer_register(
         capture_path = _store_face_capture(face_image, role="customer")
         captured_algo, captured_hash = _face_hash_from_capture_path(capture_path)
     except Exception:
-        return templates.TemplateResponse(
-            "login.html",
+        return templates.TemplateResponse(request, "login.html",
             _login_context(request, lang=lang, mode="customer_register", error=_t(lang, "face_required")),
             status_code=400,
         )
@@ -322,8 +321,7 @@ def customer_register(
         )
     except Exception as exc:
         # Likely user_exists; keep message simple.
-        return templates.TemplateResponse(
-            "login.html",
+        return templates.TemplateResponse(request, "login.html",
             _login_context(request, lang=lang, mode="customer_register", error=str(exc)),
             status_code=400,
         )
@@ -336,8 +334,7 @@ def customer_register(
         db_path=DEFAULT_DB,
     )
     if not ok_face:
-        return templates.TemplateResponse(
-            "login.html",
+        return templates.TemplateResponse(request, "login.html",
             _login_context(request, lang=lang, mode="customer_register", error=_t(lang, "face_mismatch")),
             status_code=400,
         )
@@ -349,8 +346,7 @@ def customer_register(
         db_path=DEFAULT_DB,
     )
     if not ok_dev:
-        return templates.TemplateResponse(
-            "login.html",
+        return templates.TemplateResponse(request, "login.html",
             _login_context(request, lang=lang, mode="customer_register", error=_t(lang, "device_required")),
             status_code=400,
         )
@@ -366,7 +362,7 @@ def customer_register(
 @app.get("/bank/login")
 def bank_login_page(request: Request):
     lang = _resolve_lang(request.query_params.get("lang", "en"))
-    return templates.TemplateResponse("login.html", _login_context(request, lang=lang, mode="bank"))
+    return templates.TemplateResponse(request, "login.html", _login_context(request, lang=lang, mode="bank"))
 
 
 @app.get("/admin/login")
@@ -395,20 +391,20 @@ def login(
         role = "bank"
     if role not in {"customer", "bank"}:
         context = _login_context(request, lang=lang, mode="choose", error=_t(lang, "invalid_role"))
-        return templates.TemplateResponse("login.html", context, status_code=400)
+        return templates.TemplateResponse(request, "login.html", context, status_code=400)
 
     try:
         capture_path = _store_face_capture(face_image, role=role)
         captured_algo, captured_hash = _face_hash_from_capture_path(capture_path)
     except Exception:
         context = _login_context(request, lang=lang, mode=role, error=_t(lang, "face_required"))
-        return templates.TemplateResponse("login.html", context, status_code=400)
+        return templates.TemplateResponse(request, "login.html", context, status_code=400)
 
     if role == "customer":
         auth = authenticate_user(user_id=user_id.strip(), pin=pin.strip(), db_path=DEFAULT_DB)
         if not auth.is_authenticated:
             context = _login_context(request, lang=lang, mode="customer", error=_t(lang, "customer_login_failed"))
-            return templates.TemplateResponse("login.html", context, status_code=400)
+            return templates.TemplateResponse(request, "login.html", context, status_code=400)
         ok, why = enroll_or_verify_face_hash(
             user_id=user_id.strip(),
             pin=pin.strip(),
@@ -418,7 +414,7 @@ def login(
         )
         if not ok:
             context = _login_context(request, lang=lang, mode="customer", error=_t(lang, "face_mismatch"))
-            return templates.TemplateResponse("login.html", context, status_code=400)
+            return templates.TemplateResponse(request, "login.html", context, status_code=400)
         ok_dev, dev_reason = enroll_or_verify_device_id(
             user_id=user_id.strip(),
             pin=pin.strip(),
@@ -427,7 +423,7 @@ def login(
         )
         if not ok_dev:
             context = _login_context(request, lang=lang, mode="customer", error=_t(lang, "device_required"))
-            return templates.TemplateResponse("login.html", context, status_code=400)
+            return templates.TemplateResponse(request, "login.html", context, status_code=400)
         response = RedirectResponse(url=f"/customer/dashboard?lang={lang}", status_code=303)
         response.set_cookie(ROLE_COOKIE, "customer")
         response.set_cookie(USER_COOKIE, user_id.strip())
@@ -438,7 +434,7 @@ def login(
     if role == "bank":
         if admin_username.strip() != DEFAULT_BANK_USERNAME or admin_password.strip() != DEFAULT_BANK_PASSWORD:
             context = _login_context(request, lang=lang, mode="bank", error=_t(lang, "admin_login_failed"))
-            return templates.TemplateResponse("login.html", context, status_code=400)
+            return templates.TemplateResponse(request, "login.html", context, status_code=400)
         # For the demo, require the same face hash over time for bank login as well.
         bank_face_path = Path("data/bank_face_hash.json")
         if bank_face_path.exists():
@@ -453,7 +449,7 @@ def login(
 
                 if stored_algo != captured_algo or hamming_distance_hex64(stored_hash, captured_hash) > 12:
                     context = _login_context(request, lang=lang, mode="bank", error=_t(lang, "face_mismatch"))
-                    return templates.TemplateResponse("login.html", context, status_code=400)
+                    return templates.TemplateResponse(request, "login.html", context, status_code=400)
         else:
             bank_face_path.parent.mkdir(parents=True, exist_ok=True)
             bank_face_path.write_text(json.dumps({"algo": captured_algo, "hash": captured_hash}))
@@ -464,7 +460,7 @@ def login(
         return response
 
     context = _login_context(request, lang=lang, mode="choose", error=_t(lang, "invalid_role"))
-    return templates.TemplateResponse("login.html", context, status_code=400)
+    return templates.TemplateResponse(request, "login.html", context, status_code=400)
 
 
 @app.get("/logout")
@@ -482,7 +478,7 @@ def customer_dashboard(request: Request):
     if guard:
         return guard
     lang = _resolve_lang(request.query_params.get("lang", "en"))
-    return templates.TemplateResponse("customer_dashboard.html", _customer_dashboard_context(request, lang=lang))
+    return templates.TemplateResponse(request, "customer_dashboard.html", _customer_dashboard_context(request, lang=lang))
 
 
 @app.get("/bank/dashboard")
@@ -491,7 +487,7 @@ def bank_dashboard(request: Request):
     if guard:
         return guard
     lang = _resolve_lang(request.query_params.get("lang", "en"))
-    return templates.TemplateResponse("bank_dashboard.html", _admin_dashboard_context(request, lang=lang))
+    return templates.TemplateResponse(request, "bank_dashboard.html", _admin_dashboard_context(request, lang=lang))
 
 
 @app.get("/admin/dashboard")
@@ -511,7 +507,7 @@ def agent_mode(request: Request):
     lang = _resolve_lang(request.query_params.get("lang", "en"))
     context = _admin_dashboard_context(request, lang=lang)
     context["agent_result"] = None
-    return templates.TemplateResponse("agent.html", context)
+    return templates.TemplateResponse(request, "agent.html", context)
 
 
 @app.post("/users")
@@ -537,10 +533,9 @@ def add_user(
             replace_existing=bool(replace),
         )
         msg = f"User {'replaced' if replace else 'created'}: {user_id.strip()}"
-        return templates.TemplateResponse("index.html", _admin_dashboard_context(request, message=msg, lang=lang))
+        return templates.TemplateResponse(request, "index.html", _admin_dashboard_context(request, message=msg, lang=lang))
     except Exception as exc:
-        return templates.TemplateResponse(
-            "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
+        return templates.TemplateResponse(request, "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
         )
 
 
@@ -585,13 +580,11 @@ def add_transaction(
             action=stored.action_decision,
             guidance=list(stored.intervention_guidance),
         )
-        return templates.TemplateResponse(
-            "index.html",
+        return templates.TemplateResponse(request, "index.html",
             _admin_dashboard_context(request, message=msg, lang=lang, voice_text=voice_text),
         )
     except Exception as exc:
-        return templates.TemplateResponse(
-            "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
+        return templates.TemplateResponse(request, "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
         )
 
 
@@ -635,13 +628,11 @@ def add_customer_transaction(
             action=stored.action_decision,
             guidance=list(stored.intervention_guidance),
         )
-        return templates.TemplateResponse(
-            "customer_dashboard.html",
+        return templates.TemplateResponse(request, "customer_dashboard.html",
             _customer_dashboard_context(request, lang=lang, message=msg, voice_text=voice_text),
         )
     except Exception as exc:
-        return templates.TemplateResponse(
-            "customer_dashboard.html",
+        return templates.TemplateResponse(request, "customer_dashboard.html",
             _customer_dashboard_context(request, lang=lang, error=str(exc)),
             status_code=400,
         )
@@ -662,13 +653,11 @@ def update_customer_trusted_contact(
     try:
         set_trusted_contact(user_id=user_id, pin=pin.strip(), trusted_contact=trusted_contact.strip(), db_path=DEFAULT_DB)
         msg = f"{_t(lang, 'trusted_updated')} {user_id}."
-        return templates.TemplateResponse(
-            "customer_dashboard.html",
+        return templates.TemplateResponse(request, "customer_dashboard.html",
             _customer_dashboard_context(request, lang=lang, message=msg),
         )
     except Exception as exc:
-        return templates.TemplateResponse(
-            "customer_dashboard.html",
+        return templates.TemplateResponse(request, "customer_dashboard.html",
             _customer_dashboard_context(request, lang=lang, error=str(exc)),
             status_code=400,
         )
@@ -689,13 +678,11 @@ def customer_panic_freeze(
     try:
         freeze_until = enable_panic_freeze(user_id=user_id, pin=pin.strip(), minutes=minutes, db_path=DEFAULT_DB)
         msg = f"{_t(lang, 'freeze_enabled')} {freeze_until} ({user_id})."
-        return templates.TemplateResponse(
-            "customer_dashboard.html",
+        return templates.TemplateResponse(request, "customer_dashboard.html",
             _customer_dashboard_context(request, lang=lang, message=msg),
         )
     except Exception as exc:
-        return templates.TemplateResponse(
-            "customer_dashboard.html",
+        return templates.TemplateResponse(request, "customer_dashboard.html",
             _customer_dashboard_context(request, lang=lang, error=str(exc)),
             status_code=400,
         )
@@ -731,7 +718,7 @@ def agent_assist(
             context = _ctx(request, error=_t(lang, "invalid_pin_existing"), lang=lang)
             context.update(_user_ctx(request))
             context["agent_result"] = None
-            return templates.TemplateResponse("agent.html", context, status_code=400)
+            return templates.TemplateResponse(request, "agent.html", context, status_code=400)
     else:
         try:
             create_user(
@@ -745,7 +732,7 @@ def agent_assist(
             context = _ctx(request, error=str(exc), lang=lang)
             context.update(_user_ctx(request))
             context["agent_result"] = None
-            return templates.TemplateResponse("agent.html", context, status_code=400)
+            return templates.TemplateResponse(request, "agent.html", context, status_code=400)
 
     if trusted_contact.strip():
         set_trusted_contact(
@@ -767,7 +754,7 @@ def agent_assist(
         context = _ctx(request, error=str(exc), lang=lang)
         context.update(_user_ctx(request))
         context["agent_result"] = None
-        return templates.TemplateResponse("agent.html", context, status_code=400)
+        return templates.TemplateResponse(request, "agent.html", context, status_code=400)
 
     reasons = [_friendly_reason(code, lang=lang) for code in stored.reason_codes]
     guidance = list(stored.intervention_guidance)
@@ -795,7 +782,7 @@ def agent_assist(
         "approval_required": stored.approval_required,
         "approval_code_for_demo": stored.approval_code_for_demo,
     }
-    return templates.TemplateResponse("agent.html", context)
+    return templates.TemplateResponse(request, "agent.html", context)
 
 
 @app.get("/transactions")
@@ -804,7 +791,7 @@ def list_transactions(request: Request, user_id: str, pin: str, limit: int = 10,
     session = _user_ctx(request)
     if session["role"] == "customer" and session["active_user"] and session["active_user"] != user_id.strip():
         context = _customer_dashboard_context(request, lang=lang, error=_t(lang, "customer_scope_error"))
-        return templates.TemplateResponse("customer_dashboard.html", context, status_code=403)
+        return templates.TemplateResponse(request, "customer_dashboard.html", context, status_code=403)
     try:
         items = list_secure_transactions(
             user_id=user_id.strip(),
@@ -837,12 +824,12 @@ def list_transactions(request: Request, user_id: str, pin: str, limit: int = 10,
         context = _customer_dashboard_context(request, lang=lang) if _user_ctx(request).get("role") == "customer" else _admin_dashboard_context(request, lang=lang)
         context["transactions"] = formatted
         context["active_user"] = user_id.strip()
-        return templates.TemplateResponse("transactions.html", context)
+        return templates.TemplateResponse(request, "transactions.html", context)
     except Exception as exc:
         context = _customer_dashboard_context(request, lang=lang, error=str(exc)) if _user_ctx(request).get("role") == "customer" else _admin_dashboard_context(request, error=str(exc), lang=lang)
         context["transactions"] = []
         context["active_user"] = user_id.strip()
-        return templates.TemplateResponse("transactions.html", context, status_code=400)
+        return templates.TemplateResponse(request, "transactions.html", context, status_code=400)
 
 
 @app.get("/users/list")
@@ -885,7 +872,7 @@ def list_users(request: Request, lang: str = "en"):
         )
     context = _admin_dashboard_context(request, lang=lang)
     context["users"] = users
-    return templates.TemplateResponse("users_list.html", context)
+    return templates.TemplateResponse(request, "users_list.html", context)
 
 
 @app.get("/transactions/all")
@@ -910,7 +897,7 @@ def list_transactions_by_kind(request: Request, kind: str, lang: str = "en"):
     context["list_title"] = _bundle(lang).get(title_key, title_key)
     context["list_subtitle"] = _bundle(lang).get("list_subtitle", "")
     context["list_action"] = f"/transactions/list/{kind}"
-    return templates.TemplateResponse("transactions_list.html", context)
+    return templates.TemplateResponse(request, "transactions_list.html", context)
 
 
 @app.get("/audit/events")
@@ -938,7 +925,7 @@ def list_audit_events(request: Request, lang: str = "en", event_type: str = ""):
     context["events"] = events
     base_title = _bundle(lang).get("audit_events_title", "Audit Events")
     context["event_title"] = base_title if not event_type else f"{base_title}: {event_type}"
-    return templates.TemplateResponse("audit_events.html", context)
+    return templates.TemplateResponse(request, "audit_events.html", context)
 
 
 @app.get("/change-log")
@@ -974,7 +961,7 @@ def list_change_log(request: Request, lang: str = "en"):
     ]
     context = _admin_dashboard_context(request, lang=lang)
     context["entries"] = entries
-    return templates.TemplateResponse("change_log.html", context)
+    return templates.TemplateResponse(request, "change_log.html", context)
 
 
 @app.post("/sync")
@@ -995,10 +982,9 @@ def do_sync(
             f"processed={summary.processed}, synced={summary.synced}, "
             f"duplicates={summary.duplicates}, retried={summary.retried}"
         )
-        return templates.TemplateResponse("index.html", _admin_dashboard_context(request, message=msg, lang=lang))
+        return templates.TemplateResponse(request, "index.html", _admin_dashboard_context(request, message=msg, lang=lang))
     except Exception as exc:
-        return templates.TemplateResponse(
-            "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
+        return templates.TemplateResponse(request, "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
         )
 
 
@@ -1013,7 +999,7 @@ def view_sync_queue(request: Request, lang: str = "en"):
     context = _admin_dashboard_context(request, lang=lang)
     context["rows"] = rows
     context["stats"] = _outbox_stats(rows)
-    return templates.TemplateResponse("sync_queue.html", context)
+    return templates.TemplateResponse(request, "sync_queue.html", context)
 
 
 @app.post("/sync/simulate")
@@ -1046,7 +1032,7 @@ def simulate_night_sync(request: Request, lang: str = Form(default="en")):
     context = _admin_dashboard_context(request, message=_t(lang, "night_sync_done").format(count=len(tx_ids)), lang=lang)
     context["rows"] = rows
     context["stats"] = _outbox_stats(rows)
-    return templates.TemplateResponse("sync_queue.html", context)
+    return templates.TemplateResponse(request, "sync_queue.html", context)
 
 
 @app.get("/audit")
@@ -1058,11 +1044,10 @@ def audit_status(request: Request):
     result = verify_audit_chain(db_path=DEFAULT_DB)
     if result.is_valid:
         msg = f"{_t(lang, 'audit_valid')}. {_t(lang, 'entries_checked')}: {result.checked_entries}"
-        return templates.TemplateResponse("index.html", _admin_dashboard_context(request, message=msg, lang=lang))
+        return templates.TemplateResponse(request, "index.html", _admin_dashboard_context(request, message=msg, lang=lang))
 
     err = f"{_t(lang, 'audit_invalid')}: {result.error}"
-    return templates.TemplateResponse(
-        "index.html", _admin_dashboard_context(request, error=err, lang=lang), status_code=400
+    return templates.TemplateResponse(request, "index.html", _admin_dashboard_context(request, error=err, lang=lang), status_code=400
     )
 
 
@@ -1112,10 +1097,9 @@ def seed_demo_data(request: Request):
             )
 
         msg = _t(lang, "demo_seeded")
-        return templates.TemplateResponse("index.html", _admin_dashboard_context(request, message=msg, lang=lang))
+        return templates.TemplateResponse(request, "index.html", _admin_dashboard_context(request, message=msg, lang=lang))
     except Exception as exc:
-        return templates.TemplateResponse(
-            "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
+        return templates.TemplateResponse(request, "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
         )
 
 
@@ -1138,7 +1122,7 @@ def export_report(request: Request):
             "error": audit.error,
         },
     }
-    return templates.TemplateResponse("report_snapshot.html", context)
+    return templates.TemplateResponse(request, "report_snapshot.html", context)
 
 
 @app.get("/export/report.json")
@@ -1200,7 +1184,7 @@ def export_change_log(request: Request, lang: str = Form(default="en")):
         writer.writerows(rows)
 
     msg = f"{_t(lang, 'change_log_exported')} {export_path} ({len(rows)} records)."
-    return templates.TemplateResponse("index.html", _admin_dashboard_context(request, message=msg, lang=lang))
+    return templates.TemplateResponse(request, "index.html", _admin_dashboard_context(request, message=msg, lang=lang))
 
 
 @app.get("/report/impact")
@@ -1212,7 +1196,7 @@ def fraud_impact_report(request: Request):
     impact = _load_impact_report_data()
     context = _admin_dashboard_context(request, lang=lang)
     context["impact"] = impact
-    return templates.TemplateResponse("impact_report.html", context)
+    return templates.TemplateResponse(request, "impact_report.html", context)
 
 
 @app.post("/report/impact/seed")
@@ -1237,7 +1221,7 @@ def seed_impact_report(request: Request, lang: str = Form(default="en")):
     msg = "Impact report seeded with demo scenarios."
     context = _admin_dashboard_context(request, message=msg, lang=lang)
     context["impact"] = _load_impact_report_data()
-    return templates.TemplateResponse("impact_report.html", context)
+    return templates.TemplateResponse(request, "impact_report.html", context)
 
 
 @app.get("/demo/walkthrough")
@@ -1249,14 +1233,14 @@ def professor_walkthrough(request: Request):
     demo = _run_professor_walkthrough(lang=lang)
     context = _admin_dashboard_context(request, lang=lang)
     context["demo"] = demo
-    return templates.TemplateResponse("demo_walkthrough.html", context)
+    return templates.TemplateResponse(request, "demo_walkthrough.html", context)
 
 
 @app.get("/guide")
 def demo_guide(request: Request):
     lang = _resolve_lang(request.query_params.get("lang", "en"))
     context = _ctx(request, lang=lang)
-    return templates.TemplateResponse("guide.html", context)
+    return templates.TemplateResponse(request, "guide.html", context)
 
 
 @app.post("/simulate/scenario")
@@ -1302,13 +1286,11 @@ def run_scenario(
             action=simulated[-1].action_decision,
             guidance=list(simulated[-1].intervention_guidance),
         )
-        return templates.TemplateResponse(
-            "index.html",
+        return templates.TemplateResponse(request, "index.html",
             _admin_dashboard_context(request, message=summary, lang=lang, voice_text=voice_text),
         )
     except Exception as exc:
-        return templates.TemplateResponse(
-            "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
+        return templates.TemplateResponse(request, "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
         )
 
 
@@ -1789,18 +1771,15 @@ def release_transaction(
             db_path=DEFAULT_DB,
         )
         if released:
-            return templates.TemplateResponse(
-                "index.html",
+            return templates.TemplateResponse(request, "index.html",
                 _admin_dashboard_context(request, message=_t(lang, "release_success"), lang=lang),
             )
-        return templates.TemplateResponse(
-            "index.html",
+        return templates.TemplateResponse(request, "index.html",
             _admin_dashboard_context(request, error=_t(lang, "release_failed"), lang=lang),
             status_code=400,
         )
     except Exception as exc:
-        return templates.TemplateResponse(
-            "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
+        return templates.TemplateResponse(request, "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
         )
 
 
@@ -1811,7 +1790,7 @@ def release_transaction_help(request: Request):
         return guard
     lang = _resolve_lang(request.query_params.get("lang", "en"))
     msg = "Use the Release Held Transaction form on the dashboard."
-    return templates.TemplateResponse("index.html", _admin_dashboard_context(request, message=msg, lang=lang))
+    return templates.TemplateResponse(request, "index.html", _admin_dashboard_context(request, message=msg, lang=lang))
 
 
 @app.post("/users/trusted-contact")
@@ -1833,13 +1812,11 @@ def update_trusted_contact(
             trusted_contact=trusted_contact.strip(),
             db_path=DEFAULT_DB,
         )
-        return templates.TemplateResponse(
-            "index.html",
+        return templates.TemplateResponse(request, "index.html",
             _admin_dashboard_context(request, message=f"{_t(lang, 'trusted_updated')} {user_id.strip()}.", lang=lang),
         )
     except Exception as exc:
-        return templates.TemplateResponse(
-            "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
+        return templates.TemplateResponse(request, "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
         )
 
 
@@ -1862,8 +1839,7 @@ def panic_freeze(
             minutes=minutes,
             db_path=DEFAULT_DB,
         )
-        return templates.TemplateResponse(
-            "index.html",
+        return templates.TemplateResponse(request, "index.html",
             _admin_dashboard_context(
                 request,
                 message=f"{_t(lang, 'freeze_enabled')} {freeze_until} ({user_id.strip()}).",
@@ -1871,8 +1847,7 @@ def panic_freeze(
             ),
         )
     except Exception as exc:
-        return templates.TemplateResponse(
-            "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
+        return templates.TemplateResponse(request, "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
         )
 
 
