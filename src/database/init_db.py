@@ -142,6 +142,66 @@ def init_db(db_path: Path = DB_PATH) -> None:
             """
         )
 
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_profiles (
+                user_id TEXT PRIMARY KEY,
+                tx_count INTEGER NOT NULL DEFAULT 0,
+                total_amount REAL NOT NULL DEFAULT 0.0,
+                avg_amount REAL NOT NULL DEFAULT 0.0,
+                last_tx_at TEXT,
+                hour_hist TEXT,
+                user_risk_score INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS devices (
+                user_id TEXT NOT NULL,
+                device_id TEXT NOT NULL,
+                is_trusted INTEGER NOT NULL DEFAULT 0,
+                first_seen TEXT NOT NULL,
+                last_seen TEXT NOT NULL,
+                seen_count INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (user_id, device_id),
+                FOREIGN KEY (user_id) REFERENCES users (user_id)
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS alerts (
+                alert_id TEXT PRIMARY KEY,
+                user_id TEXT,
+                alert_type TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                message TEXT NOT NULL,
+                metadata_json TEXT,
+                acknowledged INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS notifications (
+                notification_id TEXT PRIMARY KEY,
+                user_id TEXT,
+                role TEXT NOT NULL,
+                notif_type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                body TEXT NOT NULL,
+                is_read INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+
         _ensure_users_auth_columns(cursor)
         _ensure_outbox_sync_columns(cursor)
         _ensure_transactions_columns(cursor)
