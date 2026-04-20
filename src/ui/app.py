@@ -346,7 +346,7 @@ def _recent_tx_meta(user_id: str, limit: int = 5) -> list[dict]:
                 "risk_score": int(risk_score),
                 "risk_level": str(risk_level),
                 "status": str(status),
-                "reason_codes": _parse_reason_codes(reason_codes),
+                "reason_codes": _safe_parse_reason_codes(reason_codes),
             }
         )
     return items
@@ -2429,6 +2429,23 @@ def _friendly_action(action: str, lang: str = "en") -> str:
         },
     }.get(lang, {})
     return mapping.get(action, action.replace("_", " ").title())
+
+
+def _safe_parse_reason_codes(raw: str | None) -> list[str]:
+    # Local helper for UI-only displays (mini statement / alerts).
+    if not raw:
+        return []
+    try:
+        payload = json.loads(raw)
+        if isinstance(payload, dict):
+            codes = payload.get("reason_codes", [])
+            if isinstance(codes, list):
+                return [str(x) for x in codes]
+        if isinstance(payload, list):
+            return [str(x) for x in payload]
+    except Exception:
+        return []
+    return []
 
 
 def _resolve_lang(lang: str) -> str:
