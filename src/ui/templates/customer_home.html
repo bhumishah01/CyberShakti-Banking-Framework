@@ -52,7 +52,12 @@
         {% else %}
           <span class="status-chip ok">{{ i18n.cust_risk_safe }}</span>
         {% endif %}
+        <span class="status-chip">{{ i18n.cust_user_risk_score }}: {{ profile.user_risk_score }}/100</span>
       </div>
+      <p class="muted small" style="margin-top:8px;">
+        {{ i18n.cust_avg_amount }}: {{ "%.2f"|format(profile.avg_amount) }}
+        | {{ i18n.cust_preferred_hours }}: {{ (profile.preferred_hours or [])|join(", ") if (profile.preferred_hours or []) else "-" }}
+      </p>
       <p class="muted small" style="margin-top:10px;">
         {{ i18n.cust_offline_first_note }}
       </p>
@@ -73,6 +78,21 @@
         {% for line in alerts %}
           <li>{{ line }}</li>
         {% endfor %}
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>{{ i18n.cust_notifications }}</h2>
+      <ul class="list">
+        {% for n in notifications %}
+          <li>
+            <strong>{{ n.title }}</strong>
+            <div class="muted small">{{ n.body }}</div>
+          </li>
+        {% endfor %}
+        {% if (notifications|length) == 0 %}
+          <li class="muted">{{ i18n.cust_no_notifications }}</li>
+        {% endif %}
       </ul>
     </section>
 

@@ -45,6 +45,8 @@ from src.database.transaction_store import (
     read_secure_transaction,
     release_held_transaction,
 )
+from src.database.monitoring_store import list_notifications
+from src.database.profile_store import get_or_create_profile, preferred_hours
 from src.sync.client import make_http_sender
 from src.sync.manager import sync_outbox
 
@@ -461,6 +463,17 @@ def _customer_dashboard_context(
         "synced": 0,
     }
     if session.get("active_user"):
+        # Behavior profile (for explainability)
+        try:
+            prof = get_or_create_profile(session["active_user"], db_path=DEFAULT_DB)
+            context["profile"] = {
+                "avg_amount": prof.avg_amount,
+                "tx_count": prof.tx_count,
+                "user_risk_score": prof.user_risk_score,
+                "preferred_hours": preferred_hours(prof, top_n=3),
+            }
+        except Exception:
+            context["profile"] = {"avg_amount": 0.0, "tx_count": 0, "user_risk_score": 0, "preferred_hours": []}
         context["mini_statement"] = _recent_tx_meta(session["active_user"], limit=5)
         context["last_sync_at"] = _last_sync_time()
         # Safety settings (trusted contact + freeze) shown in customer UI.
@@ -470,6 +483,11 @@ def _customer_dashboard_context(
             auth_cfg = {"trusted_contact": "", "freeze_until": ""}
         context["trusted_contact_current"] = str(auth_cfg.get("trusted_contact", "") or "").strip()
         context["freeze_until"] = str(auth_cfg.get("freeze_until", "") or "").strip() or "-"
+        # Notifications panel (customer)
+        try:
+            context["notifications"] = list_notifications(role="customer", user_id=session["active_user"], db_path=DEFAULT_DB, limit=10)
+        except Exception:
+            context["notifications"] = []
         # Simple user risk indicator for low-literacy UX.
         stats = context["customer_stats"]
         device_untrusted = context.get("device_trust") == "untrusted"
@@ -483,6 +501,8 @@ def _customer_dashboard_context(
         context["user_risk_badge"] = "safe"
         context["trusted_contact_current"] = ""
         context["freeze_until"] = "-"
+        context["notifications"] = []
+        context["profile"] = {"avg_amount": 0.0, "tx_count": 0, "user_risk_score": 0, "preferred_hours": []}
     return context
 
 
@@ -2648,6 +2668,8 @@ def _bundle(lang: str) -> dict:
             "cust_view_transactions": "View Transactions",
             "cust_safety_settings": "Safety Settings",
             "cust_alerts": "Alerts",
+            "cust_notifications": "Notifications",
+            "cust_no_notifications": "No notifications yet.",
             "cust_alert_new_device_title": "New device detected:",
             "cust_alert_new_device_body": "Some transactions may be held for review.",
             "cust_alert_held_title": "Transactions held:",
@@ -2674,6 +2696,9 @@ def _bundle(lang: str) -> dict:
             "cust_use_history": "Use Customer History to view your transactions.",
             "cust_risk_safe": "Safe",
             "cust_risk_warning": "Warning",
+            "cust_user_risk_score": "User Risk",
+            "cust_avg_amount": "Avg Amount",
+            "cust_preferred_hours": "Preferred Hours",
             "cust_details": "Details",
             "cust_view": "View",
             "cust_tx_details": "Transaction Details",
