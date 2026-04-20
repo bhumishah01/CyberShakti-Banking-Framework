@@ -19,6 +19,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+import logging
+
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -31,6 +33,7 @@ from src.auth.service import (
     enable_panic_freeze,
     enroll_or_verify_device_id,
     enroll_or_verify_face_hash,
+    get_user_auth_config,
     set_trusted_contact,
 )
 from src.auth.biometric import compute_dhash64_from_png
@@ -58,10 +61,12 @@ USER_COOKIE = "ruralshield_user"
 FACE_COOKIE = "ruralshield_face_verified"
 DEVICE_COOKIE = "ruralshield_device_trust"
 JWT_COOKIE = "ruralshield_jwt"
+LANG_COOKIE = "ruralshield_lang"
 FLASH_MSG_COOKIE = "ruralshield_flash_msg"
 FLASH_ERR_COOKIE = "ruralshield_flash_err"
 FLASH_VOICE_COOKIE = "ruralshield_flash_voice"
 FACE_CAPTURE_DIR = DB_PATH.parent / "face_captures"
+BUILD_ID = os.environ.get("RURALSHIELD_BUILD_ID", "after_midsem-local")
 
 # FastAPI app + static assets + HTML templates
 app = FastAPI(title="RuralShield UI", version="1.0.0")
@@ -71,6 +76,74 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 # where an unhashable dict ends up in the template cache key.
 # Disabling cache is fine for this project/demo and avoids 500s on template load.
 templates.env.cache = None
+
+logger = logging.getLogger("ruralshield.ui")
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception(request: Request, exc: Exception):
+    # Never show a blank/black 500 screen during demo; render a friendly page and log details.
+    try:
+        logger.exception("UI error path=%s method=%s user=%s", request.url.path, request.method, request.cookies.get(USER_COOKIE, ""))
+    except Exception:
+        pass
+    accept = (request.headers.get("accept") or "").lower()
+    if "text/html" in accept or "*/*" in accept or accept == "":
+        lang = _lang_from_request(request)
+        return render_template(
+            request,
+            "error.html",
+            {
+                "lang": lang,
+                "i18n": _bundle(lang),
+                "langs": _language_choices(),
+                "error": str(exc),
+                "build_id": BUILD_ID,
+            },
+            status_code=500,
+        )
+    return JSONResponse({"status": "error", "message": str(exc)}, status_code=500)
+
+
+def render_template(
+    request: Request,
+    name: str,
+    context: dict,
+    *,
+    status_code: int = 200,
+):
+    """Render a Jinja template safely across Starlette templating API versions.
+
+    Starlette has had two common calling conventions:
+    1. TemplateResponse(request, name, context, ...)
+    2. TemplateResponse(name, context, ...) where context must include {"request": request}
+
+    We support both to prevent "Internal Server Error" screens caused by a signature mismatch.
+    """
+
+    # Ensure request is always available to the template.
+    ctx = dict(context or {})
+    ctx.setdefault("request", request)
+
+    try:
+        resp = templates.TemplateResponse(request, name, ctx, status_code=status_code)
+    except TypeError:
+        resp = templates.TemplateResponse(name, ctx, status_code=status_code)
+
+    # Demo UX: prevent caching so pages always reflect latest DB state after POST+redirect.
+    try:
+        resp.headers["Cache-Control"] = "no-store"
+    except Exception:
+        pass
+
+    # Persist language choice (used when query param is missing).
+    lang = str(ctx.get("lang") or "").strip()
+    if lang:
+        try:
+            resp.set_cookie(LANG_COOKIE, lang, max_age=60 * 60 * 24 * 30, samesite="lax")
+        except Exception:
+            pass
+    return resp
 
 
 def _server_api_url() -> str:
@@ -102,6 +175,11 @@ def _flash_redirect(url: str, *, message: str = "", error: str = "", voice_text:
 
 def _customer_redirect(lang: str, *, message: str = "", error: str = "", voice_text: str = "") -> RedirectResponse:
     return _flash_redirect(f"/dashboard/customer?lang={lang}", message=message, error=error, voice_text=voice_text)
+
+
+def _lang_from_request(request: Request, fallback: str = "en") -> str:
+    raw = request.query_params.get("lang") or request.cookies.get(LANG_COOKIE) or fallback
+    return _resolve_lang(str(raw))
 
 
 def _read_and_clear_flash(request: Request, context: dict) -> dict:
@@ -385,6 +463,13 @@ def _customer_dashboard_context(
     if session.get("active_user"):
         context["mini_statement"] = _recent_tx_meta(session["active_user"], limit=5)
         context["last_sync_at"] = _last_sync_time()
+        # Safety settings (trusted contact + freeze) shown in customer UI.
+        try:
+            auth_cfg = get_user_auth_config(user_id=session["active_user"], db_path=DEFAULT_DB)
+        except Exception:
+            auth_cfg = {"trusted_contact": "", "freeze_until": ""}
+        context["trusted_contact_current"] = str(auth_cfg.get("trusted_contact", "") or "").strip()
+        context["freeze_until"] = str(auth_cfg.get("freeze_until", "") or "").strip() or "-"
         # Simple user risk indicator for low-literacy UX.
         stats = context["customer_stats"]
         device_untrusted = context.get("device_trust") == "untrusted"
@@ -396,6 +481,8 @@ def _customer_dashboard_context(
         context["mini_statement"] = []
         context["last_sync_at"] = "-"
         context["user_risk_badge"] = "safe"
+        context["trusted_contact_current"] = ""
+        context["freeze_until"] = "-"
     return context
 
 
@@ -480,18 +567,18 @@ def _face_hash_from_capture_path(capture_path: str) -> tuple[str, str]:
 
 @app.get("/")
 def index(request: Request):
-    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    lang = _lang_from_request(request)
     # After-midsem home: make it obvious this is the upgraded build and link to server API docs.
     i18n = _bundle(lang)
-    return templates.TemplateResponse(
+    return render_template(
         request,
         "after_home.html",
         {
-            "request": request,
             "lang": lang,
             "i18n": i18n,
             "langs": _language_choices(),
             "server_url": DEFAULT_SERVER_URL.rstrip("/"),
+            "build_id": BUILD_ID,
         },
     )
 
@@ -499,26 +586,26 @@ def index(request: Request):
 @app.get("/customer")
 def customer_entry(request: Request):
     # Clean, memorable entry URL for the customer portal.
-    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    lang = _lang_from_request(request)
     return RedirectResponse(url=f"/customer/login?lang={lang}", status_code=303)
 
 
 @app.get("/bank")
 def bank_entry(request: Request):
     # Clean, memorable entry URL for the bank portal.
-    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    lang = _lang_from_request(request)
     return RedirectResponse(url=f"/bank/login?lang={lang}", status_code=303)
 
 
 @app.get("/customer/login")
 def customer_login_page(request: Request):
-    lang = _resolve_lang(request.query_params.get("lang", "en"))
-    return templates.TemplateResponse(request, "login.html", _login_context(request, lang=lang, mode="customer"))
+    lang = _lang_from_request(request)
+    return render_template(request, "login.html", _login_context(request, lang=lang, mode="customer"))
 
 @app.get("/customer/register")
 def customer_register_page(request: Request):
-    lang = _resolve_lang(request.query_params.get("lang", "en"))
-    return templates.TemplateResponse(request, "login.html", _login_context(request, lang=lang, mode="customer_register"))
+    lang = _lang_from_request(request)
+    return render_template(request, "login.html", _login_context(request, lang=lang, mode="customer_register"))
 
 
 @app.post("/customer/register")
@@ -537,7 +624,9 @@ def customer_register(
         capture_path = _store_face_capture(face_image, role="customer")
         captured_algo, captured_hash = _face_hash_from_capture_path(capture_path)
     except Exception:
-        return templates.TemplateResponse(request, "login.html",
+        return render_template(
+            request,
+            "login.html",
             _login_context(request, lang=lang, mode="customer_register", error=_t(lang, "face_required")),
             status_code=400,
         )
@@ -552,7 +641,9 @@ def customer_register(
         )
     except Exception as exc:
         # Likely user_exists; keep message simple.
-        return templates.TemplateResponse(request, "login.html",
+        return render_template(
+            request,
+            "login.html",
             _login_context(request, lang=lang, mode="customer_register", error=str(exc)),
             status_code=400,
         )
@@ -565,7 +656,9 @@ def customer_register(
         db_path=DEFAULT_DB,
     )
     if not ok_face:
-        return templates.TemplateResponse(request, "login.html",
+        return render_template(
+            request,
+            "login.html",
             _login_context(request, lang=lang, mode="customer_register", error=_t(lang, "face_mismatch")),
             status_code=400,
         )
@@ -577,7 +670,9 @@ def customer_register(
         db_path=DEFAULT_DB,
     )
     if not ok_dev:
-        return templates.TemplateResponse(request, "login.html",
+        return render_template(
+            request,
+            "login.html",
             _login_context(request, lang=lang, mode="customer_register", error=_t(lang, "device_required")),
             status_code=400,
         )
@@ -600,14 +695,14 @@ def customer_register(
 
 @app.get("/bank/login")
 def bank_login_page(request: Request):
-    lang = _resolve_lang(request.query_params.get("lang", "en"))
-    return templates.TemplateResponse(request, "login.html", _login_context(request, lang=lang, mode="bank"))
+    lang = _lang_from_request(request)
+    return render_template(request, "login.html", _login_context(request, lang=lang, mode="bank"))
 
 
 @app.get("/admin/login")
 def admin_login_compat(request: Request):
     # Back-compat route for old links.
-    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    lang = _lang_from_request(request)
     return RedirectResponse(url=f"/bank/login?lang={lang}", status_code=303)
 
 
@@ -630,14 +725,14 @@ def login(
         role = "bank"
     if role not in {"customer", "bank"}:
         context = _login_context(request, lang=lang, mode="choose", error=_t(lang, "invalid_role"))
-        return templates.TemplateResponse(request, "login.html", context, status_code=400)
+        return render_template(request, "login.html", context, status_code=400)
 
     try:
         capture_path = _store_face_capture(face_image, role=role)
         captured_algo, captured_hash = _face_hash_from_capture_path(capture_path)
     except Exception:
         context = _login_context(request, lang=lang, mode=role, error=_t(lang, "face_required"))
-        return templates.TemplateResponse(request, "login.html", context, status_code=400)
+        return render_template(request, "login.html", context, status_code=400)
 
     if role == "customer":
         try:
@@ -650,7 +745,7 @@ def login(
                 mode="customer",
                 error=f"{_t(lang, 'customer_login_failed')}: {str(exc)}",
             )
-            return templates.TemplateResponse(request, "login.html", context, status_code=400)
+            return render_template(request, "login.html", context, status_code=400)
         if not auth.is_authenticated:
             reason = getattr(auth, "reason", "") or ""
             if reason == "user_not_found":
@@ -660,7 +755,7 @@ def login(
             else:
                 err = _t(lang, "customer_login_failed")
             context = _login_context(request, lang=lang, mode="customer", error=err)
-            return templates.TemplateResponse(request, "login.html", context, status_code=400)
+            return render_template(request, "login.html", context, status_code=400)
         ok, why = enroll_or_verify_face_hash(
             user_id=user_id.strip(),
             pin=pin.strip(),
@@ -670,7 +765,7 @@ def login(
         )
         if not ok:
             context = _login_context(request, lang=lang, mode="customer", error=_t(lang, "face_mismatch"))
-            return templates.TemplateResponse(request, "login.html", context, status_code=400)
+            return render_template(request, "login.html", context, status_code=400)
         ok_dev, dev_reason = enroll_or_verify_device_id(
             user_id=user_id.strip(),
             pin=pin.strip(),
@@ -679,7 +774,7 @@ def login(
         )
         if not ok_dev:
             context = _login_context(request, lang=lang, mode="customer", error=_t(lang, "device_required"))
-            return templates.TemplateResponse(request, "login.html", context, status_code=400)
+            return render_template(request, "login.html", context, status_code=400)
         response = RedirectResponse(url=f"/dashboard/customer?lang={lang}", status_code=303)
         response.set_cookie(ROLE_COOKIE, "customer")
         response.set_cookie(USER_COOKIE, user_id.strip())
@@ -697,7 +792,7 @@ def login(
     if role == "bank":
         if admin_username.strip() != DEFAULT_BANK_USERNAME or admin_password.strip() != DEFAULT_BANK_PASSWORD:
             context = _login_context(request, lang=lang, mode="bank", error=_t(lang, "admin_login_failed"))
-            return templates.TemplateResponse(request, "login.html", context, status_code=400)
+            return render_template(request, "login.html", context, status_code=400)
         # For the demo, require the same face hash over time for bank login as well.
         bank_face_path = DB_PATH.parent / "bank_face_hash.json"
         if bank_face_path.exists():
@@ -712,7 +807,7 @@ def login(
 
                 if stored_algo != captured_algo or hamming_distance_hex64(stored_hash, captured_hash) > 12:
                     context = _login_context(request, lang=lang, mode="bank", error=_t(lang, "face_mismatch"))
-                    return templates.TemplateResponse(request, "login.html", context, status_code=400)
+                    return render_template(request, "login.html", context, status_code=400)
         else:
             bank_face_path.parent.mkdir(parents=True, exist_ok=True)
             bank_face_path.write_text(json.dumps({"algo": captured_algo, "hash": captured_hash}))
@@ -730,7 +825,7 @@ def login(
         return response
 
     context = _login_context(request, lang=lang, mode="choose", error=_t(lang, "invalid_role"))
-    return templates.TemplateResponse(request, "login.html", context, status_code=400)
+    return render_template(request, "login.html", context, status_code=400)
 
 
 @app.get("/logout")
@@ -751,7 +846,7 @@ def customer_dashboard(request: Request):
     guard = _require_role(request, "customer")
     if guard:
         return guard
-    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    lang = _lang_from_request(request)
     return RedirectResponse(url=f"/dashboard/customer?lang={lang}", status_code=303)
 
 
@@ -760,7 +855,7 @@ def customer_home(request: Request):
     guard = _require_role(request, "customer")
     if guard:
         return guard
-    lang = _resolve_lang(request.query_params.get("lang", "en"))
+    lang = _lang_from_request(request)
     context = _customer_dashboard_context(request, lang=lang)
     token = _jwt_from_request(request)
     context["server_url"] = _server_api_url()
@@ -792,7 +887,7 @@ def customer_home(request: Request):
     context["alerts"] = alerts
 
     context = _read_and_clear_flash(request, context)
-    resp = templates.TemplateResponse(request, "customer_home.html", context)
+    resp = render_template(request, "customer_home.html", context)
     resp.delete_cookie(FLASH_MSG_COOKIE)
     resp.delete_cookie(FLASH_ERR_COOKIE)
     resp.delete_cookie(FLASH_VOICE_COOKIE)
@@ -980,6 +1075,8 @@ def add_customer_transaction(
     lang = _resolve_lang(lang)
     user_id = request.cookies.get(USER_COOKIE, "").strip()
     device_untrusted = _user_ctx(request).get("device_trust") == "untrusted"
+    if not user_id:
+        return _customer_redirect(lang, error=_t(lang, "not_logged_in"))
     try:
         stored = create_secure_transaction(
             user_id=user_id,
@@ -991,15 +1088,12 @@ def add_customer_transaction(
             extra_risk_points=(35 if device_untrusted else 0),
             force_hold=device_untrusted,
         )
-        reason_text = ", ".join(_friendly_reason(code, lang=lang) for code in stored.reason_codes) or _t(lang, "no_alert")
-        msg = (
-            f"{_t(lang, 'tx_saved')} "
-            f"{_t(lang, 'risk_label')} {_friendly_risk(stored.risk_level, lang=lang)} ({stored.risk_score}/100). "
-            f"{_t(lang, 'decision_label')} {_friendly_action(stored.action_decision, lang=lang)}. "
-            f"{_t(lang, 'reason_label')} {reason_text}."
-        )
+        # Keep the flash message small (stored in a cookie). Full reasons are available per-transaction.
+        decision = _friendly_action(stored.action_decision, lang=lang)
+        risk = f"{_friendly_risk(stored.risk_level, lang=lang)} ({stored.risk_score}/100)"
+        msg = f"{_t(lang, 'tx_saved')} {_t(lang, 'decision_label')} {decision}. {_t(lang, 'risk_label')} {risk}."
         if stored.approval_required:
-            msg += f" {_t(lang, 'trusted_required')} ({_t(lang, 'contact_ending')} {stored.trusted_contact_hint}). {_t(lang, 'demo_code')}: {stored.approval_code_for_demo}"
+            msg += f" {_t(lang, 'trusted_required')} {_t(lang, 'demo_code')}: {stored.approval_code_for_demo}"
         voice_text = _build_voice_prompt(
             lang=lang,
             risk_level=stored.risk_level,
@@ -1023,6 +1117,8 @@ def update_customer_trusted_contact(
         return guard
     lang = _resolve_lang(lang)
     user_id = request.cookies.get(USER_COOKIE, "").strip()
+    if not user_id:
+        return _customer_redirect(lang, error=_t(lang, "not_logged_in"))
     try:
         set_trusted_contact(user_id=user_id, pin=pin.strip(), trusted_contact=trusted_contact.strip(), db_path=DEFAULT_DB)
         msg = f"{_t(lang, 'trusted_updated')} {user_id}."
@@ -1043,6 +1139,8 @@ def customer_panic_freeze(
         return guard
     lang = _resolve_lang(lang)
     user_id = request.cookies.get(USER_COOKIE, "").strip()
+    if not user_id:
+        return _customer_redirect(lang, error=_t(lang, "not_logged_in"))
     try:
         freeze_until = enable_panic_freeze(user_id=user_id, pin=pin.strip(), minutes=minutes, db_path=DEFAULT_DB)
         msg = f"{_t(lang, 'freeze_enabled')} {freeze_until} ({user_id})."
@@ -1051,15 +1149,66 @@ def customer_panic_freeze(
         return _customer_redirect(lang, error=str(exc))
 
 
-@app.get("/customer/tx/{tx_id}")
-def customer_tx_detail_page(request: Request, tx_id: str, lang: str = "en"):
+@app.get("/customer/history")
+def customer_history_page(request: Request, lang: str = ""):
+    """Customer transaction history (decrypt requires PIN)."""
+    guard = _require_role(request, "customer")
+    if guard:
+        return guard
+    lang = _lang_from_request(request, fallback=lang or "en")
+    context = _customer_dashboard_context(request, lang=lang)
+    context.update({"history": [], "history_limit": 10})
+    return render_template(request, "customer_history.html", context)
+
+
+@app.post("/customer/history")
+def customer_history_view(
+    request: Request,
+    pin: str = Form(...),
+    limit: int = Form(default=10),
+    lang: str = Form(default="en"),
+):
     guard = _require_role(request, "customer")
     if guard:
         return guard
     lang = _resolve_lang(lang)
+    user_id = request.cookies.get(USER_COOKIE, "").strip()
+    context = _customer_dashboard_context(request, lang=lang)
+    try:
+        items = list_secure_transactions(
+            user_id=user_id,
+            pin=pin.strip(),
+            db_path=DEFAULT_DB,
+            limit=int(limit),
+        )
+        formatted = []
+        for row in items:
+            formatted.append(
+                {
+                    **row,
+                    "display_time": _friendly_time(row.get("timestamp", "")),
+                    "display_risk": f"{_friendly_risk(row.get('risk_level','LOW'), lang=lang)} ({int(row.get('risk_score', 0))}/100)",
+                    "display_reasons": [_friendly_reason(code, lang=lang) for code in row.get("reason_codes", [])],
+                    "display_status": _friendly_status(row.get("status", ""), lang=lang),
+                    "display_action": _friendly_action(row.get("action_decision", "ALLOW"), lang=lang),
+                }
+            )
+        context.update({"history": formatted, "history_limit": int(limit)})
+        return render_template(request, "customer_history.html", context)
+    except Exception as exc:
+        context.update({"history": [], "history_limit": int(limit), "error": str(exc)})
+        return render_template(request, "customer_history.html", context, status_code=400)
+
+
+@app.get("/customer/tx/{tx_id}")
+def customer_tx_detail_page(request: Request, tx_id: str, lang: str = ""):
+    guard = _require_role(request, "customer")
+    if guard:
+        return guard
+    lang = _lang_from_request(request, fallback=lang or "en")
     context = _customer_dashboard_context(request, lang=lang)
     context.update({"tx_id": tx_id, "details": None})
-    return templates.TemplateResponse(request, "customer_tx_detail.html", context)
+    return render_template(request, "customer_tx_detail.html", context)
 
 
 @app.post("/customer/tx/{tx_id}")
@@ -1094,11 +1243,11 @@ def customer_tx_detail_view(
             "reason_text": reason_text,
             "guidance": guidance,
         }
-        return templates.TemplateResponse(request, "customer_tx_detail.html", context)
+        return render_template(request, "customer_tx_detail.html", context)
     except Exception as exc:
         context["details"] = None
         context["error"] = str(exc)
-        return templates.TemplateResponse(request, "customer_tx_detail.html", context, status_code=400)
+        return render_template(request, "customer_tx_detail.html", context, status_code=400)
 
 
 @app.post("/agent/assist")
@@ -1202,9 +1351,11 @@ def agent_assist(
 def list_transactions(request: Request, user_id: str, pin: str, limit: int = 10, lang: str = "en"):
     lang = _resolve_lang(lang)
     session = _user_ctx(request)
+    if session.get("role") == "customer":
+        # Customer portal uses /customer/history (requires PIN; avoids exposing arbitrary user_id in query params).
+        return _flash_redirect(f"/customer/history?lang={lang}", error=_t(lang, "cust_use_history"))
     if session["role"] == "customer" and session["active_user"] and session["active_user"] != user_id.strip():
-        context = _customer_dashboard_context(request, lang=lang, error=_t(lang, "customer_scope_error"))
-        return templates.TemplateResponse(request, "customer_dashboard.html", context, status_code=403)
+        return _flash_redirect(f"/customer/history?lang={lang}", error=_t(lang, "customer_scope_error"))
     try:
         items = list_secure_transactions(
             user_id=user_id.strip(),
@@ -1237,12 +1388,12 @@ def list_transactions(request: Request, user_id: str, pin: str, limit: int = 10,
         context = _customer_dashboard_context(request, lang=lang) if _user_ctx(request).get("role") == "customer" else _admin_dashboard_context(request, lang=lang)
         context["transactions"] = formatted
         context["active_user"] = user_id.strip()
-        return templates.TemplateResponse(request, "transactions.html", context)
+        return render_template(request, "transactions.html", context)
     except Exception as exc:
         context = _customer_dashboard_context(request, lang=lang, error=str(exc)) if _user_ctx(request).get("role") == "customer" else _admin_dashboard_context(request, error=str(exc), lang=lang)
         context["transactions"] = []
         context["active_user"] = user_id.strip()
-        return templates.TemplateResponse(request, "transactions.html", context, status_code=400)
+        return render_template(request, "transactions.html", context, status_code=400)
 
 
 @app.get("/users/list")
@@ -2457,10 +2608,13 @@ def _bundle(lang: str) -> dict:
     bundles = {
         "en": {
             "lang_label": "Language",
+            "language_label": "Language",
             "title": "RuralShield",
             "subtitle": "Offline-First Security Prototype for Rural Digital Banking",
             "page_title_login": "Login - RuralShield",
             "page_title_customer_dashboard": "Customer Portal - RuralShield",
+            "page_title_customer_history": "Transaction History - RuralShield",
+            "page_title_error": "Error - RuralShield",
             "page_title_dashboard": "RuralShield Demo",
             "page_title_users": "User List - RuralShield",
             "page_title_transactions": "Transactions - RuralShield",
@@ -2512,6 +2666,12 @@ def _bundle(lang: str) -> dict:
             "cust_send_result_note": "Result will show: Allowed, Held (under review), or Blocked (suspicious).",
             "cust_tx_history": "Transaction History",
             "cust_history_privacy_note": "For privacy, enter PIN to view decrypted history.",
+            "cust_open_history": "Open Transaction History",
+            "cust_history_pin_note": "PIN is required to decrypt amounts and recipients.",
+            "cust_unlock_history": "Unlock Your History",
+            "cust_view_history": "View History",
+            "cust_history_table_title": "Decrypted Transactions",
+            "cust_use_history": "Use Customer History to view your transactions.",
             "cust_risk_safe": "Safe",
             "cust_risk_warning": "Warning",
             "cust_details": "Details",
@@ -2551,7 +2711,15 @@ def _bundle(lang: str) -> dict:
             "login_switch_title": "Portal Access",
             "login_switch_body": "Use separate links for the customer and bank/admin sides of the system.",
             "customer_scope_error": "Customer portal can only open the logged-in user's transaction history.",
+            "cust_safety_settings_title": "Safety Settings",
+            "cust_trusted_current": "Trusted contact:",
+            "cust_freeze_until": "Freeze until:",
+            "back_to_dashboard": "Back to Dashboard",
+            "back_to_home": "Back to Home",
             "logout": "Logout",
+            "error_title": "Something went wrong",
+            "error_subtitle": "The portal hit an unexpected error. Use the links below to continue.",
+            "error_hint": "If this repeats, restart the server and re-open the Customer Portal from Home.",
             "nav_monitoring": "Monitoring",
             "nav_operations": "Operations",
             "nav_admin": "Administration",
@@ -2742,8 +2910,21 @@ def _bundle(lang: str) -> dict:
         },
         "hi": {
             "lang_label": "भाषा",
+            "language_label": "भाषा",
             "title": "RuralShield",
             "subtitle": "ग्रामीण डिजिटल बैंकिंग के लिए ऑफलाइन-प्रथम सुरक्षा प्रोटोटाइप",
+            "page_title_customer_dashboard": "ग्राहक पोर्टल - RuralShield",
+            "page_title_customer_history": "लेन-देन इतिहास - RuralShield",
+            "cust_open_history": "लेन-देन इतिहास खोलें",
+            "cust_history_pin_note": "राशि और प्राप्तकर्ता देखने के लिए PIN आवश्यक है।",
+            "cust_unlock_history": "इतिहास अनलॉक करें",
+            "cust_view_history": "इतिहास देखें",
+            "cust_history_table_title": "डिक्रिप्टेड लेन-देन",
+            "cust_use_history": "अपने लेन-देन देखने के लिए Customer History उपयोग करें।",
+            "cust_safety_settings_title": "सुरक्षा सेटिंग्स",
+            "cust_trusted_current": "विश्वसनीय संपर्क:",
+            "cust_freeze_until": "फ्रीज़ तक:",
+            "back_to_dashboard": "डैशबोर्ड पर वापस",
             "page_title_dashboard": "RuralShield डेमो",
             "page_title_users": "उपयोगकर्ता सूची - RuralShield",
             "page_title_transactions": "लेनदेन - RuralShield",
@@ -2942,8 +3123,21 @@ def _bundle(lang: str) -> dict:
         },
         "or": {
             "lang_label": "ଭାଷା",
+            "language_label": "ଭାଷା",
             "title": "RuralShield",
             "subtitle": "ଗ୍ରାମୀଣ ଡିଜିଟାଲ ବ୍ୟାଙ୍କିଙ୍ଗ ପାଇଁ ଅଫଲାଇନ-ପ୍ରଥମ ସୁରକ୍ଷା ପ୍ରଟୋଟାଇପ",
+            "page_title_customer_dashboard": "ଗ୍ରାହକ ପୋର୍ଟାଲ - RuralShield",
+            "page_title_customer_history": "ଲେନଦେନ ଇତିହାସ - RuralShield",
+            "cust_open_history": "ଲେନଦେନ ଇତିହାସ ଖୋଲନ୍ତୁ",
+            "cust_history_pin_note": "ରାଶି ଏବଂ ପ୍ରାପ୍ତକର୍ତ୍ତା ଦେଖିବାକୁ PIN ଆବଶ୍ୟକ।",
+            "cust_unlock_history": "ଇତିହାସ ଅନଲକ୍ କରନ୍ତୁ",
+            "cust_view_history": "ଇତିହାସ ଦେଖନ୍ତୁ",
+            "cust_history_table_title": "ଡିକ୍ରିପ୍ଟେଡ୍ ଲେନଦେନ",
+            "cust_use_history": "ଆପଣଙ୍କ ଲେନଦେନ ଦେଖିବାକୁ Customer History ବ୍ୟବହାର କରନ୍ତୁ।",
+            "cust_safety_settings_title": "ସୁରକ୍ଷା ସେଟିଂସ୍",
+            "cust_trusted_current": "ଭରସାଯୋଗ୍ୟ ସମ୍ପର୍କ:",
+            "cust_freeze_until": "ଫ୍ରିଜ୍ ପର୍ଯ୍ୟନ୍ତ:",
+            "back_to_dashboard": "ଡ୍ୟାଶବୋର୍ଡକୁ ଫେରନ୍ତୁ",
             "page_title_dashboard": "RuralShield ଡେମୋ",
             "page_title_users": "ବ୍ୟବହାରକାରୀ ତାଲିକା - RuralShield",
             "page_title_transactions": "ଟ୍ରାନ୍ଜାକ୍ସନ - RuralShield",
@@ -3142,8 +3336,21 @@ def _bundle(lang: str) -> dict:
         },
         "gu": {
             "lang_label": "ભાષા",
+            "language_label": "ભાષા",
             "title": "RuralShield",
             "subtitle": "ગ્રામિણ ડિજિટલ બેંકિંગ માટે ઑફલાઇન-ફર્સ્ટ સુરક્ષા પ્રોટોટાઇપ",
+            "page_title_customer_dashboard": "ગ્રાહક પોર્ટલ - RuralShield",
+            "page_title_customer_history": "લેન્દેન ઇતિહાસ - RuralShield",
+            "cust_open_history": "લેન્દેન ઇતિહાસ ખોલો",
+            "cust_history_pin_note": "રકમ અને પ્રાપ્તકર્તા જોવા માટે PIN જરૂરી છે.",
+            "cust_unlock_history": "ઇતિહાસ અનલોક કરો",
+            "cust_view_history": "ઇતિહાસ જુઓ",
+            "cust_history_table_title": "ડિક્રિપ્ટેડ લેન્દેન",
+            "cust_use_history": "તમારા લેન્દેન જોવા માટે Customer History નો ઉપયોગ કરો.",
+            "cust_safety_settings_title": "સેફ્ટી સેટિંગ્સ",
+            "cust_trusted_current": "ટ્રસ્ટેડ કોન્ટેક્ટ:",
+            "cust_freeze_until": "ફ્રીઝ સુધી:",
+            "back_to_dashboard": "ડેશબોર્ડ પર પાછા",
             "page_title_dashboard": "RuralShield ડેમો",
             "page_title_users": "વપરાશકર્તા યાદી - RuralShield",
             "page_title_transactions": "લેનદેન - RuralShield",
@@ -3342,8 +3549,21 @@ def _bundle(lang: str) -> dict:
         },
         "de": {
             "lang_label": "Sprache",
+            "language_label": "Sprache",
             "title": "RuralShield",
             "subtitle": "Offline-First-Sicherheitsprototyp für ländliches digitales Banking",
+            "page_title_customer_dashboard": "Kundenportal - RuralShield",
+            "page_title_customer_history": "Transaktionsverlauf - RuralShield",
+            "cust_open_history": "Transaktionsverlauf öffnen",
+            "cust_history_pin_note": "PIN wird benötigt, um Beträge und Empfänger zu entschlüsseln.",
+            "cust_unlock_history": "Verlauf entsperren",
+            "cust_view_history": "Verlauf ansehen",
+            "cust_history_table_title": "Entschlüsselte Transaktionen",
+            "cust_use_history": "Nutze Customer History, um deine Transaktionen zu sehen.",
+            "cust_safety_settings_title": "Sicherheitseinstellungen",
+            "cust_trusted_current": "Vertrauensperson:",
+            "cust_freeze_until": "Gesperrt bis:",
+            "back_to_dashboard": "Zurück zum Dashboard",
             "page_title_dashboard": "RuralShield Demo",
             "page_title_users": "Benutzerliste - RuralShield",
             "page_title_transactions": "Transaktionen - RuralShield",
@@ -3585,6 +3805,7 @@ def _t(lang: str, key: str) -> str:
             "customer_login_failed": "Customer login failed. Check user ID or PIN.",
             "admin_login_failed": "Admin login failed. Check username or password.",
             "invalid_role": "Invalid login role selected.",
+            "not_logged_in": "Session expired. Please log in again.",
         },
         "hi": {
             "no_alert": "कोई अलर्ट ट्रिगर नहीं",

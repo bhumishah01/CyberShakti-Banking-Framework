@@ -45,7 +45,6 @@
             <p class="muted">Create transactions, hold/block high-risk, view audit integrity + sync queue.</p>
             <div class="actions">
               <a class="button" href="/bank?lang={{ lang }}">Open Bank Portal</a>
-              <a class="button secondary" href="/bank/dashboard?lang={{ lang }}">Dashboard</a>
             </div>
           </div>
 
@@ -83,6 +82,10 @@
           <li><strong>Low bandwidth:</strong> sync queue with retries; server supports compressed sync v2.</li>
         </ul>
       </div>
+
+      <p class="muted small" style="margin-top:14px;">
+        Build: <code>{{ build_id }}</code>
+      </p>
     </div>
   </body>
 </html>

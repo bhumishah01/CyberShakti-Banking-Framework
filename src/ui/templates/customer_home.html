@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Customer Dashboard - RuralShield</title>
+  <title>{{ i18n.page_title_customer_dashboard }}</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
@@ -61,9 +61,9 @@
     <section class="card">
       <h2>{{ i18n.cust_quick_actions }}</h2>
       <div class="actions">
-        <button class="button" type="button" data-scroll="#send">{{ i18n.cust_send_money }}</button>
-        <button class="button secondary" type="button" data-scroll="#history">{{ i18n.cust_view_transactions }}</button>
-        <button class="button secondary" type="button" data-scroll="#safety">{{ i18n.cust_safety_settings }}</button>
+        <a class="button" href="#send" data-scroll="#send">{{ i18n.cust_send_money }}</a>
+        <a class="button secondary" href="#history" data-scroll="#history">{{ i18n.cust_view_transactions }}</a>
+        <a class="button secondary" href="#safety" data-scroll="#safety">{{ i18n.cust_safety_settings }}</a>
       </div>
     </section>
 
@@ -137,17 +137,18 @@
     <section id="history" class="card">
       <h2>{{ i18n.cust_tx_history }}</h2>
       <p class="muted">{{ i18n.cust_history_privacy_note }}</p>
-      <form action="/transactions" method="get" class="grid">
-        <input type="hidden" name="lang" value="{{ lang }}">
-        <input type="hidden" name="user_id" value="{{ active_user }}">
-        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
-        <input name="limit" placeholder="{{ i18n.ph_limit }}" type="number" value="10" min="1" max="100" required>
-        <button type="submit">{{ i18n.open_tx_list }}</button>
-      </form>
+      <div class="actions">
+        <a class="button secondary" href="/customer/history?lang={{ lang }}">{{ i18n.cust_open_history }}</a>
+      </div>
+      <p class="muted small" style="margin-top:8px;">{{ i18n.cust_history_pin_note }}</p>
     </section>
 
     <section id="safety" class="card">
-      <h2>Safety Settings</h2>
+      <h2>{{ i18n.cust_safety_settings_title }}</h2>
+      <p class="muted small">
+        {{ i18n.cust_trusted_current }} <code>{{ trusted_contact_current if trusted_contact_current else "-" }}</code>
+        | {{ i18n.cust_freeze_until }} <code>{{ freeze_until }}</code>
+      </p>
       <form action="/customer/trusted-contact" method="post" class="grid release-grid">
         <input type="hidden" name="lang" value="{{ lang }}">
         <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
