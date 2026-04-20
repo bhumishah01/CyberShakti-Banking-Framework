@@ -483,7 +483,7 @@ def customer_register(
             status_code=400,
         )
 
-    response = RedirectResponse(url=f"/customer/dashboard?lang={lang}", status_code=303)
+    response = RedirectResponse(url=f"/dashboard/customer?lang={lang}", status_code=303)
     response.set_cookie(ROLE_COOKIE, "customer")
     response.set_cookie(USER_COOKIE, user_id.strip())
     response.set_cookie(FACE_COOKIE, "1")
@@ -581,7 +581,7 @@ def login(
         if not ok_dev:
             context = _login_context(request, lang=lang, mode="customer", error=_t(lang, "device_required"))
             return templates.TemplateResponse(request, "login.html", context, status_code=400)
-        response = RedirectResponse(url=f"/customer/dashboard?lang={lang}", status_code=303)
+        response = RedirectResponse(url=f"/dashboard/customer?lang={lang}", status_code=303)
         response.set_cookie(ROLE_COOKIE, "customer")
         response.set_cookie(USER_COOKIE, user_id.strip())
         response.set_cookie(FACE_COOKIE, "1")
@@ -650,16 +650,26 @@ def customer_dashboard(request: Request):
     if guard:
         return guard
     lang = _resolve_lang(request.query_params.get("lang", "en"))
+    return RedirectResponse(url=f"/dashboard/customer?lang={lang}", status_code=303)
+
+
+@app.get("/dashboard/customer")
+def customer_home(request: Request):
+    guard = _require_role(request, "customer")
+    if guard:
+        return guard
+    lang = _resolve_lang(request.query_params.get("lang", "en"))
     context = _customer_dashboard_context(request, lang=lang)
     token = _jwt_from_request(request)
-    context["server"] = {"connected": False, "error": "", "balance": 0.0, "transactions": []}
+    context["server_url"] = _server_api_url()
+    context["server"] = {"connected": False, "error": "", "balance": 0.0}
     if token:
         try:
             data = _server_dashboard_customer_data(token)
-            context["server"] = {"connected": True, "error": "", **data}
+            context["server"] = {"connected": True, "error": "", "balance": float(data.get("balance", 0.0))}
         except Exception as exc:
-            context["server"] = {"connected": False, "error": str(exc), "balance": 0.0, "transactions": []}
-    return templates.TemplateResponse(request, "customer_dashboard.html", context)
+            context["server"] = {"connected": False, "error": str(exc), "balance": 0.0}
+    return templates.TemplateResponse(request, "customer_home.html", context)
 
 
 @app.get("/bank/dashboard")
@@ -727,7 +737,7 @@ def customer_create_server_tx(
             token=token,
             json_body={"amount": float(amount), "recipient": recipient.strip(), "device_id": device_id.strip()},
         )
-        return RedirectResponse(url=f"/customer/dashboard?lang={lang}", status_code=303)
+        return RedirectResponse(url=f"/dashboard/customer?lang={lang}", status_code=303)
     except Exception as exc:
         ctx = _customer_dashboard_context(request, error=str(exc), lang=lang)
         return templates.TemplateResponse(request, "customer_dashboard.html", ctx, status_code=400)
@@ -1299,7 +1309,7 @@ def reset_to_home(request: Request):
     lang = _resolve_lang(request.query_params.get("lang", "en"))
     role = request.cookies.get(ROLE_COOKIE, "")
     if role == "customer":
-        return RedirectResponse(url=f"/customer/dashboard?lang={lang}", status_code=303)
+        return RedirectResponse(url=f"/dashboard/customer?lang={lang}", status_code=303)
     if role in {"admin", "bank"}:
         return RedirectResponse(url=f"/bank/dashboard?lang={lang}", status_code=303)
     return RedirectResponse(url=f"/?lang={lang}", status_code=303)

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Customer Dashboard - RuralShield</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <div class="top-row">
+        <div>
+          <div class="eyebrow">{{ i18n.customer_portal_eyebrow }}</div>
+          <h1>{{ i18n.customer_portal_title }}</h1>
+          <p>{{ i18n.customer_welcome }} {{ active_user }}</p>
+        </div>
+        <div class="header-actions">
+          <div class="status-chip">{{ i18n.face_verified_label }}: {{ i18n.demo_yes if face_verified else i18n.demo_no }}</div>
+          <div class="status-chip">{{ i18n.device_trust_label }}: {{ i18n.device_untrusted if device_trust == "untrusted" else i18n.device_trusted }}</div>
+          <form action="/dashboard/customer" method="get" class="lang-form">
+            <label for="lang">{{ i18n.lang_label }}</label>
+            <select id="lang" name="lang" onchange="this.form.submit()">
+              {% for item in langs %}
+              <option value="{{ item.code }}" {% if item.code == lang %}selected{% endif %}>{{ item.label }}</option>
+              {% endfor %}
+            </select>
+          </form>
+          <a href="/logout?lang={{ lang }}" class="button secondary">{{ i18n.logout }}</a>
+        </div>
+      </div>
+    </header>
+
+    {% if message %}
+      <section class="alert success">{{ message }}</section>
+    {% endif %}
+    {% if error %}
+      <section class="alert error">{{ error }}</section>
+    {% endif %}
+
+    <section class="card">
+      <h2>Account Overview</h2>
+      <section class="stats-grid">
+        <article class="stat-card"><h3>Balance (Demo)</h3><p>{{ "%.2f"|format(server.balance if server.connected else 50000.0) }}</p></article>
+        <article class="stat-card"><h3>{{ i18n.transactions }}</h3><p>{{ customer_stats.total }}</p></article>
+        <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p>{{ customer_stats.pending }}</p></article>
+        <article class="stat-card"><h3>{{ i18n.held }}</h3><p>{{ customer_stats.held }}</p></article>
+      </section>
+      <p class="muted small" style="margin-top:10px;">
+        Offline-first: transactions are stored safely on your phone first and synced later when internet is available.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Quick Actions</h2>
+      <div class="actions">
+        <a class="button" href="#send">Send Money</a>
+        <a class="button secondary" href="#history">View Transactions</a>
+        <a class="button secondary" href="#safety">Safety Settings</a>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Alerts</h2>
+      <ul class="list">
+        {% if device_trust == "untrusted" %}
+          <li><strong>New device detected:</strong> Some transactions may be held for review.</li>
+        {% endif %}
+        {% if customer_stats.held > 0 %}
+          <li><strong>Transactions held:</strong> {{ customer_stats.held }} transaction(s) are waiting for review or trusted contact approval.</li>
+        {% endif %}
+        {% if customer_stats.pending > 0 %}
+          <li><strong>Pending sync:</strong> {{ customer_stats.pending }} transaction(s) will sync when internet is available.</li>
+        {% endif %}
+        {% if device_trust != "untrusted" and customer_stats.held == 0 and customer_stats.pending == 0 %}
+          <li><strong>All clear:</strong> No urgent security alerts right now.</li>
+        {% endif %}
+      </ul>
+    </section>
+
+    <section id="send" class="card">
+      <h2>Send Money (Offline-First)</h2>
+      <form action="/customer/transactions" method="post" class="grid">
+        <input type="hidden" name="lang" value="{{ lang }}">
+        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+        <input name="amount" placeholder="{{ i18n.ph_amount }}" type="number" step="0.01" min="1" required>
+        <input name="recipient" placeholder="{{ i18n.ph_recipient_name }}" required>
+        <button type="submit">{{ i18n.create_tx }}</button>
+      </form>
+      <p class="muted small" style="margin-top:8px;">
+        Result will show: Allowed, Held (under review), or Blocked (suspicious).
+      </p>
+    </section>
+
+    <section id="history" class="card">
+      <h2>Transaction History</h2>
+      <p class="muted">For privacy, enter PIN to view decrypted history.</p>
+      <form action="/transactions" method="get" class="grid">
+        <input type="hidden" name="lang" value="{{ lang }}">
+        <input type="hidden" name="user_id" value="{{ active_user }}">
+        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+        <input name="limit" placeholder="{{ i18n.ph_limit }}" type="number" value="10" min="1" max="100" required>
+        <button type="submit">{{ i18n.open_tx_list }}</button>
+      </form>
+    </section>
+
+    <section id="safety" class="card">
+      <h2>Safety Settings</h2>
+      <form action="/customer/trusted-contact" method="post" class="grid release-grid">
+        <input type="hidden" name="lang" value="{{ lang }}">
+        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+        <input name="trusted_contact" placeholder="{{ i18n.ph_trusted_contact }}" required>
+        <button type="submit">{{ i18n.set_trusted }}</button>
+      </form>
+      <form action="/customer/panic-freeze" method="post" class="grid release-grid">
+        <input type="hidden" name="lang" value="{{ lang }}">
+        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+        <input name="minutes" type="number" min="1" value="60" placeholder="{{ i18n.ph_freeze_minutes }}">
+        <button type="submit">{{ i18n.enable_freeze }}</button>
+      </form>
+    </section>
+
+    {% if voice_text %}
+      <section class="card voice-card">
+        <button type="button" class="button secondary voice-btn" data-voice-text="{{ voice_text|e }}">{{ i18n.voice_play }}</button>
+      </section>
+    {% endif %}
+  </main>
+
+  <script>
+    (() => {
+      const btn = document.querySelector(".voice-btn");
+      if (!btn || !window.speechSynthesis) return;
+      btn.addEventListener("click", () => {
+        const text = btn.getAttribute("data-voice-text") || "";
+        if (!text) return;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+      });
+    })();
+  </script>
+</body>
+</html>
+
