@@ -23,7 +23,20 @@ services:
       - db
     ports:
       - "8000:8000"
+    command: ["sh", "-c", "uvicorn src.server.app:app --host 0.0.0.0 --port 8000"]
+
+  ui:
+    build: .
+    environment:
+      # UI uses local SQLite (offline-first) but syncs to the API container over the Docker network.
+      RURALSHIELD_SERVER_URL: "http://api:8000"
+    depends_on:
+      - api
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "8502:8502"
+    command: ["sh", "-c", "uvicorn src.ui.app:app --host 0.0.0.0 --port 8502"]
 
 volumes:
   pgdata:
-

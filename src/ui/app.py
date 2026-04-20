@@ -15,6 +15,7 @@ import sqlite3
 import uuid
 from datetime import UTC, datetime, timedelta
 import csv
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
@@ -46,6 +47,7 @@ from src.sync.manager import sync_outbox
 # === App configuration ===
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_DB = Path("data/ruralshield.db")
+DEFAULT_SERVER_URL = os.environ.get("RURALSHIELD_SERVER_URL", "http://localhost:8000")
 SUPPORTED_LANGS = {"en", "hi", "or", "gu", "de"}
 DEFAULT_BANK_USERNAME = "bank_admin"
 DEFAULT_BANK_PASSWORD = "admin123"
@@ -974,7 +976,7 @@ def list_change_log(request: Request, lang: str = "en"):
 @app.post("/sync")
 def do_sync(
     request: Request,
-    server_url: str = Form("http://localhost:8000"),
+    server_url: str = Form(DEFAULT_SERVER_URL),
     lang: str = Form(default="en"),
 ):
     guard = _require_role(request, "bank")
@@ -2182,7 +2184,7 @@ def _bundle(lang: str) -> dict:
             "ph_amount": "Amount",
             "ph_recipient_name": "Recipient name",
             "ph_limit": "Limit",
-            "ph_server_url": "http://localhost:8000",
+            "ph_server_url": DEFAULT_SERVER_URL,
             "ph_held_tx_id": "Held Transaction ID",
             "ph_approval_code": "Trusted approval code (if required)",
             "tx_list_title": "Transaction List",
@@ -2379,7 +2381,7 @@ def _bundle(lang: str) -> dict:
             "ph_amount": "राशि",
             "ph_recipient_name": "प्राप्तकर्ता का नाम",
             "ph_limit": "सीमा",
-            "ph_server_url": "http://localhost:8000",
+            "ph_server_url": DEFAULT_SERVER_URL,
             "ph_held_tx_id": "रुका हुआ ट्रांजैक्शन ID",
             "ph_approval_code": "विश्वसनीय स्वीकृति कोड (यदि आवश्यक)",
             "tx_list_title": "लेनदेन सूची",
@@ -2579,7 +2581,7 @@ def _bundle(lang: str) -> dict:
             "ph_amount": "ରାଶି",
             "ph_recipient_name": "ପ୍ରାପ୍ତକର୍ତ୍ତା ନାମ",
             "ph_limit": "ସୀମା",
-            "ph_server_url": "http://localhost:8000",
+            "ph_server_url": DEFAULT_SERVER_URL,
             "ph_held_tx_id": "ରୋକାଯାଇଥିବା ଟ୍ରାନ୍ଜାକ୍ସନ ID",
             "ph_approval_code": "ଭରସାଯୋଗ୍ୟ ସ୍ୱୀକୃତି କୋଡ୍ (ଆବଶ୍ୟକ ହେଲେ)",
             "tx_list_title": "ଟ୍ରାନ୍ଜାକ୍ସନ ତାଲିକା",
@@ -2780,7 +2782,7 @@ def _bundle(lang: str) -> dict:
             "ph_amount": "રકમ",
             "ph_recipient_name": "પ્રાપ્તકર્તાનું નામ",
             "ph_limit": "મર્યાદા",
-            "ph_server_url": "http://localhost:8000",
+            "ph_server_url": DEFAULT_SERVER_URL,
             "ph_held_tx_id": "રોકાયેલ ટ્રાન્ઝેક્શન ID",
             "ph_approval_code": "વિશ્વસનીય મંજૂરી કોડ (જરૂર હોય તો)",
             "tx_list_title": "લેનદેન યાદી",
@@ -2980,7 +2982,7 @@ def _bundle(lang: str) -> dict:
             "ph_amount": "Betrag",
             "ph_recipient_name": "Name des Empfängers",
             "ph_limit": "Limit",
-            "ph_server_url": "http://localhost:8000",
+            "ph_server_url": DEFAULT_SERVER_URL,
             "ph_held_tx_id": "Gehaltene Transaktions-ID",
             "ph_approval_code": "Vertrauenskode (falls erforderlich)",
             "tx_list_title": "Transaktionsliste",

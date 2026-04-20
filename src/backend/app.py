@@ -10,9 +10,12 @@ from pydantic import BaseModel, Field
 
 
 class SyncRequest(BaseModel):
+    # Newer UI sends user_id so the server can store/attribute offline sync items.
+    user_id: str | None = None
     tx_id: str
     idempotency_key: str
     payload_enc: str
+    retry_count: int = 0
 
 
 class SyncResponse(BaseModel):

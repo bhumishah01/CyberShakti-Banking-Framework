@@ -9,25 +9,40 @@
 - Blueprint (human + JSON): `docs/PROJECT_BLUEPRINT.md`
 - Stepwise progress docs: `docs/STEPWISE PROGRESS/STEP_01_FOUNDATION.md`, `docs/STEPWISE PROGRESS/STEP_02_AUTH_AND_KEYS.md`, `docs/STEPWISE PROGRESS/STEP_03_ENCRYPTED_TRANSACTION_PIPELINE.md`, `docs/STEPWISE PROGRESS/STEP_04_FRAUD_RULE_ENGINE.md`, `docs/STEPWISE PROGRESS/STEP_05_SYNC_MANAGER.md`, `docs/STEPWISE PROGRESS/STEP_06_AUDIT_CHAIN.md`, `docs/STEPWISE PROGRESS/STEP_07_MINIMAL_BACKEND.md`, `docs/STEPWISE PROGRESS/STEP_08_EVALUATION_AND_DEMO.md`, `docs/STEPWISE PROGRESS/STEP_09_RUNTIME_PROTOTYPE.md`, `docs/STEPWISE PROGRESS/STEP_10_WEB_INTERFACE.md`, `docs/STEPWISE PROGRESS/STEP_11_PRODUCT_DEMO_UPGRADE.md`, `docs/STEPWISE PROGRESS/STEP_12_SCAM_INTERVENTION_ENGINE.md`, `docs/STEPWISE PROGRESS/STEP_13_TRUSTED_SAFETY_CONTROLS.md`, `docs/STEPWISE PROGRESS/STEP_14_LOCAL_LANGUAGE_AND_USABILITY.md`, `docs/STEPWISE PROGRESS/STEP_15_FRAUD_SCENARIO_SIMULATOR.md`, `docs/STEPWISE PROGRESS/STEP_16_AGENT_VOICE_AND_IMPACT_REPORT.md`, `docs/STEPWISE PROGRESS/STEP_17_PROFESSOR_DEMO_WALKTHROUGH.md`, `docs/STEPWISE PROGRESS/STEP_18_CHANGE_LOG_EXPORT.md`, `docs/STEPWISE PROGRESS/STEP_19_FULL_I18N_UI.md`, `docs/STEPWISE PROGRESS/STEP_20_SYNC_QUEUE_AND_NIGHT_SYNC.md`
 
-## Docker (Deployment-Ready)
+## Run Locally (No Docker)
 
-Build:
-
-```bash
-docker build -t ruralshield .
-```
-
-Run:
+UI (offline-first demo, SQLite):
 
 ```bash
-docker run --rm -p 8502:8502 ruralshield
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn src.ui.app:app --host 127.0.0.1 --port 8502 --reload
 ```
 
-Open: `http://127.0.0.1:8502`
+Server API (Postgres/JWT/RBAC):
+- Copy `.env.example` to `.env` and fill values, then run:
+
+```bash
+source .venv/bin/activate
+uvicorn src.server.app:app --host 127.0.0.1 --port 8000 --reload
+```
+
+## Docker (Preferred For Deployment)
+
+Run UI + API + Postgres together:
+
+```bash
+docker compose up --build
+```
+
+Open:
+- UI: `http://127.0.0.1:8502`
+- API health: `http://127.0.0.1:8000/health`
 
 Notes:
-- Hosted platforms (Render/Fly/Railway) typically set `PORT` automatically.
-- This prototype uses SQLite under `data/` as local-first storage (offline-first demo model).
+- Docker is not required for local development, but it is the cleanest path to a live URL on Render/Fly/Railway.
+- The UI writes to SQLite under `data/` (offline-first), and can sync to the API using the outbox manager.
 
 ##  Problem Statement Details
 

@@ -45,27 +45,30 @@ def sync_outbox(
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT outbox_id, tx_id, idempotency_key, payload_enc, retry_count
-            FROM outbox
-            WHERE sync_state IN ('PENDING', 'RETRYING')
-              AND (next_retry_at IS NULL OR next_retry_at <= ?)
-            ORDER BY rowid ASC
+            SELECT o.outbox_id, o.tx_id, o.idempotency_key, o.payload_enc, o.retry_count, t.user_id
+            FROM outbox o
+            JOIN transactions t ON t.tx_id = o.tx_id
+            WHERE o.sync_state IN ('PENDING', 'RETRYING')
+              AND (o.next_retry_at IS NULL OR o.next_retry_at <= ?)
+            ORDER BY o.rowid ASC
             LIMIT ?
             """,
             (current_time.isoformat(), batch_size),
         )
         rows = cursor.fetchall()
 
-        for outbox_id, tx_id, idempotency_key, payload_enc, retry_count in rows:
+        for outbox_id, tx_id, idempotency_key, payload_enc, retry_count, user_id in rows:
             processed += 1
             idempotency = idempotency_key or _derive_idempotency_key(tx_id)
 
             try:
                 ack = sender(
                     {
+                        "user_id": user_id,
                         "tx_id": tx_id,
                         "idempotency_key": idempotency,
                         "payload_enc": payload_enc,
+                        "retry_count": int(retry_count or 0),
                     }
                 )
                 status = str(ack.get("status", "synced")).lower()
