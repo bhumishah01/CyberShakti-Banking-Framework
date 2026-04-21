@@ -24,37 +24,12 @@
               {% endfor %}
             </select>
           </form>
-          <button type="button" class="button secondary" id="openHelp">{{ i18n.help_button }}</button>
           <a href="/bank/analytics?lang={{ lang }}" class="button secondary">{{ i18n.analytics_button }}</a>
           <a href="/guide?lang={{ lang }}" class="button secondary">{{ i18n.demo_guide }}</a>
           <a href="/logout?lang={{ lang }}" class="button secondary">{{ i18n.logout }}</a>
         </div>
       </div>
     </header>
-
-    <dialog id="helpDialog" class="help-dialog">
-      <form method="dialog" class="help-shell">
-        <header class="help-head">
-          <h2>{{ i18n.help_title }}</h2>
-          <p class="muted">{{ i18n.help_intro }}</p>
-        </header>
-        <section class="help-body">
-          <h3>{{ i18n.help_steps_title }}</h3>
-          <ol class="help-steps">
-            <li>{{ i18n.help_step_1 }}</li>
-            <li>{{ i18n.help_step_2 }}</li>
-            <li>{{ i18n.help_step_3 }}</li>
-            <li>{{ i18n.help_step_4 }}</li>
-            <li>{{ i18n.help_step_5 }}</li>
-          </ol>
-          <p class="muted small">{{ i18n.help_note }}</p>
-        </section>
-        <menu class="help-actions">
-          <a href="/guide?lang={{ lang }}" class="button secondary">{{ i18n.help_open_full }}</a>
-          <button class="button" value="close">{{ i18n.help_close }}</button>
-        </menu>
-      </form>
-    </dialog>
 
     {% if message %}
       <section class="alert success">{{ message }}</section>
@@ -69,39 +44,58 @@
     {% endif %}
 
     <nav class="subnav">
-      <a href="#overview">{{ i18n.nav_overview }}</a>
-      <a href="#transactions">{{ i18n.nav_transactions }}</a>
-      <a href="#users">{{ i18n.nav_users }}</a>
-      <a href="#alerts">{{ i18n.nav_alerts }}</a>
-      <a href="#devices">{{ i18n.nav_devices }}</a>
-      <a href="#reports">{{ i18n.nav_reports }}</a>
-      <a href="#utilities">{{ i18n.nav_utilities }}</a>
-      <a href="/bank/analytics?lang={{ lang }}">{{ i18n.analytics_button }}</a>
+      <a href="#monitoring">{{ i18n.nav_monitoring }}</a>
+      <a href="#operations">{{ i18n.nav_operations }}</a>
+      <a href="#admin">{{ i18n.nav_admin }}</a>
+      <a href="#tools">{{ i18n.nav_tools }}</a>
     </nav>
 
-    <details class="card tools-panel" id="serverops">
-      <summary>{{ i18n.server_ops_title }}</summary>
-      <p class="muted small" style="margin-top:10px;">{{ i18n.server_ops_hint }}</p>
+    <section id="monitoring" class="card">
+      <h2>{{ i18n.nav_monitoring }}</h2>
+      <section class="stats-grid">
+        <a class="stat-card-link" href="/users/list?lang={{ lang }}">
+          <article class="stat-card"><h3>{{ i18n.users }}</h3><p>{{ stats.user_count }}</p></article>
+        </a>
+        <a class="stat-card-link" href="/transactions/all?lang={{ lang }}">
+          <article class="stat-card"><h3>{{ i18n.transactions }}</h3><p>{{ stats.tx_count }}</p></article>
+        </a>
+        <a class="stat-card-link" href="/transactions/list/pending?lang={{ lang }}">
+          <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p>{{ stats.pending_count }}</p></article>
+        </a>
+        <a class="stat-card-link" href="/transactions/list/held?lang={{ lang }}">
+          <article class="stat-card"><h3>{{ i18n.held }}</h3><p>{{ stats.held_count }}</p></article>
+        </a>
+        <a class="stat-card-link" href="/transactions/list/blocked?lang={{ lang }}">
+          <article class="stat-card"><h3>{{ i18n.blocked }}</h3><p>{{ stats.blocked_count }}</p></article>
+        </a>
+        <a class="stat-card-link" href="/transactions/list/high-risk?lang={{ lang }}">
+          <article class="stat-card"><h3>{{ i18n.high_risk }}</h3><p>{{ stats.high_risk_count }}</p></article>
+        </a>
+      </section>
+    </section>
+
+    <section class="card">
+      <h2>After Midsem: Server Ops (Postgres + JWT + RBAC)</h2>
       {% if server and server.connected %}
         <div class="stats-grid" style="margin-bottom:10px;">
-          <article class="stat-card"><h3>{{ i18n.server_ops_legacy_inbox }}</h3><p>{{ server.sync_status.legacy_inbox or 0 }}</p></article>
-          <article class="stat-card"><h3>{{ i18n.server_ops_sync_queue }}</h3><p>{{ server.sync_status.queue_items or 0 }}</p></article>
-          <article class="stat-card"><h3>{{ i18n.server_ops_sync_logs }}</h3><p>{{ server.sync_status.sync_logs or 0 }}</p></article>
+          <article class="stat-card"><h3>Legacy Inbox</h3><p>{{ server.sync_status.legacy_inbox or 0 }}</p></article>
+          <article class="stat-card"><h3>Sync Queue</h3><p>{{ server.sync_status.queue_items or 0 }}</p></article>
+          <article class="stat-card"><h3>Sync Logs</h3><p>{{ server.sync_status.sync_logs or 0 }}</p></article>
         </div>
 
         <div style="overflow:auto;">
           <table class="table">
             <thead>
               <tr>
-                <th>{{ i18n.time }}</th>
-                <th>{{ i18n.tx_id }}</th>
-                <th>{{ i18n.admin_user }}</th>
-                <th>{{ i18n.amount }}</th>
-                <th>{{ i18n.recipient }}</th>
-                <th>{{ i18n.risk }}</th>
-                <th>{{ i18n.reasons }}</th>
-                <th>{{ i18n.status }}</th>
-                <th>{{ i18n.action }}</th>
+                <th>Time</th>
+                <th>Tx</th>
+                <th>User</th>
+                <th>Amount</th>
+                <th>Recipient</th>
+                <th>Risk</th>
+                <th>Reasons</th>
+                <th>Status</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -120,8 +114,8 @@
                       <form action="/bank/server/tx/review" method="post" style="display:flex; gap:8px;">
                         <input type="hidden" name="lang" value="{{ lang }}">
                         <input type="hidden" name="tx_id" value="{{ tx.tx_id }}">
-                        <button class="button secondary" type="submit" name="decision" value="approve">{{ i18n.admin_approve }}</button>
-                        <button class="button secondary" type="submit" name="decision" value="reject">{{ i18n.admin_reject }}</button>
+                        <button class="button secondary" type="submit" name="decision" value="approve">Approve</button>
+                        <button class="button secondary" type="submit" name="decision" value="reject">Reject</button>
                       </form>
                     {% else %}
                       <span class="muted">-</span>
@@ -130,22 +124,22 @@
                 </tr>
               {% endfor %}
               {% if (server.transactions|length) == 0 %}
-                <tr><td colspan="9" class="muted">{{ i18n.server_ops_no_server_txs }}</td></tr>
+                <tr><td colspan="9" class="muted">No server transactions yet. Use the customer portal to create some.</td></tr>
               {% endif %}
             </tbody>
           </table>
         </div>
 
-        <h3 style="margin-top:14px;">{{ i18n.server_ops_fraud_logs }}</h3>
+        <h3 style="margin-top:14px;">Fraud Logs (Explainable)</h3>
         <div style="overflow:auto; margin-top:8px;">
           <table class="table">
             <thead>
               <tr>
-                <th>{{ i18n.time }}</th>
-                <th>{{ i18n.tx_id }}</th>
-                <th>{{ i18n.admin_user }}</th>
-                <th>{{ i18n.risk }}</th>
-                <th>{{ i18n.reasons }}</th>
+                <th>Time</th>
+                <th>Tx</th>
+                <th>User</th>
+                <th>Risk</th>
+                <th>Reasons</th>
               </tr>
             </thead>
             <tbody>
@@ -159,22 +153,23 @@
                 </tr>
               {% endfor %}
               {% if (server.fraud_logs|length) == 0 %}
-                <tr><td colspan="5" class="muted">{{ i18n.server_ops_no_fraud_logs }}</td></tr>
+                <tr><td colspan="5" class="muted">No fraud logs yet.</td></tr>
               {% endif %}
             </tbody>
           </table>
         </div>
       {% else %}
         <p class="muted">
-          {{ i18n.server_ops_not_connected }} <code>{{ server_url or "http://localhost:8000" }}</code>.
+          Server ops not connected. Start Server API at <code>{{ server_url or "http://localhost:8000" }}</code>
+          and re-login to mint a bank_officer JWT.
         </p>
         {% if server and server.error %}
           <p class="muted small">Error: <code>{{ server.error }}</code></p>
         {% endif %}
       {% endif %}
-    </details>
+    </section>
 
-    <section id="overview" class="card">
+    <section class="card">
       <h2>{{ i18n.admin_overview_title }}</h2>
       <section class="stats-grid">
         <article class="stat-card"><h3>{{ i18n.users }}</h3><p>{{ local_admin.overview.user_count }}</p></article>
@@ -226,7 +221,7 @@
       </section>
     </section>
 
-    <section id="reports" class="card">
+    <section class="card">
       <h2>{{ i18n.admin_fraud_trends }}</h2>
       <p class="muted small">{{ i18n.admin_fraud_trends_hint }}</p>
       <div style="overflow:auto;">
@@ -256,7 +251,7 @@
       </div>
     </section>
 
-    <section id="users" class="card">
+    <section class="card">
       <h2>{{ i18n.admin_high_risk_users }}</h2>
       <div style="overflow:auto;">
         <table class="table">
@@ -267,7 +262,6 @@
               <th>{{ i18n.admin_last_activity }}</th>
               <th>{{ i18n.admin_tx_count }}</th>
               <th>{{ i18n.admin_avg_amount }}</th>
-              <th>{{ i18n.admin_peak_hours }}</th>
               <th>{{ i18n.admin_user_controls }}</th>
             </tr>
           </thead>
@@ -279,7 +273,6 @@
                 <td>{{ u.last_tx_at }}</td>
                 <td>{{ u.tx_count }}</td>
                 <td>{{ "%.2f"|format(u.avg_amount) }}</td>
-                <td class="muted small">{{ u.peak_hours }}</td>
                 <td>
                   <form action="/admin/api/users/{{ u.user_id }}/freeze" method="post" style="display:flex; gap:8px; align-items:center;">
                     <input type="hidden" name="minutes" value="60">
@@ -292,14 +285,14 @@
               </tr>
             {% endfor %}
             {% if (local_admin.high_risk_users|length) == 0 %}
-              <tr><td colspan="7" class="muted">{{ i18n.admin_no_high_risk_users }}</td></tr>
+              <tr><td colspan="6" class="muted">{{ i18n.admin_no_high_risk_users }}</td></tr>
             {% endif %}
           </tbody>
         </table>
       </div>
     </section>
 
-    <section id="alerts" class="card">
+    <section class="card">
       <h2>{{ i18n.admin_suspicious_alerts }}</h2>
       <div style="overflow:auto;">
         <table class="table">
@@ -330,7 +323,7 @@
       </div>
     </section>
 
-    <section id="devices" class="card">
+    <section class="card">
       <h2>{{ i18n.admin_device_monitoring }}</h2>
       <div style="overflow:auto;">
         <table class="table">
@@ -375,7 +368,7 @@
       </ul>
     </section>
 
-    <section id="transactions" class="card">
+    <section class="card">
       <h2>{{ i18n.admin_transaction_monitoring }}</h2>
       <div class="actions">
         <a class="button secondary" href="/bank/dashboard?view=all&lang={{ lang }}">{{ i18n.admin_view_all }}</a>
@@ -431,9 +424,8 @@
       </div>
     </section>
 
-    <section id="utilities" class="card">
-      <h2>{{ i18n.nav_utilities }}</h2>
-      <p class="muted small">{{ i18n.utilities_hint }}</p>
+    <section id="operations" class="card">
+      <h2>{{ i18n.nav_operations }}</h2>
       <div class="actions">
         <a href="/sync/queue?lang={{ lang }}" class="button secondary">{{ i18n.sync_queue_open }}</a>
         <a href="/audit/events?lang={{ lang }}" class="button secondary">{{ i18n.audit_events }}</a>
@@ -452,47 +444,54 @@
         <input name="approval_code" placeholder="{{ i18n.ph_approval_code }}">
         <button type="submit">{{ i18n.release_held }}</button>
       </form>
+    </section>
 
-      <details class="tools-panel" style="margin-top:12px;">
-        <summary>{{ i18n.admin_advanced_tools }}</summary>
-        <p class="muted small" style="margin-top:10px;">{{ i18n.admin_advanced_tools_hint }}</p>
+    <section id="admin" class="card">
+      <h2>{{ i18n.nav_admin }}</h2>
+      <details class="tools-panel">
+        <summary>{{ i18n.section_1 }}</summary>
+        <form action="/users" method="post" class="grid" style="margin-top:10px;">
+          <input type="hidden" name="lang" value="{{ lang }}">
+          <input name="user_id" placeholder="{{ i18n.ph_user_id_example }}" required>
+          <input name="phone" placeholder="{{ i18n.ph_phone_example }}" required>
+          <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin_4digit }}" maxlength="4" required>
+          <label class="checkbox"><input type="checkbox" name="replace" value="1"> {{ i18n.replace_user }}</label>
+          <button type="submit">{{ i18n.save_user }}</button>
+        </form>
+      </details>
+      <details class="tools-panel">
+        <summary>{{ i18n.section_2 }}</summary>
+        <form action="/transactions" method="post" class="grid" style="margin-top:10px;">
+          <input type="hidden" name="lang" value="{{ lang }}">
+          <input name="user_id" placeholder="{{ i18n.ph_user_id }}" required>
+          <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+          <input name="amount" placeholder="{{ i18n.ph_amount }}" type="number" step="0.01" min="1" required>
+          <input name="recipient" placeholder="{{ i18n.ph_recipient_name }}" required>
+          <button type="submit">{{ i18n.create_tx }}</button>
+        </form>
+      </details>
+      <details class="tools-panel">
+        <summary>{{ i18n.section_3 }}</summary>
+        <form action="/transactions" method="get" class="grid" style="margin-top:10px;">
+          <input type="hidden" name="lang" value="{{ lang }}">
+          <input name="user_id" placeholder="{{ i18n.ph_user_id }}" required>
+          <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+          <input name="limit" placeholder="{{ i18n.ph_limit }}" type="number" value="10" min="1" max="100" required>
+          <button type="submit">{{ i18n.open_tx_list }}</button>
+        </form>
+      </details>
+    </section>
 
-        <details class="tools-panel">
-          <summary>{{ i18n.section_1 }}</summary>
-          <form action="/users" method="post" class="grid" style="margin-top:10px;">
-            <input type="hidden" name="lang" value="{{ lang }}">
-            <input name="user_id" placeholder="{{ i18n.ph_user_id_example }}" required>
-            <input name="phone" placeholder="{{ i18n.ph_phone_example }}" required>
-            <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin_4digit }}" maxlength="4" required>
-            <label class="checkbox"><input type="checkbox" name="replace" value="1"> {{ i18n.replace_user }}</label>
-            <button type="submit">{{ i18n.save_user }}</button>
-          </form>
-        </details>
-
-        <details class="tools-panel">
-          <summary>{{ i18n.section_2 }}</summary>
-          <form action="/transactions" method="post" class="grid" style="margin-top:10px;">
-            <input type="hidden" name="lang" value="{{ lang }}">
-            <input name="user_id" placeholder="{{ i18n.ph_user_id }}" required>
-            <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
-            <input name="amount" placeholder="{{ i18n.ph_amount }}" type="number" step="0.01" min="1" required>
-            <input name="recipient" placeholder="{{ i18n.ph_recipient_name }}" required>
-            <button type="submit">{{ i18n.create_tx }}</button>
-          </form>
-        </details>
-
-        <details class="tools-panel">
-          <summary>{{ i18n.section_3 }}</summary>
-          <form action="/transactions" method="get" class="grid" style="margin-top:10px;">
-            <input type="hidden" name="lang" value="{{ lang }}">
-            <input name="user_id" placeholder="{{ i18n.ph_user_id }}" required>
-            <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
-            <input name="limit" placeholder="{{ i18n.ph_limit }}" type="number" value="10" min="1" max="100" required>
-            <button type="submit">{{ i18n.open_tx_list }}</button>
-          </form>
-        </details>
-
-        <div class="actions tool-actions" style="margin-top:10px;">
+    <section id="tools" class="card">
+      <h2>{{ i18n.nav_tools }}</h2>
+      <div class="actions tool-actions">
+        <a href="/agent?lang={{ lang }}" class="button">{{ i18n.agent_mode }}</a>
+        <a href="/report/impact?lang={{ lang }}" class="button">{{ i18n.impact_report }}</a>
+        <a href="/demo/walkthrough?lang={{ lang }}" class="button">{{ i18n.demo_walkthrough }}</a>
+      </div>
+      <details class="tools-panel">
+        <summary>{{ i18n.more_tools }}</summary>
+        <div class="actions tool-actions">
           <form action="/seed-demo?lang={{ lang }}" method="post"><button type="submit" class="button secondary">{{ i18n.seed_demo }}</button></form>
           <a href="/export/report?lang={{ lang }}" class="button secondary">{{ i18n.export_report }}</a>
           <form action="/export/change-log" method="post">
@@ -507,12 +506,6 @@
 
   <script>
     (() => {
-      const helpBtn = document.getElementById("openHelp");
-      const helpDlg = document.getElementById("helpDialog");
-      if (helpBtn && helpDlg && typeof helpDlg.showModal === "function") {
-        helpBtn.addEventListener("click", () => helpDlg.showModal());
-      }
-
       const btn = document.querySelector(".voice-btn");
       if (!btn || !window.speechSynthesis) return;
       btn.addEventListener("click", () => {
