@@ -218,6 +218,7 @@
               <th>{{ i18n.admin_last_activity }}</th>
               <th>{{ i18n.admin_tx_count }}</th>
               <th>{{ i18n.admin_avg_amount }}</th>
+              <th>{{ i18n.admin_user_controls }}</th>
             </tr>
           </thead>
           <tbody>
@@ -228,10 +229,19 @@
                 <td>{{ u.last_tx_at }}</td>
                 <td>{{ u.tx_count }}</td>
                 <td>{{ "%.2f"|format(u.avg_amount) }}</td>
+                <td>
+                  <form action="/admin/api/users/{{ u.user_id }}/freeze" method="post" style="display:flex; gap:8px; align-items:center;">
+                    <input type="hidden" name="minutes" value="60">
+                    <button class="button secondary" type="submit">{{ i18n.admin_freeze_60 }}</button>
+                  </form>
+                  <form action="/admin/api/users/{{ u.user_id }}/unfreeze" method="post" style="margin-top:6px;">
+                    <button class="button secondary" type="submit">{{ i18n.admin_unfreeze }}</button>
+                  </form>
+                </td>
               </tr>
             {% endfor %}
             {% if (local_admin.high_risk_users|length) == 0 %}
-              <tr><td colspan="5" class="muted">{{ i18n.admin_no_high_risk_users }}</td></tr>
+              <tr><td colspan="6" class="muted">{{ i18n.admin_no_high_risk_users }}</td></tr>
             {% endif %}
           </tbody>
         </table>
@@ -333,6 +343,7 @@
               <th>{{ i18n.amount }}</th>
               <th>{{ i18n.recipient }}</th>
               <th>{{ i18n.risk }}</th>
+              <th>{{ i18n.decision_label }}</th>
               <th>{{ i18n.reasons }}</th>
               <th>{{ i18n.status }}</th>
             </tr>
@@ -346,6 +357,7 @@
                 <td>{{ tx.amount }}</td>
                 <td>{{ tx.recipient }}</td>
                 <td>{{ tx.risk_score }} ({{ tx.risk_level }})</td>
+                <td>{{ tx.decision }}</td>
                 <td class="muted small">{{ (tx.reason_codes or [])|join(", ") }}</td>
                 <td>
                   {{ tx.status }}
@@ -361,7 +373,7 @@
               </tr>
             {% endfor %}
             {% if (local_admin.transactions|length) == 0 %}
-              <tr><td colspan="8" class="muted">{{ i18n.admin_no_transactions }}</td></tr>
+              <tr><td colspan="9" class="muted">{{ i18n.admin_no_transactions }}</td></tr>
             {% endif %}
           </tbody>
         </table>

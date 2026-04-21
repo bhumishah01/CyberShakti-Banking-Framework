@@ -164,6 +164,16 @@ def render_template(
     return resp
 
 
+def _json_ok(data: Any | None = None, message: str = "ok") -> JSONResponse:
+    payload: dict[str, Any] = {"status": "success", "message": message, "data": data or {}}
+    return JSONResponse(payload, status_code=200)
+
+
+def _json_err(message: str, *, status_code: int = 400, data: Any | None = None) -> JSONResponse:
+    payload: dict[str, Any] = {"status": "error", "message": message, "data": data or {}}
+    return JSONResponse(payload, status_code=int(status_code))
+
+
 def _server_api_url() -> str:
     return DEFAULT_SERVER_URL.rstrip("/")
 
@@ -688,6 +698,14 @@ def _local_transactions(db_path: Path = DEFAULT_DB, status_filter: str = "", lim
     items = []
     for tx_id, user_id, ts, risk_score, risk_level, status, reason_codes in rows:
         meta = extra.get(tx_id, {})
+        decision = "ALLOW"
+        try:
+            if str(status or "").startswith("BLOCKED"):
+                decision = "BLOCK"
+            elif str(status or "") in {"HOLD_FOR_REVIEW", "AWAITING_TRUSTED_APPROVAL"}:
+                decision = "HOLD"
+        except Exception:
+            decision = "ALLOW"
         items.append(
             {
                 "tx_id": tx_id,
@@ -695,6 +713,7 @@ def _local_transactions(db_path: Path = DEFAULT_DB, status_filter: str = "", lim
                 "timestamp": _friendly_time(ts),
                 "risk_score": int(risk_score or 0),
                 "risk_level": str(risk_level or ""),
+                "decision": decision,
                 "status": str(status or ""),
                 "reason_codes": _safe_parse_reason_codes(reason_codes if isinstance(reason_codes, str) else json.dumps(reason_codes or {})),
                 "amount": meta.get("amount", "-"),
@@ -702,6 +721,28 @@ def _local_transactions(db_path: Path = DEFAULT_DB, status_filter: str = "", lim
             }
         )
     return items
+
+
+def _set_freeze_until(*, user_id: str, freeze_until: str, db_path: Path = DEFAULT_DB) -> None:
+    """Admin-only helper: set freeze_until in auth_config without requiring user PIN."""
+    init_db(db_path)
+    user_id = user_id.strip()
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT auth_config FROM users WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        if row is None:
+            raise ValueError("user_not_found")
+        raw = row[0] or "{}"
+        try:
+            cfg = json.loads(raw)
+        except Exception:
+            cfg = {}
+        if not isinstance(cfg, dict):
+            cfg = {}
+        cfg["freeze_until"] = freeze_until
+        cursor.execute("UPDATE users SET auth_config = ? WHERE user_id = ?", (json.dumps(cfg), user_id))
+        conn.commit()
 
 
 def _fetch_outbox_rows(limit: int = 200) -> list[dict]:
@@ -1262,6 +1303,150 @@ def admin_dashboard_compat(request: Request):
     # Back-compat route for old links.
     lang = _resolve_lang(request.query_params.get("lang", "en"))
     return RedirectResponse(url=f"/bank/dashboard?lang={lang}", status_code=303)
+
+
+# =========================
+# Admin API (Local SQLite)
+# =========================
+
+@app.get("/admin/api/fraud-trends")
+def admin_api_fraud_trends(request: Request, days: int = 7):
+    guard = _require_role(request, "bank")
+    if guard:
+        return _json_err("forbidden", status_code=403)
+    try:
+        return _json_ok({"items": _fraud_trends(DEFAULT_DB, days=int(days))})
+    except Exception as exc:
+        return _json_err(str(exc), status_code=500)
+
+
+@app.get("/admin/api/high-risk-users")
+def admin_api_high_risk_users(request: Request, limit: int = 20):
+    guard = _require_role(request, "bank")
+    if guard:
+        return _json_err("forbidden", status_code=403)
+    try:
+        return _json_ok({"items": _high_risk_users(DEFAULT_DB, limit=int(limit))})
+    except Exception as exc:
+        return _json_err(str(exc), status_code=500)
+
+
+@app.get("/admin/api/alerts")
+def admin_api_alerts(request: Request, limit: int = 50):
+    guard = _require_role(request, "bank")
+    if guard:
+        return _json_err("forbidden", status_code=403)
+    try:
+        return _json_ok({"items": list_recent_alerts(DEFAULT_DB, limit=int(limit))})
+    except Exception as exc:
+        return _json_err(str(exc), status_code=500)
+
+
+@app.get("/admin/api/devices")
+def admin_api_devices(request: Request, limit: int = 200):
+    guard = _require_role(request, "bank")
+    if guard:
+        return _json_err("forbidden", status_code=403)
+    try:
+        return _json_ok({"items": list_devices(DEFAULT_DB, limit=int(limit))})
+    except Exception as exc:
+        return _json_err(str(exc), status_code=500)
+
+
+@app.get("/admin/api/transactions")
+def admin_api_transactions(request: Request, status: str = "", limit: int = 200):
+    guard = _require_role(request, "bank")
+    if guard:
+        return _json_err("forbidden", status_code=403)
+    try:
+        # status: all|held|blocked|allowed
+        view = (status or "").strip().lower()
+        status_filter = {"held": "HELD", "blocked": "BLOCKED", "allowed": "ALLOWED"}.get(view, "")
+        items = _local_transactions(DEFAULT_DB, status_filter=status_filter, limit=int(limit))
+        return _json_ok({"items": items})
+    except Exception as exc:
+        return _json_err(str(exc), status_code=500)
+
+
+@app.get("/admin/api/user-profile/{user_id}")
+def admin_api_user_profile(request: Request, user_id: str):
+    guard = _require_role(request, "bank")
+    if guard:
+        return _json_err("forbidden", status_code=403)
+    try:
+        prof = get_or_create_profile(user_id.strip(), db_path=DEFAULT_DB)
+        payload = {
+            "user_id": prof.user_id,
+            "tx_count": prof.tx_count,
+            "avg_amount": prof.avg_amount,
+            "user_risk_score": prof.user_risk_score,
+            "preferred_hours": preferred_hours(prof, top_n=3),
+            "last_tx_at": prof.last_tx_at or "",
+        }
+        return _json_ok(payload)
+    except Exception as exc:
+        return _json_err(str(exc), status_code=500)
+
+
+@app.post("/admin/api/transactions/{tx_id}/review")
+def admin_api_review_tx(request: Request, tx_id: str, decision: str = Form(...)):
+    guard = _require_role(request, "bank")
+    if guard:
+        return _json_err("forbidden", status_code=403)
+    try:
+        tx_id = tx_id.strip()
+        decision = (decision or "").strip().lower()
+        if decision not in {"approve", "reject"}:
+            return _json_err("invalid_decision", status_code=400)
+        # reuse local review logic: update status + outbox
+        init_db(DEFAULT_DB)
+        with sqlite3.connect(DEFAULT_DB) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT user_id, status FROM transactions WHERE tx_id = ?", (tx_id,))
+            row = cursor.fetchone()
+            if row is None:
+                return _json_err("tx_not_found", status_code=404)
+            user_id, status = row
+            if status not in {"HOLD_FOR_REVIEW", "AWAITING_TRUSTED_APPROVAL"}:
+                return _json_err("tx_not_held", status_code=409)
+            if decision == "approve":
+                cursor.execute("UPDATE transactions SET status = 'PENDING' WHERE tx_id = ?", (tx_id,))
+                cursor.execute("UPDATE outbox SET sync_state = 'PENDING' WHERE tx_id = ?", (tx_id,))
+            else:
+                cursor.execute("UPDATE transactions SET status = 'BLOCKED_MANUAL_REJECT' WHERE tx_id = ?", (tx_id,))
+                cursor.execute("UPDATE outbox SET sync_state = 'BLOCKED' WHERE tx_id = ?", (tx_id,))
+            conn.commit()
+        return _json_ok({"tx_id": tx_id, "decision": decision})
+    except Exception as exc:
+        return _json_err(str(exc), status_code=500)
+
+
+@app.post("/admin/api/users/{user_id}/freeze")
+def admin_api_freeze_user(request: Request, user_id: str, minutes: int = Form(default=60)):
+    guard = _require_role(request, "bank")
+    if guard:
+        return _json_err("forbidden", status_code=403)
+    try:
+        minutes = int(minutes)
+        if minutes <= 0:
+            return _json_err("invalid_minutes", status_code=400)
+        freeze_until = (datetime.now(UTC) + timedelta(minutes=minutes)).isoformat()
+        _set_freeze_until(user_id=user_id, freeze_until=freeze_until, db_path=DEFAULT_DB)
+        return _json_ok({"user_id": user_id, "freeze_until": freeze_until}, message="frozen")
+    except Exception as exc:
+        return _json_err(str(exc), status_code=500)
+
+
+@app.post("/admin/api/users/{user_id}/unfreeze")
+def admin_api_unfreeze_user(request: Request, user_id: str):
+    guard = _require_role(request, "bank")
+    if guard:
+        return _json_err("forbidden", status_code=403)
+    try:
+        _set_freeze_until(user_id=user_id, freeze_until="", db_path=DEFAULT_DB)
+        return _json_ok({"user_id": user_id, "freeze_until": ""}, message="unfrozen")
+    except Exception as exc:
+        return _json_err(str(exc), status_code=500)
 
 
 @app.get("/agent")
@@ -3038,6 +3223,9 @@ def _bundle(lang: str) -> dict:
             "admin_tx_count": "Tx Count",
             "admin_avg_amount": "Avg Amount",
             "admin_no_high_risk_users": "No high-risk users yet.",
+            "admin_user_controls": "User Controls",
+            "admin_freeze_60": "Freeze 60m",
+            "admin_unfreeze": "Unfreeze",
             "admin_suspicious_alerts": "Suspicious Pattern Alerts",
             "admin_alert_type": "Alert Type",
             "admin_severity": "Severity",
