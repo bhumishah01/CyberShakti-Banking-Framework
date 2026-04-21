@@ -33,11 +33,24 @@
     {% endif %}
 
     <section class="stats-grid">
-      <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p>{{ stats.pending }}</p></article>
-      <article class="stat-card"><h3>{{ i18n.retrying }}</h3><p>{{ stats.retrying }}</p></article>
-      <article class="stat-card"><h3>{{ i18n.synced }}</h3><p>{{ stats.synced }}</p></article>
-      <article class="stat-card"><h3>{{ i18n.held }}</h3><p>{{ stats.held }}</p></article>
-      <article class="stat-card"><h3>{{ i18n.blocked }}</h3><p>{{ stats.blocked }}</p></article>
+      <a class="stat-card-link" href="/sync/queue?lang={{ lang }}">
+        <article class="stat-card {% if view == '' %}active{% endif %}"><h3>{{ i18n.transactions }}</h3><p>{{ stats.pending + stats.retrying + stats.synced + stats.held + stats.blocked }}</p></article>
+      </a>
+      <a class="stat-card-link" href="/sync/queue?lang={{ lang }}&view=pending">
+        <article class="stat-card {% if view == 'pending' %}active{% endif %}"><h3>{{ i18n.pending_sync }}</h3><p>{{ stats.pending }}</p></article>
+      </a>
+      <a class="stat-card-link" href="/sync/queue?lang={{ lang }}&view=retrying">
+        <article class="stat-card {% if view == 'retrying' %}active{% endif %}"><h3>{{ i18n.retrying }}</h3><p>{{ stats.retrying }}</p></article>
+      </a>
+      <a class="stat-card-link" href="/sync/queue?lang={{ lang }}&view=synced">
+        <article class="stat-card {% if view == 'synced' %}active{% endif %}"><h3>{{ i18n.synced }}</h3><p>{{ stats.synced }}</p></article>
+      </a>
+      <a class="stat-card-link" href="/sync/queue?lang={{ lang }}&view=held">
+        <article class="stat-card {% if view == 'held' %}active{% endif %}"><h3>{{ i18n.held }}</h3><p>{{ stats.held }}</p></article>
+      </a>
+      <a class="stat-card-link" href="/sync/queue?lang={{ lang }}&view=blocked">
+        <article class="stat-card {% if view == 'blocked' %}active{% endif %}"><h3>{{ i18n.blocked }}</h3><p>{{ stats.blocked }}</p></article>
+      </a>
     </section>
 
 	    <section class="card">
