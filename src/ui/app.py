@@ -3470,6 +3470,8 @@ def _bundle(lang: str) -> dict:
             "demo_map_item12": "12) Top Fraud Reasons",
             "demo_map_item12_where": "Admin Overview section (Top Fraud Reasons list).",
             "demo_map_api_title": "Backend API Endpoints (UI exposes JSON)",
+            "dashboard_clean_title": "Dashboard (Clean)",
+            "dashboard_clean_body": "Use this page for quick monitoring and operations. Open Analytics for risk scoring, fraud trends, high-risk users, alerts, and device monitoring.",
             "users": "Users",
             "transactions": "Transactions",
             "pending_sync": "Pending Sync",
