@@ -178,10 +178,51 @@
         <article class="stat-card"><h3>{{ i18n.blocked }}</h3><p>{{ local_admin.overview.blocked }}</p></article>
         <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p>{{ local_admin.overview.pending_sync }}</p></article>
       </section>
+      <p class="muted small" style="margin-top:10px;">
+        {{ i18n.admin_overview_hint }}
+      </p>
+      <section class="admin-insights-grid">
+        <article class="card inset-card">
+          <h3>{{ i18n.admin_risk_distribution }}</h3>
+          <p class="muted small">{{ i18n.admin_risk_distribution_hint }}</p>
+          <div class="dist-row">
+            <span class="badge low">{{ i18n.risk_low }}</span>
+            <div class="bar"><div class="bar-fill low" style="width: {{ local_admin.risk_distribution.low_pct }}%"></div></div>
+            <span class="muted small">{{ local_admin.risk_distribution.low }} ({{ local_admin.risk_distribution.low_pct }}%)</span>
+          </div>
+          <div class="dist-row">
+            <span class="badge med">{{ i18n.risk_medium }}</span>
+            <div class="bar"><div class="bar-fill med" style="width: {{ local_admin.risk_distribution.medium_pct }}%"></div></div>
+            <span class="muted small">{{ local_admin.risk_distribution.medium }} ({{ local_admin.risk_distribution.medium_pct }}%)</span>
+          </div>
+          <div class="dist-row">
+            <span class="badge high">{{ i18n.risk_high }}</span>
+            <div class="bar"><div class="bar-fill high" style="width: {{ local_admin.risk_distribution.high_pct }}%"></div></div>
+            <span class="muted small">{{ local_admin.risk_distribution.high }} ({{ local_admin.risk_distribution.high_pct }}%)</span>
+          </div>
+        </article>
+
+        <article class="card inset-card">
+          <h3>{{ i18n.admin_top_fraud_reasons }}</h3>
+          <p class="muted small">{{ i18n.admin_top_fraud_reasons_hint }}</p>
+          <ul class="list compact">
+            {% for r in local_admin.top_reasons %}
+              <li>
+                <strong>{{ r.reason }}</strong>
+                <span class="muted small">({{ r.count }})</span>
+              </li>
+            {% endfor %}
+            {% if (local_admin.top_reasons|length) == 0 %}
+              <li class="muted">{{ i18n.admin_no_top_reasons }}</li>
+            {% endif %}
+          </ul>
+        </article>
+      </section>
     </section>
 
     <section class="card">
       <h2>{{ i18n.admin_fraud_trends }}</h2>
+      <p class="muted small">{{ i18n.admin_fraud_trends_hint }}</p>
       <div style="overflow:auto;">
         <table class="table">
           <thead>
@@ -189,6 +230,7 @@
               <th>{{ i18n.admin_day }}</th>
               <th>{{ i18n.admin_alerts }}</th>
               <th>{{ i18n.admin_high_risk_txs }}</th>
+              <th>{{ i18n.admin_top_types }}</th>
             </tr>
           </thead>
           <tbody>
@@ -197,10 +239,11 @@
                 <td>{{ row.day }}</td>
                 <td>{{ row.alerts }}</td>
                 <td>{{ row.high_risk_txs }}</td>
+                <td class="muted small">{{ row.by_type }}</td>
               </tr>
             {% endfor %}
             {% if (local_admin.trends|length) == 0 %}
-              <tr><td colspan="3" class="muted">{{ i18n.admin_no_trends }}</td></tr>
+              <tr><td colspan="4" class="muted">{{ i18n.admin_no_trends }}</td></tr>
             {% endif %}
           </tbody>
         </table>

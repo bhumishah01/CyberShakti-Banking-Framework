@@ -590,6 +590,16 @@ def _fraud_trends(db_path: Path = DEFAULT_DB, days: int = 7) -> list[dict]:
         alert_rows = cursor.fetchall()
         cursor.execute(
             f"""
+            SELECT substr(created_at, 1, 10) AS day, alert_type, COUNT(*)
+            FROM alerts
+            GROUP BY day, alert_type
+            ORDER BY day DESC
+            LIMIT {days * 20}
+            """
+        )
+        type_rows = cursor.fetchall()
+        cursor.execute(
+            f"""
             SELECT substr(timestamp, 1, 10) AS day, COUNT(*)
             FROM transactions
             WHERE risk_score >= 70 OR risk_level = 'HIGH'
@@ -601,10 +611,21 @@ def _fraud_trends(db_path: Path = DEFAULT_DB, days: int = 7) -> list[dict]:
         risk_rows = cursor.fetchall()
     alert_map = {d: int(c) for d, c in alert_rows}
     risk_map = {d: int(c) for d, c in risk_rows}
+    type_map: dict[str, dict[str, int]] = {}
+    for d, alert_type, c in type_rows:
+        if not d:
+            continue
+        type_map.setdefault(d, {})
+        type_map[d][str(alert_type)] = int(c)
     all_days = sorted(set(alert_map.keys()) | set(risk_map.keys()), reverse=True)[:days]
     out = []
     for d in all_days:
+        types = type_map.get(d, {})
+        # Build a short "type breakdown" string: TYPE:count, TYPE:count
+        top_types = sorted(types.items(), key=lambda kv: kv[1], reverse=True)[:4]
+        type_breakdown = ", ".join([f"{k}:{v}" for k, v in top_types]) if top_types else "-"
         out.append({"day": d, "alerts": alert_map.get(d, 0), "high_risk_txs": risk_map.get(d, 0)})
+        out[-1]["by_type"] = type_breakdown
     return list(reversed(out))
 
 
@@ -634,6 +655,62 @@ def _high_risk_users(db_path: Path = DEFAULT_DB, limit: int = 10) -> list[dict]:
             }
         )
     return items
+
+
+def _risk_distribution(db_path: Path = DEFAULT_DB) -> dict:
+    """Return distribution of user risk buckets (low/medium/high) based on user_profiles."""
+    init_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_risk_score FROM user_profiles")
+        rows = cursor.fetchall()
+    low = med = high = 0
+    for (score,) in rows:
+        try:
+            s = int(score or 0)
+        except Exception:
+            s = 0
+        if s >= 70:
+            high += 1
+        elif s >= 40:
+            med += 1
+        else:
+            low += 1
+    total = max(1, low + med + high)
+    return {
+        "low": low,
+        "medium": med,
+        "high": high,
+        "total": (low + med + high),
+        "low_pct": int(round((low / total) * 100)),
+        "medium_pct": int(round((med / total) * 100)),
+        "high_pct": int(round((high / total) * 100)),
+    }
+
+
+def _top_fraud_reasons(db_path: Path = DEFAULT_DB, limit: int = 6) -> list[dict]:
+    """Aggregate most common fraud reason codes from local transactions."""
+    init_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT reason_codes
+            FROM transactions
+            ORDER BY timestamp DESC
+            LIMIT 1000
+            """
+        )
+        rows = cursor.fetchall()
+    counts: dict[str, int] = {}
+    for (raw,) in rows:
+        codes = _safe_parse_reason_codes(raw if isinstance(raw, str) else None)
+        for c in codes:
+            if not c:
+                continue
+            counts[c] = counts.get(c, 0) + 1
+    top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[: max(1, int(limit))]
+    return [{"reason": k, "count": v} for k, v in top]
 
 
 def _local_tx_amount_recipient(tx_ids: list[str], db_path: Path = DEFAULT_DB) -> dict[str, dict]:
@@ -1146,6 +1223,9 @@ def bank_dashboard(request: Request):
         "overview": _local_admin_overview(DEFAULT_DB),
         "trends": _fraud_trends(DEFAULT_DB, days=7),
         "high_risk_users": _high_risk_users(DEFAULT_DB, limit=10),
+        # Curated admin intelligence (for professor/demo visibility).
+        "risk_distribution": _risk_distribution(DEFAULT_DB),
+        "top_reasons": _top_fraud_reasons(DEFAULT_DB, limit=6),
         "alerts": list_recent_alerts(DEFAULT_DB, limit=20),
         "devices": list_devices(DEFAULT_DB, limit=50),
         "notifications": list_notifications(role="bank", user_id=None, db_path=DEFAULT_DB, limit=20),
@@ -3210,11 +3290,19 @@ def _bundle(lang: str) -> dict:
             "logout": "Logout",
             # Admin portal (local analytics)
             "admin_overview_title": "Admin Overview (Local Offline Data)",
+            "admin_overview_hint": "These panels are computed from the offline SQLite store (works even with no internet).",
             "admin_allowed": "Allowed",
+            "admin_risk_distribution": "Risk Distribution Summary",
+            "admin_risk_distribution_hint": "How many users currently fall into low/medium/high risk buckets (based on behavior + past transactions).",
+            "admin_top_fraud_reasons": "Top Fraud Reasons",
+            "admin_top_fraud_reasons_hint": "Most common explainable reasons produced by the fraud engine.",
+            "admin_no_top_reasons": "No fraud reasons recorded yet.",
             "admin_fraud_trends": "Fraud Trends (Local)",
+            "admin_fraud_trends_hint": "Daily alerts and high-risk transactions, plus the most common alert types.",
             "admin_day": "Day",
             "admin_alerts": "Alerts",
             "admin_high_risk_txs": "High-Risk Tx",
+            "admin_top_types": "Top Types",
             "admin_no_trends": "No trend data yet.",
             "admin_high_risk_users": "High-Risk Users",
             "admin_user": "User",
@@ -3261,6 +3349,9 @@ def _bundle(lang: str) -> dict:
             "blocked": "Blocked",
             "released": "Released",
             "high_risk": "High Risk",
+            "risk_low": "Low",
+            "risk_medium": "Medium",
+            "risk_high": "High",
             "audit_events": "Audit Events",
             "audit_events_title": "Audit Events",
             "sync_queue_title": "Offline Sync Queue",
