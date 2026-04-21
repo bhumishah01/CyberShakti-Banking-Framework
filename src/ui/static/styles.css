@@ -18,7 +18,7 @@ body {
   color: var(--text);
 }
 .container {
-  max-width: 980px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: 18px;
 }
@@ -44,12 +44,14 @@ header p {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+  min-width: 0;
 }
 .header-actions {
   display: flex;
   align-items: flex-end;
   gap: 12px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 .status-chip {
   border: 1px solid var(--border);
@@ -428,6 +430,7 @@ table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
+  min-width: 680px; /* keep tables readable; use .table-wrap to scroll on small screens */
 }
 th, td {
   border-bottom: 1px solid var(--border);
@@ -618,6 +621,38 @@ tbody tr:nth-child(odd) {
 .score-ring.warn { border-color: #f39c12; }
 .score-ring.bad { border-color: #e74c3c; }
 .score-num { font-size: 1.6rem; font-weight: 800; line-height: 1; }
+
+@media (max-width: 860px) {
+  .top-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .header-actions {
+    align-items: stretch;
+  }
+  .lang-form {
+    width: 100%;
+  }
+  .inline {
+    grid-template-columns: 1fr;
+  }
+  .admin-insights-grid {
+    grid-template-columns: 1fr;
+  }
+  .dash-mini-grid {
+    grid-template-columns: 1fr;
+  }
+  .login-panel-grid {
+    grid-template-columns: 1fr;
+  }
+  .auth-note {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .face-frame {
+    min-height: 260px;
+  }
+}
 .score-sub { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
 .pill-ok { background: #eaf8f1; color: #17674b; }
 .pill-warn { background: #fff4e6; color: #8a4b0f; }
