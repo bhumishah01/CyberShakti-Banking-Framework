@@ -107,7 +107,10 @@ def update_profile_after_tx(
     # Hour histogram (preferred usage time)
     hour_hist = dict(profile.hour_hist or {})
     try:
-        hour = datetime.fromisoformat(timestamp_iso).hour
+        ts = timestamp_iso
+        if isinstance(ts, dict):
+            ts = ts.get("timestamp") or ts.get("value") or ts.get("$date") or ""
+        hour = datetime.fromisoformat(str(ts)).hour
     except Exception:
         hour = -1
     if 0 <= hour <= 23:
@@ -163,4 +166,3 @@ def preferred_hours(profile: UserProfile, top_n: int = 3) -> list[int]:
             items.append((count, hour))
     items.sort(reverse=True)
     return [hour for _, hour in items[: max(0, int(top_n))]]
-

@@ -409,7 +409,11 @@ def _is_locked(lockout_until: str | None, now: datetime) -> bool:
     if not lockout_until:
         return False
     try:
-        return now < datetime.fromisoformat(lockout_until)
+        # Be defensive: if some older data format stored a dict-like value, avoid AttributeError.
+        val = lockout_until
+        if isinstance(val, dict):
+            val = val.get("lockout_until") or val.get("value") or val.get("$date") or ""
+        return now < datetime.fromisoformat(str(val))
     except ValueError:
         return False
 

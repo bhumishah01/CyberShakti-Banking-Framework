@@ -2436,6 +2436,19 @@ def customer_history_view(
         context.update({"history": formatted, "history_limit": int(limit)})
         return render_template(request, "customer_history.html", context)
     except Exception as exc:
+        # This endpoint catches errors to avoid a blank 500 screen.
+        # Log the full traceback so we can pinpoint issues like dict/isoformat problems.
+        try:
+            log_path = DB_PATH.parent / "ui_errors.log"
+            with log_path.open("a", encoding="utf-8") as f:
+                f.write("\n" + "=" * 80 + "\n")
+                f.write(f"time_utc={datetime.now(UTC).isoformat()}\n")
+                f.write("path=/customer/history method=POST\n")
+                f.write(f"user={user_id} role={request.cookies.get(ROLE_COOKIE, '')}\n")
+                f.write(f"error={type(exc).__name__}: {exc}\n")
+                f.write(traceback.format_exc() + "\n")
+        except Exception:
+            pass
         context.update({"history": [], "history_limit": int(limit), "error": str(exc)})
         return render_template(request, "customer_history.html", context, status_code=400)
 
