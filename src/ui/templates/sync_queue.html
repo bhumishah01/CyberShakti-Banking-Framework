@@ -52,6 +52,7 @@
               <th>{{ i18n.retry_count }}</th>
               <th>{{ i18n.next_retry }}</th>
               <th>{{ i18n.last_error }}</th>
+              <th>{{ i18n.action }}</th>
             </tr>
           </thead>
           <tbody>
@@ -64,6 +65,18 @@
               <td>{{ row.retry_count }}</td>
               <td>{{ row.next_retry }}</td>
               <td>{{ row.last_error }}</td>
+              <td>
+                {% if row.sync_state in ['PENDING', 'RETRYING'] %}
+                  <form action="/sync/one" method="post">
+                    <input type="hidden" name="lang" value="{{ lang }}">
+                    <input type="hidden" name="outbox_id" value="{{ row.outbox_id }}">
+                    <input type="hidden" name="server_url" value="http://localhost:8000">
+                    <button type="submit" class="button secondary">{{ i18n.sync_this_one }}</button>
+                  </form>
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
             </tr>
             {% endfor %}
           </tbody>

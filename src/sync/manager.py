@@ -153,5 +153,147 @@ def sync_outbox(
     )
 
 
+def sync_outbox_one(
+    *,
+    db_path: Path = DB_PATH,
+    sender: Callable[[dict], dict] | None = None,
+    now: datetime | None = None,
+    outbox_id: str | None = None,
+    tx_id: str | None = None,
+) -> SyncSummary:
+    """Sync exactly one outbox record (manual sync).
+
+    Useful for demos and for rural/offline workflows where staff may want to
+    retry a single transaction without syncing everything.
+    """
+    if sender is None:
+        raise ValueError("A sender callback is required for sync_outbox_one")
+    if not (outbox_id or tx_id):
+        raise ValueError("Provide outbox_id or tx_id")
+
+    init_db(db_path)
+    current_time = now or datetime.now(UTC)
+    processed = 0
+    synced = 0
+    duplicates = 0
+    retried = 0
+
+    where = "o.outbox_id = ?" if outbox_id else "o.tx_id = ?"
+    param = (str(outbox_id or tx_id),)
+
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT o.outbox_id, o.tx_id, o.idempotency_key, o.payload_enc, o.retry_count, t.user_id
+            FROM outbox o
+            JOIN transactions t ON t.tx_id = o.tx_id
+            WHERE {where}
+              AND o.sync_state IN ('PENDING', 'RETRYING')
+            LIMIT 1
+            """,
+            param,
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return SyncSummary(processed=0, synced=0, duplicates=0, retried=0)
+
+        outbox_id_v, tx_id_v, idempotency_key, payload_enc, retry_count, user_id = row
+        processed = 1
+        idempotency = idempotency_key or _derive_idempotency_key(tx_id_v)
+
+        try:
+            ack = sender(
+                {
+                    "user_id": user_id,
+                    "tx_id": tx_id_v,
+                    "idempotency_key": idempotency,
+                    "payload_enc": payload_enc,
+                    "retry_count": int(retry_count or 0),
+                }
+            )
+            status = str(ack.get("status", "synced")).lower()
+            if status not in {"synced", "duplicate"}:
+                raise ValueError(f"Unexpected sync status: {status}")
+
+            if status == "synced":
+                outbox_state = "SYNCED"
+                tx_state = "SYNCED"
+                synced = 1
+            else:
+                outbox_state = "SYNCED_DUPLICATE_ACK"
+                tx_state = "SYNCED_DUPLICATE_ACK"
+                duplicates = 1
+
+            cursor.execute(
+                """
+                UPDATE outbox
+                SET idempotency_key = ?, sync_state = ?, next_retry_at = NULL, last_error = NULL
+                WHERE outbox_id = ?
+                """,
+                (idempotency, outbox_state, outbox_id_v),
+            )
+            cursor.execute(
+                "UPDATE transactions SET status = ? WHERE tx_id = ?",
+                (tx_state, tx_id_v),
+            )
+            append_audit_event(
+                event_type="SYNC_RESULT",
+                event_data_enc=canonical_json(
+                    {
+                        "tx_id": tx_id_v,
+                        "outbox_id": outbox_id_v,
+                        "result": outbox_state,
+                        "retry_count": retry_count,
+                        "manual": True,
+                    }
+                ),
+                db_path=db_path,
+                conn=conn,
+            )
+        except Exception as exc:
+            retried = 1
+            next_retry_count = int(retry_count) + 1
+            next_retry_at = (
+                current_time + timedelta(minutes=min(2**next_retry_count, MAX_BACKOFF_MINUTES))
+            ).isoformat()
+            cursor.execute(
+                """
+                UPDATE outbox
+                SET idempotency_key = ?, retry_count = ?, next_retry_at = ?, last_error = ?, sync_state = 'RETRYING'
+                WHERE outbox_id = ?
+                """,
+                (idempotency, next_retry_count, next_retry_at, str(exc), outbox_id_v),
+            )
+            cursor.execute(
+                "UPDATE transactions SET status = 'RETRYING_SYNC' WHERE tx_id = ?",
+                (tx_id_v,),
+            )
+            append_audit_event(
+                event_type="SYNC_RETRY_SCHEDULED",
+                event_data_enc=canonical_json(
+                    {
+                        "tx_id": tx_id_v,
+                        "outbox_id": outbox_id_v,
+                        "retry_count": next_retry_count,
+                        "next_retry_at": next_retry_at,
+                        "error": str(exc),
+                        "manual": True,
+                    }
+                ),
+                db_path=db_path,
+                conn=conn,
+            )
+
+        conn.commit()
+
+    return SyncSummary(
+        processed=processed,
+        synced=synced,
+        duplicates=duplicates,
+        retried=retried,
+    )
+
+
 def _derive_idempotency_key(tx_id: str) -> str:
     return hashlib.sha256(tx_id.encode("utf-8")).hexdigest()

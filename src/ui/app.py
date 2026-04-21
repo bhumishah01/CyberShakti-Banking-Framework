@@ -51,7 +51,7 @@ from src.database.profile_store import get_or_create_profile, preferred_hours
 from src.database.device_store import list_devices
 from src.database.monitoring_store import list_recent_alerts
 from src.sync.client import make_http_sender
-from src.sync.manager import sync_outbox
+from src.sync.manager import sync_outbox, sync_outbox_one
 
 
 # === App configuration ===
@@ -2338,6 +2338,31 @@ def do_sync(
         )
 
 
+@app.post("/sync/one")
+def do_sync_one(
+    request: Request,
+    outbox_id: str = Form(...),
+    server_url: str = Form(DEFAULT_SERVER_URL),
+    lang: str = Form(default="en"),
+):
+    """Manual sync: sync only one outbox item (by outbox_id)."""
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
+    lang = _resolve_lang(lang)
+    if _offline_sim_enabled(request):
+        return _flash_redirect(f"/sync/queue?lang={lang}", error=_t(lang, "offline_sync_blocked"))
+    try:
+        sender = make_http_sender(server_url.strip())
+        summary = sync_outbox_one(db_path=DEFAULT_DB, sender=sender, outbox_id=outbox_id.strip() or None)
+        if summary.processed == 0:
+            msg = _t(lang, "sync_one_not_found")
+        else:
+            msg = _tf(lang, "sync_one_done", synced=summary.synced, duplicates=summary.duplicates, retried=summary.retried)
+        return _flash_redirect(f"/sync/queue?lang={lang}", message=msg)
+    except Exception as exc:
+        return _flash_redirect(f"/sync/queue?lang={lang}", error=str(exc))
+
 @app.get("/sync/queue")
 def view_sync_queue(request: Request, lang: str = "en"):
     guard = _require_role(request, "bank")
@@ -2349,7 +2374,12 @@ def view_sync_queue(request: Request, lang: str = "en"):
     context = _admin_dashboard_context(request, lang=lang)
     context["rows"] = rows
     context["stats"] = _outbox_stats(rows)
-    return templates.TemplateResponse(request, "sync_queue.html", context)
+    context = _read_and_clear_flash(request, context)
+    resp = templates.TemplateResponse(request, "sync_queue.html", context)
+    resp.delete_cookie(FLASH_MSG_COOKIE)
+    resp.delete_cookie(FLASH_ERR_COOKIE)
+    resp.delete_cookie(FLASH_VOICE_COOKIE)
+    return resp
 
 
 @app.post("/sync/simulate")
@@ -3657,6 +3687,10 @@ def _bundle(lang: str) -> dict:
             "demo_run_button": "1-Click Demo Run",
             "demo_run_done": "Demo ready: created {users} users and {tx} transactions. Opening Analytics.",
             "demo_run_voice": "Demo data created. Opening analytics dashboard now.",
+            "sync_this_one": "Sync This",
+            "sync_one_done": "Single sync complete: synced={synced}, duplicates={duplicates}, retried={retried}.",
+            "sync_one_not_found": "That outbox item was not found (or already synced).",
+            "offline_sync_blocked": "Offline simulator is ON. Turn it OFF to sync to the server.",
             "users": "Users",
             "transactions": "Transactions",
             "pending_sync": "Pending Sync",
