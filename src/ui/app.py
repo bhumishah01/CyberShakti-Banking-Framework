@@ -149,8 +149,30 @@ def render_template(
 
     try:
         resp = templates.TemplateResponse(request, name, ctx, status_code=status_code)
-    except TypeError:
-        resp = templates.TemplateResponse(name, ctx, status_code=status_code)
+    except TypeError as exc:
+        # IMPORTANT:
+        # A TypeError can come either from:
+        # 1) Starlette signature mismatch (older Starlette supported TemplateResponse(name, ctx))
+        # 2) The template itself raising TypeError during render (common: bad format/filter usage)
+        #
+        # We must *not* treat all TypeError as a signature mismatch, otherwise we end up calling the
+        # wrong signature and Jinja2 will receive a dict as the template name, producing:
+        #   AttributeError: 'dict' object has no attribute 'split'
+        msg = str(exc)
+        looks_like_signature_mismatch = (
+            "TemplateResponse" in msg
+            and (
+                "positional argument" in msg
+                or "positional arguments" in msg
+                or "takes" in msg
+                or "missing" in msg
+                or "argument" in msg
+            )
+        )
+        if looks_like_signature_mismatch:
+            resp = templates.TemplateResponse(name, ctx, status_code=status_code)
+        else:
+            raise
 
     # Demo UX: prevent caching so pages always reflect latest DB state after POST+redirect.
     try:
@@ -2437,10 +2459,24 @@ def customer_history_view(
                 rc = _safe_parse_reason_codes(rc)
             if not isinstance(rc, list):
                 rc = []
+            # Decrypted amount is stored as a string (AES-GCM UTF-8 payload).
+            # Convert for display so Jinja's numeric formatting doesn't crash.
+            amt_raw = row.get("amount", None)
+            amt_val = None
+            try:
+                if amt_raw is None or amt_raw == "":
+                    amt_val = None
+                elif isinstance(amt_raw, (int, float)):
+                    amt_val = float(amt_raw)
+                else:
+                    amt_val = float(str(amt_raw))
+            except Exception:
+                amt_val = None
             formatted.append(
                 {
                     **row,
                     "display_time": _friendly_time(row.get("timestamp", "")),
+                    "display_amount": amt_val,
                     "display_risk": f"{_friendly_risk(row.get('risk_level','LOW'), lang=lang)} ({int(row.get('risk_score', 0))}/100)",
                     "display_reasons": [_friendly_reason(str(code), lang=lang) for code in rc],
                     "display_status": _friendly_status(row.get("status", ""), lang=lang),

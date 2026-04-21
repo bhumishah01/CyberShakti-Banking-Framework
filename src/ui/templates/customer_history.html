@@ -67,7 +67,13 @@
               <tr>
                 <td>{{ tx.display_time }}</td>
                 <td><code>{{ tx.tx_id }}</code></td>
-                <td>{{ "%.2f"|format(tx.amount) }}</td>
+                <td>
+                  {% if tx.display_amount is not none %}
+                    {{ "%.2f"|format(tx.display_amount) }}
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
                 <td>{{ tx.recipient }}</td>
                 <td>{{ tx.display_risk }}</td>
                 <td>{{ tx.display_status }}</td>
