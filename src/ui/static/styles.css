@@ -610,7 +610,8 @@ tbody tr:nth-child(odd) {
 /* Customer identity line (bigger, demo-friendly) */
 .whoami {
   margin-top: 6px;
-  font-size: 1.05rem;
+  font-size: 1.2rem;
+  font-weight: 600;
   color: #1f2937;
 }
 .whoami-name {
@@ -622,6 +623,34 @@ tbody tr:nth-child(odd) {
   color: var(--muted);
   font-size: 0.95rem;
 }
+
+/* Toast-style alerts (feel like real alerts, not "a box") */
+.toast-stack {
+  position: sticky;
+  top: 12px;
+  z-index: 10;
+  display: grid;
+  gap: 10px;
+  margin: 10px 0 14px;
+}
+.toast {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.10);
+}
+.toast-title {
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+.toast-body {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.toast.ok { border-color: rgba(22, 163, 74, 0.25); background: rgba(22, 163, 74, 0.06); }
+.toast.warn { border-color: rgba(245, 158, 11, 0.28); background: rgba(245, 158, 11, 0.10); }
+.toast.info { border-color: rgba(59, 130, 246, 0.28); background: rgba(59, 130, 246, 0.08); }
 
 @media (max-width: 620px) {
   .container { padding: 12px; }

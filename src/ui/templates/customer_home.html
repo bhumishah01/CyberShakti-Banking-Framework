@@ -89,13 +89,13 @@
       </div>
     </section>
 
-    <section class="card">
-      <h2>{{ i18n.cust_alerts }}</h2>
-      <ul class="list">
-        {% for line in alerts %}
-          <li>{{ line }}</li>
-        {% endfor %}
-      </ul>
+    <section aria-label="{{ i18n.cust_alerts }}" class="toast-stack">
+      {% for a in alerts %}
+        <article class="toast {{ a.level }}">
+          <div class="toast-title">{{ a.title }}</div>
+          <div class="toast-body">{{ a.body }}</div>
+        </article>
+      {% endfor %}
     </section>
 
     <section class="card">

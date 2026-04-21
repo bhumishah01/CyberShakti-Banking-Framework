@@ -532,7 +532,7 @@ def _login_context(request: Request, lang: str, mode: str, message: str = "", er
                 parts = []
                 t = str(title or "").strip().lower()
                 if t:
-                    parts.append(t.upper())
+                    parts.append(_t(lang, f"title_{t}"))
                 if str(first_name or "").strip():
                     parts.append(str(first_name).strip())
                 if str(last_name or "").strip():
@@ -1313,9 +1313,9 @@ def login(
         if not auth.is_authenticated:
             reason = getattr(auth, "reason", "") or ""
             if reason == "user_not_found":
-                err = "User not found. Please register first."
+                err = _t(lang, "cust_login_user_not_found")
             elif reason in {"invalid_pin", "lockout_started", "locked_out"}:
-                err = "Incorrect PIN or account temporarily locked. Please try again."
+                err = _t(lang, "cust_login_wrong_pin")
             else:
                 err = _t(lang, "customer_login_failed")
             context = _login_context(request, lang=lang, mode="customer", error=err)
@@ -1424,9 +1424,15 @@ def customer_home(request: Request):
         except Exception as exc:
             context["server"] = {"connected": False, "error": str(exc), "balance": 0.0}
     # Build customer alert strings server-side (avoid template .format on missing keys).
-    alerts: list[str] = []
+    alerts: list[dict] = []
     if context.get("device_trust") == "untrusted":
-        alerts.append(f"{_t(lang, 'cust_alert_new_device_title')} {_t(lang, 'cust_alert_new_device_body')}")
+        alerts.append(
+            {
+                "level": "warn",
+                "title": _t(lang, "cust_alert_new_device_title"),
+                "body": _t(lang, "cust_alert_new_device_body"),
+            }
+        )
     try:
         held = int((context.get("customer_stats") or {}).get("held", 0))
     except Exception:
@@ -1436,11 +1442,29 @@ def customer_home(request: Request):
     except Exception:
         pending = 0
     if held > 0:
-        alerts.append(f"{_t(lang, 'cust_alert_held_title')} {_tf(lang, 'cust_alert_held_body', count=held)}")
+        alerts.append(
+            {
+                "level": "warn",
+                "title": _t(lang, "cust_alert_held_title"),
+                "body": _tf(lang, "cust_alert_held_body", count=held),
+            }
+        )
     if pending > 0:
-        alerts.append(f"{_t(lang, 'cust_alert_pending_title')} {_tf(lang, 'cust_alert_pending_body', count=pending)}")
+        alerts.append(
+            {
+                "level": "info",
+                "title": _t(lang, "cust_alert_pending_title"),
+                "body": _tf(lang, "cust_alert_pending_body", count=pending),
+            }
+        )
     if not alerts:
-        alerts.append(f"{_t(lang, 'cust_alert_clear_title')} {_t(lang, 'cust_alert_clear_body')}")
+        alerts.append(
+            {
+                "level": "ok",
+                "title": _t(lang, "cust_alert_clear_title"),
+                "body": _t(lang, "cust_alert_clear_body"),
+            }
+        )
     context["alerts"] = alerts
 
     # Optional: show the last transaction decision without decrypting amount/recipient.
@@ -2105,13 +2129,13 @@ def _parse_voice_command(text: str) -> tuple[float | None, str]:
     # Try pattern-based parsing first (more reliable than heuristics).
     # 1) Verb amount [to] recipient
     m = re.match(
-        r"(?i)^(?:send|pay|transfer)\s+(?P<amt>\d+(?:\.\d+)?)\s+(?:to\s+)?(?P<rec>.+)$",
+        r"(?i)^(?:send|pay|transfer)\s+(?:money\s+)?(?P<amt>\d+(?:\.\d+)?)\s+(?:to\s+)?(?P<rec>.+)$",
         raw,
     )
     if not m:
         # 2) Verb [to] recipient amount
         m = re.match(
-            r"(?i)^(?:send|pay|transfer)\s+(?:to\s+)?(?P<rec>.+?)\s+(?P<amt>\d+(?:\.\d+)?)$",
+            r"(?i)^(?:send|pay|transfer)\s+(?:money\s+)?(?:to\s+)?(?P<rec>.+?)\s+(?P<amt>\d+(?:\.\d+)?)$",
             raw,
         )
     if not m:
@@ -2141,6 +2165,7 @@ def _parse_voice_command(text: str) -> tuple[float | None, str]:
             # Remove verb + amount + connector "to" to estimate recipient.
             cleaned = raw
             cleaned = re.sub(r"(?i)\b(send|transfer|pay)\b", " ", cleaned).strip()
+            cleaned = re.sub(r"(?i)\bmoney\b", " ", cleaned).strip()
             cleaned = cleaned.replace(m_amt.group("amt"), " ")
             cleaned = re.sub(r"(?i)\bto\b", " ", cleaned)
             cleaned = re.sub(r"\s+", " ", cleaned).strip()
@@ -3928,11 +3953,13 @@ def _bundle(lang: str) -> dict:
             "customer_register_title": "Customer Registration",
             "customer_register_subtitle": "Create your local account offline, then enroll face + device for safer banking.",
             "customer_welcome": "Logged in as",
+            "cust_login_user_not_found": "User ID not found on this device. If you created it earlier, pick it from “Existing Users on This Device”.",
+            "cust_login_wrong_pin": "Incorrect PIN or account temporarily locked. Please try again.",
             "customer_id_label": "Customer ID",
             "name": "Name",
             "title_label": "Title",
-            "title_mr": "Mr",
-            "title_ms": "Ms",
+            "title_mr": "Mr.",
+            "title_ms": "Ms.",
             "title_mx": "Mx",
             "ph_first_name": "First name",
             "ph_last_name": "Last name",
@@ -4392,6 +4419,8 @@ def _bundle(lang: str) -> dict:
             "customer_register_title": "ग्राहक रजिस्ट्रेशन",
             "customer_register_subtitle": "पहले लोकल (ऑफलाइन) अकाउंट बनाएं, फिर फेस + डिवाइस एनरोल करें।",
             "customer_welcome": "लॉगिन:",
+            "cust_login_user_not_found": "यह user_id इस डिवाइस पर नहीं मिला। अगर पहले बनाया है, तो “इस डिवाइस पर मौजूद यूज़र” से चुनें।",
+            "cust_login_wrong_pin": "गलत PIN या अकाउंट अस्थायी रूप से लॉक है। कृपया फिर प्रयास करें।",
             "customer_id_label": "ग्राहक आईडी",
             "name": "नाम",
             "title_label": "शीर्षक",
@@ -4681,6 +4710,8 @@ def _bundle(lang: str) -> dict:
             "customer_register_title": "ଗ୍ରାହକ ରେଜିଷ୍ଟ୍ରେସନ୍",
             "customer_register_subtitle": "ପ୍ରଥମେ ଲୋକାଲ୍ (ଅଫଲାଇନ) ଆକାଉଣ୍ଟ ସୃଷ୍ଟି, ପରେ ଫେସ + ଡିଭାଇସ୍ ଏନରୋଲ୍ କରନ୍ତୁ।",
             "customer_welcome": "ଲଗଇନ୍:",
+            "cust_login_user_not_found": "ଏହି user_id ଏହି ଡିଭାଇସରେ ମିଳିଲା ନାହିଁ। ପୂର୍ବରୁ ସୃଷ୍ଟି କରିଥିଲେ, “ଏହି ଡିଭାଇସରେ ଥିବା ଯୁଜର୍” ରୁ ଚୟନ କରନ୍ତୁ।",
+            "cust_login_wrong_pin": "ଭୁଲ PIN କିମ୍ବା ଆକାଉଣ୍ଟ ଅସ୍ଥାୟୀ ଭାବରେ ଲକ୍। ଦୟାକରି ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ।",
             "customer_id_label": "ଗ୍ରାହକ ID",
             "name": "ନାମ",
             "title_label": "ଶୀର୍ଷକ",
@@ -4970,6 +5001,8 @@ def _bundle(lang: str) -> dict:
             "customer_register_title": "કસ્ટમર રજીસ્ટ્રેશન",
             "customer_register_subtitle": "પહેલાં લોકલ (ઓફલાઇન) અકાઉન્ટ બનાવો, પછી ફેસ + ડિવાઇસ એનરોલ કરો.",
             "customer_welcome": "લૉગિન:",
+            "cust_login_user_not_found": "આ user_id આ ડિવાઇસ પર મળ્યો નથી. જો પહેલાં બનાવ્યો હોય તો “આ ડિવાઇસ પર હાજર યુઝર્સ”માંથી પસંદ કરો.",
+            "cust_login_wrong_pin": "ખોટો PIN અથવા અકાઉન્ટ તાત્કાલિક લૉક છે. કૃપા કરીને ફરી પ્રયત્ન કરો.",
             "customer_id_label": "ગ્રાહક ID",
             "name": "નામ",
             "title_label": "ઉપાધિ",
@@ -5259,6 +5292,8 @@ def _bundle(lang: str) -> dict:
             "customer_register_title": "Kunden-Registrierung",
             "customer_register_subtitle": "Erstelle zuerst ein lokales Offline-Konto, dann Face + Geraet binden.",
             "customer_welcome": "Angemeldet als",
+            "cust_login_user_not_found": "User-ID auf diesem Geraet nicht gefunden. Falls bereits erstellt, waehle sie aus „Vorhandene Nutzer auf diesem Geraet“.",
+            "cust_login_wrong_pin": "Falsche PIN oder Konto voruebergehend gesperrt. Bitte erneut versuchen.",
             "customer_id_label": "Kunden-ID",
             "name": "Name",
             "title_label": "Anrede",
@@ -5541,6 +5576,11 @@ def _bundle(lang: str) -> dict:
 
 
 def _t(lang: str, key: str) -> str:
+    # Prefer the primary UI bundle so *all* page text + headings translate consistently.
+    bundled = _bundle(_resolve_lang(lang))
+    if key in bundled:
+        return str(bundled.get(key, key))
+
     dictionary = {
         "en": {
             "no_alert": "No alert triggers",
@@ -5940,5 +5980,5 @@ def _t(lang: str, key: str) -> str:
         },
     }
     base = dictionary["en"]
-    localized = dictionary.get(lang, {})
+    localized = dictionary.get(_resolve_lang(lang), {})
     return {**base, **localized}.get(key, key)
