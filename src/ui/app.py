@@ -1062,8 +1062,11 @@ def _fetch_outbox_rows(limit: int = 200) -> list[dict]:
     # Read local sync queue (outbox) for the Sync Queue page.
     init_db(DEFAULT_DB)
     query = (
-        "SELECT outbox_id, tx_id, sync_state, retry_count, next_retry_at, last_error "
-        "FROM outbox ORDER BY rowid DESC LIMIT ?"
+        "SELECT o.outbox_id, o.tx_id, o.sync_state, o.retry_count, o.next_retry_at, o.last_error, "
+        "       t.user_id, t.timestamp, t.status "
+        "FROM outbox o "
+        "LEFT JOIN transactions t ON t.tx_id = o.tx_id "
+        "ORDER BY o.rowid DESC LIMIT ?"
     )
     rows = []
     with sqlite3.connect(DEFAULT_DB) as conn:
@@ -1071,16 +1074,18 @@ def _fetch_outbox_rows(limit: int = 200) -> list[dict]:
         cursor.execute(query, (limit,))
         rows = cursor.fetchall()
     items = []
-    for outbox_id, tx_id, sync_state, retry_count, next_retry_at, last_error in rows:
+    for outbox_id, tx_id, sync_state, retry_count, next_retry_at, last_error, user_id, ts, status in rows:
         items.append(
             {
-                "created_at": "",
+                "created_at": _friendly_time(ts) if ts else "-",
                 "outbox_id": outbox_id,
                 "tx_id": tx_id,
                 "sync_state": sync_state,
                 "retry_count": retry_count,
                 "next_retry": next_retry_at or "-",
                 "last_error": last_error or "-",
+                "user_id": user_id or "-",
+                "tx_status": status or "-",
             }
         )
     return items
@@ -1126,6 +1131,14 @@ def _face_hash_from_capture_path(capture_path: str) -> tuple[str, str]:
 @app.get("/")
 def index(request: Request):
     lang = _lang_from_request(request)
+    # If a user is already logged in, never dump them back to the portal chooser.
+    # This fixes "Back to Dashboard" buttons that link to /?lang=... by mistake.
+    session = _user_ctx(request)
+    if session.get("role") == "customer":
+        return RedirectResponse(url=f"/dashboard/customer?lang={lang}", status_code=303)
+    if session.get("role") == "bank":
+        return RedirectResponse(url=f"/bank/dashboard?lang={lang}", status_code=303)
+
     # After-midsem home: make it obvious this is the upgraded build and link to server API docs.
     i18n = _bundle(lang)
     return render_template(
@@ -1513,6 +1526,7 @@ def bank_dashboard(request: Request):
         return guard
     lang = _lang_from_request(request)
     context = _admin_dashboard_context(request, lang=lang)
+    context["server_url"] = DEFAULT_SERVER_URL
     context["offline_sim"] = _offline_sim_enabled(request)
     context["safety"] = _compute_bank_safety_score(stats=context.get("stats") or {}, db_path=DEFAULT_DB)
     token = _jwt_from_request(request)
@@ -2811,10 +2825,9 @@ def do_sync(
             f"processed={summary.processed}, synced={summary.synced}, "
             f"duplicates={summary.duplicates}, retried={summary.retried}"
         )
-        return templates.TemplateResponse(request, "index.html", _admin_dashboard_context(request, message=msg, lang=lang))
+        return _flash_redirect(f"/sync/queue?lang={lang}", message=msg)
     except Exception as exc:
-        return templates.TemplateResponse(request, "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
-        )
+        return _flash_redirect(f"/sync/queue?lang={lang}", error=str(exc))
 
 
 @app.post("/sync/one")
@@ -2851,6 +2864,7 @@ def view_sync_queue(request: Request, lang: str = "en"):
     lang = _resolve_lang(lang)
     rows = _fetch_outbox_rows()
     context = _admin_dashboard_context(request, lang=lang)
+    context["server_url"] = DEFAULT_SERVER_URL
     context["rows"] = rows
     context["stats"] = _outbox_stats(rows)
     context = _read_and_clear_flash(request, context)
@@ -3630,16 +3644,10 @@ def release_transaction(
             db_path=DEFAULT_DB,
         )
         if released:
-            return templates.TemplateResponse(request, "index.html",
-                _admin_dashboard_context(request, message=_t(lang, "release_success"), lang=lang),
-            )
-        return templates.TemplateResponse(request, "index.html",
-            _admin_dashboard_context(request, error=_t(lang, "release_failed"), lang=lang),
-            status_code=400,
-        )
+            return _flash_redirect(f"/sync/queue?lang={lang}", message=_t(lang, "release_success"))
+        return _flash_redirect(f"/sync/queue?lang={lang}", error=_t(lang, "release_failed"))
     except Exception as exc:
-        return templates.TemplateResponse(request, "index.html", _admin_dashboard_context(request, error=str(exc), lang=lang), status_code=400
-        )
+        return _flash_redirect(f"/sync/queue?lang={lang}", error=str(exc))
 
 
 @app.get("/transactions/release")
@@ -3648,8 +3656,7 @@ def release_transaction_help(request: Request):
     if guard:
         return guard
     lang = _resolve_lang(request.query_params.get("lang", "en"))
-    msg = "Use the Release Held Transaction form on the dashboard."
-    return templates.TemplateResponse(request, "index.html", _admin_dashboard_context(request, message=msg, lang=lang))
+    return RedirectResponse(url=f"/sync/queue?lang={lang}", status_code=303)
 
 
 @app.post("/users/trusted-contact")

@@ -141,7 +141,7 @@
       </div>
       <form action="/sync" method="post" class="grid inline" style="margin-top:10px;">
         <input type="hidden" name="lang" value="{{ lang }}">
-        <input name="server_url" placeholder="{{ i18n.ph_server_url }}" value="http://localhost:8000" required>
+        <input name="server_url" placeholder="{{ i18n.ph_server_url }}" value="{{ server_url }}" required>
         <button type="submit">{{ i18n.sync_pending }}</button>
       </form>
       <form action="/transactions/release" method="post" class="grid release-grid">

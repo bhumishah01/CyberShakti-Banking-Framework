@@ -41,6 +41,11 @@
     </section>
 
     <section class="card">
+      <form action="/sync" method="post" class="grid inline" style="margin-bottom:12px;">
+        <input type="hidden" name="lang" value="{{ lang }}">
+        <input name="server_url" placeholder="{{ i18n.ph_server_url }}" value="{{ server_url }}" required>
+        <button type="submit">{{ i18n.sync_pending }}</button>
+      </form>
       <div class="table-wrap">
         <table>
           <thead>
@@ -48,6 +53,8 @@
               <th>{{ i18n.time }}</th>
               <th>{{ i18n.outbox_id }}</th>
               <th>{{ i18n.tx_id }}</th>
+              <th>{{ i18n.user_label }}</th>
+              <th>{{ i18n.status }}</th>
               <th>{{ i18n.sync_state }}</th>
               <th>{{ i18n.retry_count }}</th>
               <th>{{ i18n.next_retry }}</th>
@@ -61,6 +68,8 @@
               <td>{{ row.created_at }}</td>
               <td class="mono">{{ row.outbox_id }}</td>
               <td class="mono">{{ row.tx_id }}</td>
+              <td class="mono">{{ row.user_id }}</td>
+              <td>{{ row.tx_status }}</td>
               <td>{{ row.sync_state }}</td>
               <td>{{ row.retry_count }}</td>
               <td>{{ row.next_retry }}</td>
@@ -70,8 +79,17 @@
                   <form action="/sync/one" method="post">
                     <input type="hidden" name="lang" value="{{ lang }}">
                     <input type="hidden" name="outbox_id" value="{{ row.outbox_id }}">
-                    <input type="hidden" name="server_url" value="http://localhost:8000">
+                    <input type="hidden" name="server_url" value="{{ server_url }}">
                     <button type="submit" class="button secondary">{{ i18n.sync_this_one }}</button>
+                  </form>
+                {% elif row.sync_state == 'HOLD' %}
+                  <form action="/transactions/release" method="post" class="grid" style="grid-template-columns: 1fr 1fr 1fr; gap: 6px;">
+                    <input type="hidden" name="lang" value="{{ lang }}">
+                    <input type="hidden" name="tx_id" value="{{ row.tx_id }}">
+                    <input type="hidden" name="user_id" value="{{ row.user_id }}">
+                    <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+                    <input name="approval_code" placeholder="{{ i18n.ph_approval_code }}">
+                    <button type="submit" class="button secondary">{{ i18n.release_held }}</button>
                   </form>
                 {% else %}
                   <span class="muted">-</span>
@@ -89,7 +107,7 @@
         <input type="hidden" name="lang" value="{{ lang }}">
         <button type="submit" class="button secondary">{{ i18n.simulate_night_sync }}</button>
       </form>
-      <a href="/?lang={{ lang }}" class="button secondary">{{ i18n.back_dashboard }}</a>
+      <a href="/bank/dashboard?lang={{ lang }}" class="button secondary">{{ i18n.back_dashboard }}</a>
     </section>
   </main>
 </body>
