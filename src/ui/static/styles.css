@@ -111,19 +111,13 @@ header p {
 .stat-card-link {
   text-decoration: none;
   color: inherit;
-  display: block; /* make the full card area clickable */
 }
 .stat-card-link .stat-card {
   transition: transform 0.12s ease, box-shadow 0.12s ease;
-  cursor: pointer;
 }
 .stat-card-link:hover .stat-card {
   transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
-}
-.stat-card.active {
-  border-color: rgba(10, 147, 150, 0.55);
-  box-shadow: 0 0 0 3px rgba(10, 147, 150, 0.10);
 }
 .muted {
   color: var(--muted);

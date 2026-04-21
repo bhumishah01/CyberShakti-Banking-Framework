@@ -3317,30 +3317,17 @@ async def do_sync_selected(
     return resp
 
 @app.get("/sync/queue")
-def view_sync_queue(request: Request, lang: str = "en", view: str = ""):
+def view_sync_queue(request: Request, lang: str = "en"):
     guard = _require_role(request, "bank")
     if guard:
         return guard
     # Visualize local outbox queue for offline-first demo.
     lang = _resolve_lang(lang)
-    all_rows = _fetch_outbox_rows()
-    view = (view or "").strip().lower()
-    rows = all_rows
-    if view in {"pending", "retrying", "synced", "held", "blocked"}:
-        state_map = {
-            "pending": "PENDING",
-            "retrying": "RETRYING",
-            "synced": "SYNCED",
-            "held": "HOLD",
-            "blocked": "BLOCKED",
-        }
-        want = state_map.get(view, "")
-        rows = [r for r in rows if str(r.get("sync_state", "") or "") == want]
+    rows = _fetch_outbox_rows()
     context = _admin_dashboard_context(request, lang=lang)
     context["server_url"] = str(request.cookies.get(SERVER_URL_COOKIE, "") or "").strip() or DEFAULT_SERVER_URL
     context["rows"] = rows
-    context["stats"] = _outbox_stats(all_rows)
-    context["view"] = view
+    context["stats"] = _outbox_stats(rows)
     context = _read_and_clear_flash(request, context)
     resp = render_template(request, "sync_queue.html", context)
     resp.delete_cookie(FLASH_MSG_COOKIE)
