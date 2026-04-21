@@ -19,6 +19,7 @@ import os
 import re
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import logging
 import traceback
@@ -3762,7 +3763,12 @@ def _friendly_time(iso_ts) -> str:
         return "-"
     try:
         dt = datetime.fromisoformat(iso_ts)
-        return dt.strftime("%d %b %Y, %I:%M %p")
+        if dt.tzinfo is None:
+            # We store UTC in DB; treat naive timestamps as UTC to keep consistent.
+            dt = dt.replace(tzinfo=UTC)
+        ist = ZoneInfo("Asia/Kolkata")
+        dt_ist = dt.astimezone(ist)
+        return dt_ist.strftime("%d %b %Y, %I:%M %p")
     except Exception:
         return iso_ts
 
