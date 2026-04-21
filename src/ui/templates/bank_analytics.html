@@ -91,7 +91,7 @@
 
       <!-- Lightweight SVG graph (no libraries) -->
       <div class="chart-wrap">
-        <svg class="mini-chart" viewBox="0 0 640 180" role="img" aria-label="Fraud trend graph">
+        <svg class="mini-chart" viewBox="0 0 640 180" role="img" aria-label="{{ i18n.analytics_graph_aria }}">
           <rect x="0" y="0" width="640" height="180" fill="#fbfdff" stroke="var(--border)"></rect>
 
           {% set pts = local_admin.trends %}
@@ -261,4 +261,3 @@
   </main>
 </body>
 </html>
-

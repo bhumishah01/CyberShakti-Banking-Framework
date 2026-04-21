@@ -69,7 +69,7 @@
       <h2>After Midsem: Server Ledger (JWT + APIs)</h2>
       {% if server and server.connected %}
         <div class="stats-grid" style="margin-bottom:10px;">
-          <article class="stat-card"><h3>Mock Balance</h3><p>{{ \"%.2f\"|format(server.balance) }}</p></article>
+          <article class="stat-card"><h3>{{ i18n.cust_balance_demo_label }}</h3><p>{{ \"%.2f\"|format(server.balance) }}</p></article>
           <article class="stat-card"><h3>Server Transactions</h3><p>{{ server.transactions|length }}</p></article>
         </div>
 
