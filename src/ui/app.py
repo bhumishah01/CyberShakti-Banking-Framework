@@ -516,6 +516,19 @@ def _login_ctx(
 def _login_context(request: Request, lang: str, mode: str, message: str = "", error: str = "") -> dict:
     context = _login_ctx(request, message=message, error=error, lang=lang)
     context["login_mode"] = mode
+    # Help demo users: show existing local users so you don't think a user "doesn't exist".
+    if mode in {"customer", "customer_register"}:
+        try:
+            init_db(DEFAULT_DB)
+            with sqlite3.connect(DEFAULT_DB) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT user_id, created_at FROM users ORDER BY created_at DESC LIMIT 10")
+                rows = cursor.fetchall()
+            context["known_users"] = [{"user_id": str(uid), "created_at": _friendly_time(ts)} for uid, ts in rows]
+        except Exception:
+            context["known_users"] = []
+    else:
+        context["known_users"] = []
     return context
 
 
@@ -1314,7 +1327,9 @@ def login(
 
 
 @app.get("/logout")
-def logout(lang: str = "en"):
+def logout(request: Request, lang: str = ""):
+    # Prefer cookie if lang query param isn't provided.
+    lang = _lang_from_request(request, fallback=lang or "en")
     response = RedirectResponse(url=f"/?lang={_resolve_lang(lang)}", status_code=303)
     response.delete_cookie(ROLE_COOKIE)
     response.delete_cookie(USER_COOKIE)
@@ -2017,6 +2032,10 @@ def _parse_voice_command(text: str) -> tuple[float | None, str]:
     raw = (text or "").strip()
     if not raw:
         return (None, "")
+    # Normalize common currency markers.
+    raw = raw.replace("₹", " ")
+    raw = re.sub(r"\\b(rs|inr)\\b", " ", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"\\s+", " ", raw).strip()
     # Amount: first number in the string
     m_amt = re.search(r"(?P<amt>\\d+(?:\\.\\d+)?)", raw)
     amt = None
@@ -2025,7 +2044,7 @@ def _parse_voice_command(text: str) -> tuple[float | None, str]:
             amt = float(m_amt.group("amt"))
         except Exception:
             amt = None
-    # Recipient: after 'to' (or last token if missing)
+    # Recipient: after 'to' (or after amount if missing)
     rec = ""
     m_to = re.search(r"\\bto\\b\\s+(?P<rec>.+)$", raw, flags=re.IGNORECASE)
     if m_to:
@@ -2035,6 +2054,9 @@ def _parse_voice_command(text: str) -> tuple[float | None, str]:
         cleaned = re.sub(r"\\d+(?:\\.\\d+)?", "", raw).strip()
         cleaned = re.sub(r"\\b(send|transfer|pay)\\b", "", cleaned, flags=re.IGNORECASE).strip()
         rec = cleaned
+        if not rec and m_amt:
+            # Another heuristic: take everything after the number.
+            rec = raw[m_amt.end():].strip()
     return (amt, rec)
 
 
@@ -2262,24 +2284,35 @@ def customer_history_view(
     guard = _require_role(request, "customer")
     if guard:
         return guard
-    lang = _resolve_lang(lang)
-    user_id = request.cookies.get(USER_COOKIE, "").strip()
+    lang = _lang_from_request(request, fallback=lang or "en")
+    user_id = str(request.cookies.get(USER_COOKIE, "") or "").strip()
     context = _customer_dashboard_context(request, lang=lang)
+    if not user_id:
+        context.update({"history": [], "history_limit": int(limit), "error": _t(lang, "not_logged_in")})
+        return render_template(request, "customer_history.html", context, status_code=401)
     try:
         items = list_secure_transactions(
             user_id=user_id,
-            pin=pin.strip(),
+            pin=str(pin or "").strip(),
             db_path=DEFAULT_DB,
             limit=int(limit),
         )
         formatted = []
         for row in items:
+            # Defensive: ensure reason_codes is always list[str] for rendering.
+            rc = row.get("reason_codes", [])
+            if isinstance(rc, dict):
+                rc = rc.get("reason_codes", [])
+            if isinstance(rc, str):
+                rc = _safe_parse_reason_codes(rc)
+            if not isinstance(rc, list):
+                rc = []
             formatted.append(
                 {
                     **row,
                     "display_time": _friendly_time(row.get("timestamp", "")),
                     "display_risk": f"{_friendly_risk(row.get('risk_level','LOW'), lang=lang)} ({int(row.get('risk_score', 0))}/100)",
-                    "display_reasons": [_friendly_reason(code, lang=lang) for code in row.get("reason_codes", [])],
+                    "display_reasons": [_friendly_reason(str(code), lang=lang) for code in rc],
                     "display_status": _friendly_status(row.get("status", ""), lang=lang),
                     "display_action": _friendly_action(row.get("action_decision", "ALLOW"), lang=lang),
                 }
@@ -2488,11 +2521,11 @@ def list_transactions(request: Request, user_id: str, pin: str, limit: int = 10,
 
 
 @app.get("/users/list")
-def list_users(request: Request, lang: str = "en"):
+def list_users(request: Request, lang: str = ""):
     guard = _require_role(request, "bank")
     if guard:
         return guard
-    lang = _resolve_lang(lang)
+    lang = _lang_from_request(request, fallback=lang or "en")
     init_db(DEFAULT_DB)
     with sqlite3.connect(DEFAULT_DB) as conn:
         cursor = conn.cursor()
@@ -2531,7 +2564,7 @@ def list_users(request: Request, lang: str = "en"):
 
 
 @app.get("/transactions/all")
-def list_all_transactions(request: Request, lang: str = "en"):
+def list_all_transactions(request: Request, lang: str = ""):
     guard = _require_role(request, "bank")
     if guard:
         return guard
@@ -2539,11 +2572,11 @@ def list_all_transactions(request: Request, lang: str = "en"):
 
 
 @app.get("/transactions/list/{kind}")
-def list_transactions_by_kind(request: Request, kind: str, lang: str = "en"):
+def list_transactions_by_kind(request: Request, kind: str, lang: str = ""):
     guard = _require_role(request, "bank")
     if guard:
         return guard
-    lang = _resolve_lang(lang)
+    lang = _lang_from_request(request, fallback=lang or "en")
     title_key, where_sql, params = _transaction_list_filter(kind)
     rows = _fetch_transaction_rows(where_sql, params)
     items = _format_transaction_rows(rows, lang=lang)
@@ -2556,11 +2589,11 @@ def list_transactions_by_kind(request: Request, kind: str, lang: str = "en"):
 
 
 @app.get("/audit/events")
-def list_audit_events(request: Request, lang: str = "en", event_type: str = ""):
+def list_audit_events(request: Request, lang: str = "", event_type: str = ""):
     guard = _require_role(request, "bank")
     if guard:
         return guard
-    lang = _resolve_lang(lang)
+    lang = _lang_from_request(request, fallback=lang or "en")
     init_db(DEFAULT_DB)
     query = "SELECT created_at, log_id, event_type FROM audit_log"
     params = []
@@ -2584,11 +2617,11 @@ def list_audit_events(request: Request, lang: str = "en", event_type: str = ""):
 
 
 @app.get("/change-log")
-def list_change_log(request: Request, lang: str = "en"):
+def list_change_log(request: Request, lang: str = ""):
     guard = _require_role(request, "bank")
     if guard:
         return guard
-    lang = _resolve_lang(lang)
+    lang = _lang_from_request(request, fallback=lang or "en")
     init_db(DEFAULT_DB)
     with sqlite3.connect(DEFAULT_DB) as conn:
         cursor = conn.cursor()
@@ -3754,6 +3787,7 @@ def _bundle(lang: str) -> dict:
             "page_title_login": "Login - RuralShield",
             "page_title_customer_dashboard": "Customer Portal - RuralShield",
             "page_title_customer_history": "Transaction History - RuralShield",
+            "page_title_customer_tx_detail": "Transaction Details - RuralShield",
             "page_title_error": "Error - RuralShield",
             "page_title_dashboard": "RuralShield Demo",
             "page_title_users": "User List - RuralShield",
@@ -3852,6 +3886,8 @@ def _bundle(lang: str) -> dict:
             "customer_register_link": "New here? Create an offline account",
             "login_credentials_title": "Login Credentials",
             "login_credentials_body": "Enter your secure credentials first, then complete the face capture on the right.",
+            "known_users_title": "Existing Users on This Device",
+            "known_users_hint": "If you created a user earlier, it will show here. Use the exact user_id when logging in.",
             "admin_username": "Admin username",
             "admin_password": "Admin password",
             "face_verified_label": "Face verified",
@@ -4222,8 +4258,40 @@ def _bundle(lang: str) -> dict:
             "language_label": "भाषा",
             "title": "RuralShield",
             "subtitle": "ग्रामीण डिजिटल बैंकिंग के लिए ऑफलाइन-प्रथम सुरक्षा प्रोटोटाइप",
+            "page_title_login": "लॉगिन - RuralShield",
+            "login_eyebrow": "सुरक्षित प्रवेश",
+            "login_title": "अपना सुरक्षित पोर्टल चुनें",
+            "login_subtitle": "ग्राहक बैंकिंग और बैंक-साइड फ्रॉड मॉनिटरिंग/कंट्रोल अलग रखें।",
+            "customer_portal_title": "ग्राहक बैंकिंग पोर्टल",
+            "customer_portal_subtitle": "user ID, PIN और फेस वेरिफिकेशन से लॉगिन करें।",
+            "customer_register_title": "ग्राहक रजिस्ट्रेशन",
+            "customer_register_subtitle": "पहले लोकल (ऑफलाइन) अकाउंट बनाएं, फिर फेस + डिवाइस एनरोल करें।",
+            "customer_login_cta": "कस्टमर पोर्टल खोलें",
+            "customer_register_cta": "अकाउंट बनाएं",
+            "customer_register_link": "नए हैं? ऑफलाइन अकाउंट बनाएं",
+            "admin_login_cta": "एडमिन पोर्टल खोलें",
+            "admin_username": "एडमिन यूज़रनेम",
+            "admin_password": "एडमिन पासवर्ड",
+            "login_credentials_title": "लॉगिन विवरण",
+            "login_credentials_body": "पहले अपने क्रेडेंशियल भरें, फिर दाईं ओर फेस कैप्चर पूरा करें।",
+            "known_users_title": "इस डिवाइस पर मौजूद यूज़र",
+            "known_users_hint": "अगर आपने पहले यूज़र बनाया है, वह यहां दिखेगा। लॉगिन में वही user_id डालें।",
+            "face_placeholder_title": "लाइव फेस कैप्चर सिक्योरिटी स्टेप",
+            "face_placeholder_body": "लॉगिन से पहले कैमरा से फोटो कैप्चर जरूरी है। यह इमेज लोकल डिवाइस पर डेमो ट्रेस के लिए सेव होती है।",
+            "face_capture_title": "लॉगिन से पहले फेस कैप्चर करें",
+            "face_capture_body": "कैमरा शुरू करें, स्क्रीन की ओर देखें और फोटो कैप्चर करें।",
+            "face_start": "कैमरा शुरू करें",
+            "face_capture": "फोटो कैप्चर",
+            "face_not_captured": "अभी तक कोई फेस कैप्चर नहीं हुआ।",
+            "face_camera_ready": "कैमरा तैयार है। आगे बढ़ने के लिए फोटो कैप्चर करें।",
+            "face_camera_error": "कैमरा एक्सेस नहीं मिला। परमिशन दें और फिर कोशिश करें।",
+            "face_camera_wait": "कैमरा लोड हो रहा है। थोड़ा इंतजार करें।",
+            "face_captured_ok": "फेस कैप्चर हो गया। अब लॉगिन करें।",
+            "login_switch_title": "पोर्टल एक्सेस",
+            "login_switch_body": "ग्राहक और बैंक/एडमिन के लिए अलग लिंक उपयोग करें।",
             "page_title_customer_dashboard": "ग्राहक पोर्टल - RuralShield",
             "page_title_customer_history": "लेन-देन इतिहास - RuralShield",
+            "page_title_customer_tx_detail": "लेनदेन विवरण - RuralShield",
             "cust_open_history": "लेन-देन इतिहास खोलें",
             "cust_history_pin_note": "राशि और प्राप्तकर्ता देखने के लिए PIN आवश्यक है।",
             "cust_unlock_history": "इतिहास अनलॉक करें",
@@ -4470,8 +4538,40 @@ def _bundle(lang: str) -> dict:
             "language_label": "ଭାଷା",
             "title": "RuralShield",
             "subtitle": "ଗ୍ରାମୀଣ ଡିଜିଟାଲ ବ୍ୟାଙ୍କିଙ୍ଗ ପାଇଁ ଅଫଲାଇନ-ପ୍ରଥମ ସୁରକ୍ଷା ପ୍ରଟୋଟାଇପ",
+            "page_title_login": "ଲଗଇନ୍ - RuralShield",
+            "login_eyebrow": "ସୁରକ୍ଷିତ ପ୍ରବେଶ",
+            "login_title": "ଆପଣଙ୍କ ସୁରକ୍ଷିତ ପୋର୍ଟାଲ ଚୟନ କରନ୍ତୁ",
+            "login_subtitle": "ଗ୍ରାହକ କାର୍ଯ୍ୟ ଏବଂ ବ୍ୟାଙ୍କ ମନିଟରିଂ/ନିୟନ୍ତ୍ରଣ ଅଲଗା ରଖନ୍ତୁ।",
+            "customer_portal_title": "ଗ୍ରାହକ ବ୍ୟାଙ୍କିଂ ପୋର୍ଟାଲ",
+            "customer_portal_subtitle": "user ID, PIN ଏବଂ ଫେସ ଭେରିଫିକେସନ୍ ସହିତ ଲଗଇନ୍ କରନ୍ତୁ।",
+            "customer_register_title": "ଗ୍ରାହକ ରେଜିଷ୍ଟ୍ରେସନ୍",
+            "customer_register_subtitle": "ପ୍ରଥମେ ଲୋକାଲ୍ (ଅଫଲାଇନ) ଆକାଉଣ୍ଟ ସୃଷ୍ଟି, ପରେ ଫେସ + ଡିଭାଇସ୍ ଏନରୋଲ୍ କରନ୍ତୁ।",
+            "customer_login_cta": "କଷ୍ଟମର୍ ପୋର୍ଟାଲ ଖୋଲନ୍ତୁ",
+            "customer_register_cta": "ଆକାଉଣ୍ଟ ସୃଷ୍ଟି",
+            "customer_register_link": "ନୂଆ? ଅଫଲାଇନ ଆକାଉଣ୍ଟ ସୃଷ୍ଟି କରନ୍ତୁ",
+            "admin_login_cta": "ଏଡମିନ ପୋର୍ଟାଲ ଖୋଲନ୍ତୁ",
+            "admin_username": "ଏଡମିନ ଉପଯୋଗକର୍ତ୍ତା",
+            "admin_password": "ଏଡମିନ ପାସୱର୍ଡ",
+            "login_credentials_title": "ଲଗଇନ୍ ବିବରଣୀ",
+            "login_credentials_body": "ପ୍ରଥମେ କ୍ରେଡେନ୍ସିଆଲ୍ସ ଭରନ୍ତୁ, ପରେ ଡାହାଣ ପଟେ ଫେସ କ୍ୟାପଚର୍ କରନ୍ତୁ।",
+            "known_users_title": "ଏହି ଡିଭାଇସରେ ଥିବା ଯୁଜର୍",
+            "known_users_hint": "ଆପଣ ପୂର୍ବରୁ ଯୁଜର୍ ସୃଷ୍ଟି କରିଥିଲେ, ସେ ଏଠାରେ ଦେଖାଯିବ। ଲଗଇନ୍ ରେ ସେହି user_id ବ୍ୟବହାର କରନ୍ତୁ।",
+            "face_placeholder_title": "ଲାଇଭ୍ ଫେସ କ୍ୟାପଚର୍ ସୁରକ୍ଷା ପଦକ୍ଷେପ",
+            "face_placeholder_body": "ଲଗଇନ୍ ପାଇଁ ୱେବକ୍ୟାମ୍ କ୍ୟାପଚର୍ ଆବଶ୍ୟକ। ଡେମୋ ପାଇଁ ଇମେଜ୍ ଡିଭାଇସ୍ ରେ ଲୋକାଲ୍ ସେଭ୍ ହୁଏ।",
+            "face_capture_title": "ଲଗଇନ୍ ପୂର୍ବରୁ ଫେସ କ୍ୟାପଚର୍ କରନ୍ତୁ",
+            "face_capture_body": "କ୍ୟାମେରା ଆରମ୍ଭ କରନ୍ତୁ, ସ୍କ୍ରିନ୍ ଦେଖନ୍ତୁ, ଏବଂ ଫଟୋ ଧରନ୍ତୁ।",
+            "face_start": "କ୍ୟାମେରା ଆରମ୍ଭ",
+            "face_capture": "ଫେସ କ୍ୟାପଚର୍",
+            "face_not_captured": "ଏପର୍ଯ୍ୟନ୍ତ ଫେସ କ୍ୟାପଚର୍ ହୋଇନାହିଁ।",
+            "face_camera_ready": "କ୍ୟାମେରା ପ୍ରସ୍ତୁତ। ଆଗକୁ ଯିବାକୁ ଫେସ କ୍ୟାପଚର୍ କରନ୍ତୁ।",
+            "face_camera_error": "କ୍ୟାମେରା ଆକ୍ସେସ୍ ବିଫଳ। ପରମିଶନ୍ ଦିଅନ୍ତୁ ଏବଂ ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ।",
+            "face_camera_wait": "କ୍ୟାମେରା ଲୋଡ୍ ହେଉଛି। ଅଳ୍ପ ସମୟ ପରେ ଚେଷ୍ଟା କରନ୍ତୁ।",
+            "face_captured_ok": "ଫେସ କ୍ୟାପଚର୍ ହେଲା। ଏବେ ଲଗଇନ୍ କରନ୍ତୁ।",
+            "login_switch_title": "ପୋର୍ଟାଲ ଆକ୍ସେସ୍",
+            "login_switch_body": "ଗ୍ରାହକ ଏବଂ ବ୍ୟାଙ୍କ/ଏଡମିନ ପାଇଁ ଅଲଗା ଲିଙ୍କ ବ୍ୟବହାର କରନ୍ତୁ।",
             "page_title_customer_dashboard": "ଗ୍ରାହକ ପୋର୍ଟାଲ - RuralShield",
             "page_title_customer_history": "ଲେନଦେନ ଇତିହାସ - RuralShield",
+            "page_title_customer_tx_detail": "ଟ୍ରାନ୍ଜାକ୍ସନ ବିବରଣୀ - RuralShield",
             "cust_open_history": "ଲେନଦେନ ଇତିହାସ ଖୋଲନ୍ତୁ",
             "cust_history_pin_note": "ରାଶି ଏବଂ ପ୍ରାପ୍ତକର୍ତ୍ତା ଦେଖିବାକୁ PIN ଆବଶ୍ୟକ।",
             "cust_unlock_history": "ଇତିହାସ ଅନଲକ୍ କରନ୍ତୁ",
@@ -4718,8 +4818,40 @@ def _bundle(lang: str) -> dict:
             "language_label": "ભાષા",
             "title": "RuralShield",
             "subtitle": "ગ્રામિણ ડિજિટલ બેંકિંગ માટે ઑફલાઇન-ફર્સ્ટ સુરક્ષા પ્રોટોટાઇપ",
+            "page_title_login": "લૉગિન - RuralShield",
+            "login_eyebrow": "સુરક્ષિત પ્રવેશ",
+            "login_title": "તમારો સુરક્ષિત પોર્ટલ પસંદ કરો",
+            "login_subtitle": "કસ્ટમર બેંકિંગ અને બેંક-સાઇડ ફ્રોડ મોનિટરિંગ/કંટ્રોલ અલગ રાખો.",
+            "customer_portal_title": "કસ્ટમર બેંકિંગ પોર્ટલ",
+            "customer_portal_subtitle": "user ID, PIN અને ફેસ વેરિફિકેશન સાથે લૉગિન કરો.",
+            "customer_register_title": "કસ્ટમર રજીસ્ટ્રેશન",
+            "customer_register_subtitle": "પહેલાં લોકલ (ઓફલાઇન) અકાઉન્ટ બનાવો, પછી ફેસ + ડિવાઇસ એનરોલ કરો.",
+            "customer_login_cta": "કસ્ટમર પોર્ટલ ખોલો",
+            "customer_register_cta": "અકાઉન્ટ બનાવો",
+            "customer_register_link": "નવા છો? ઑફલાઇન અકાઉન્ટ બનાવો",
+            "admin_login_cta": "એડમિન પોર્ટલ ખોલો",
+            "admin_username": "એડમિન યુઝરનેમ",
+            "admin_password": "એડમિન પાસવર્ડ",
+            "login_credentials_title": "લૉગિન વિગતો",
+            "login_credentials_body": "પહેલાં ક્રેડેન્શિયલ્સ भरो, પછી જમણે ફેસ કૅપ્ચર કરો.",
+            "known_users_title": "આ ડિવાઇસ પર હાજર યુઝર્સ",
+            "known_users_hint": "જો તમે પહેલાં યુઝર બનાવ્યો હોય તો અહીં દેખાશે. લૉગિન માટે એ જ user_id નાખો.",
+            "face_placeholder_title": "લાઇવ ફેસ કૅપ્ચર સુરક્ષા પગલું",
+            "face_placeholder_body": "લૉગિન માટે રિયલ વેબકૅમ કૅપ્ચર જરૂરી છે. ડેમો માટે ઇમેજ લોકલ ડિવાઇસ પર સંગ્રહાય છે.",
+            "face_capture_title": "લૉગિન પહેલાં ફેસ કૅપ્ચર કરો",
+            "face_capture_body": "કેમેરા શરૂ કરો, સ્ક્રીન જુઓ અને ફોટો કૅપ્ચર કરો.",
+            "face_start": "કેમેરા શરૂ",
+            "face_capture": "ફોટો કૅપ્ચર",
+            "face_not_captured": "હજુ સુધી ફેસ કૅપ્ચર થયું નથી.",
+            "face_camera_ready": "કેમેરા તૈયાર છે. આગળ વધવા ફેસ કૅપ્ચર કરો.",
+            "face_camera_error": "કેમેરા ઍક્સેસ નિષ્ફળ. પરમિશન આપો અને ફરી પ્રયત્ન કરો.",
+            "face_camera_wait": "કેમેરા લોડ થઈ રહ્યો છે. થોડી વાર રાહ જુઓ.",
+            "face_captured_ok": "ફેસ કૅપ્ચર થયું. હવે લૉગિન કરો.",
+            "login_switch_title": "પોર્ટલ ઍક્સેસ",
+            "login_switch_body": "કસ્ટમર અને બેંક/એડમિન માટે અલગ લિંક્સ વાપરો.",
             "page_title_customer_dashboard": "ગ્રાહક પોર્ટલ - RuralShield",
             "page_title_customer_history": "લેન્દેન ઇતિહાસ - RuralShield",
+            "page_title_customer_tx_detail": "ટ્રાન્ઝેક્શન વિગતો - RuralShield",
             "cust_open_history": "લેન્દેન ઇતિહાસ ખોલો",
             "cust_history_pin_note": "રકમ અને પ્રાપ્તકર્તા જોવા માટે PIN જરૂરી છે.",
             "cust_unlock_history": "ઇતિહાસ અનલોક કરો",
@@ -4966,8 +5098,40 @@ def _bundle(lang: str) -> dict:
             "language_label": "Sprache",
             "title": "RuralShield",
             "subtitle": "Offline-First-Sicherheitsprototyp für ländliches digitales Banking",
+            "page_title_login": "Login - RuralShield",
+            "login_eyebrow": "Sicherer Zugang",
+            "login_title": "Waehle dein sicheres Portal",
+            "login_subtitle": "Trenne Kundenaktionen von bankseitiger Betrugsueberwachung und Kontrollen.",
+            "customer_portal_title": "Kunden-Banking-Portal",
+            "customer_portal_subtitle": "Login mit user ID, PIN und Face-Verifikation.",
+            "customer_register_title": "Kunden-Registrierung",
+            "customer_register_subtitle": "Erstelle zuerst ein lokales Offline-Konto, dann Face + Geraet binden.",
+            "customer_login_cta": "Kundenportal oeffnen",
+            "customer_register_cta": "Konto erstellen",
+            "customer_register_link": "Neu hier? Offline-Konto erstellen",
+            "admin_login_cta": "Admin-Portal oeffnen",
+            "admin_username": "Admin Benutzername",
+            "admin_password": "Admin Passwort",
+            "login_credentials_title": "Login-Daten",
+            "login_credentials_body": "Zuerst Zugangsdaten eingeben, dann rechts die Face-Aufnahme abschliessen.",
+            "known_users_title": "Vorhandene Nutzer auf diesem Geraet",
+            "known_users_hint": "Wenn du zuvor einen Nutzer erstellt hast, erscheint er hier. Verwende beim Login die genaue user_id.",
+            "face_placeholder_title": "Live Face Capture Sicherheits-Schritt",
+            "face_placeholder_body": "Dieser Login erfordert eine echte Webcam-Aufnahme. Das Bild wird lokal fuer die Demo gespeichert.",
+            "face_capture_title": "Face vor dem Login erfassen",
+            "face_capture_body": "Kamera starten, in die Kamera schauen und ein Foto aufnehmen.",
+            "face_start": "Kamera starten",
+            "face_capture": "Foto aufnehmen",
+            "face_not_captured": "Noch kein Face aufgenommen.",
+            "face_camera_ready": "Kamera bereit. Bitte Face aufnehmen.",
+            "face_camera_error": "Kamera-Zugriff fehlgeschlagen. Bitte Berechtigung erlauben und erneut versuchen.",
+            "face_camera_wait": "Kamera laedt. Bitte kurz warten.",
+            "face_captured_ok": "Face aufgenommen. Du kannst jetzt einloggen.",
+            "login_switch_title": "Portal-Zugriff",
+            "login_switch_body": "Verwende getrennte Links fuer Kunden- und Bank/Admin-Seite.",
             "page_title_customer_dashboard": "Kundenportal - RuralShield",
             "page_title_customer_history": "Transaktionsverlauf - RuralShield",
+            "page_title_customer_tx_detail": "Transaktionsdetails - RuralShield",
             "cust_open_history": "Transaktionsverlauf öffnen",
             "cust_history_pin_note": "PIN wird benötigt, um Beträge und Empfänger zu entschlüsseln.",
             "cust_unlock_history": "Verlauf entsperren",
