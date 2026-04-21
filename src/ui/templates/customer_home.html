@@ -530,19 +530,16 @@
             pin.focus();
             return;
           }
-          const parsed = parseLocal(cmd.value);
-          if (!parsed) {
-            showMsg('error', "{{ i18n.voice_parse_failed }}");
-            cmd.focus();
-            return;
+          const preview = parseLocal(cmd.value);
+          if (preview) {
+            if (amt) amt.value = String(preview.amount);
+            if (rec) rec.value = String(preview.recipient);
+            showMsg('warn', `Parsed: ${preview.amount} -> ${preview.recipient}`);
           }
-          if (amt) amt.value = String(parsed.amount);
-          if (rec) rec.value = String(parsed.recipient);
-          showMsg('warn', `Parsed: ${parsed.amount} -> ${parsed.recipient}`);
 
-          // Create tx using the same working pipeline endpoint.
-          const payload = { pin: pin.value, amount: parsed.amount, recipient: parsed.recipient };
-          const r = await fetch(`/customer/api/transactions?lang=${encodeURIComponent(lang)}`, {
+          // Use the dedicated voice endpoint so parsing stays consistent with the backend.
+          const payload = { pin: pin.value, command: cmd.value };
+          const r = await fetch(`/customer/api/voice?lang=${encodeURIComponent(lang)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
@@ -550,7 +547,11 @@
           });
           const j = await r.json();
           if (j.status !== 'success') throw new Error(j.message || 'error');
-          window.location.href = `/dashboard/customer?lang=${encodeURIComponent(lang)}&tx=${encodeURIComponent(j.data.tx_id)}#send`;
+          if (j.data && j.data.parsed) {
+            if (amt) amt.value = String(j.data.parsed.amount);
+            if (rec) rec.value = String(j.data.parsed.recipient);
+          }
+          window.location.href = `/dashboard/customer?lang=${encodeURIComponent(lang)}&tx=${encodeURIComponent(j.data.tx_id)}&autoplay=1#send`;
         } catch (e) {
           showMsg('error', String(e && e.message ? e.message : e));
         } finally {
