@@ -197,7 +197,10 @@
       </form>
       <div class="grid" style="margin-top:10px;">
         <input id="rs-voice-command" placeholder="{{ i18n.ph_voice_command }}">
-        <button id="rs-voice-btn" type="button" class="button secondary">{{ i18n.voice_send }}</button>
+        <div class="actions" style="justify-content:flex-start;">
+          <button id="rs-voice-record" type="button" class="button secondary">{{ i18n.voice_record }}</button>
+          <button id="rs-voice-btn" type="button" class="button secondary">{{ i18n.voice_send }}</button>
+        </div>
       </div>
       <p class="muted small" style="margin-top:8px;">
         {{ i18n.cust_send_result_note }}
@@ -373,6 +376,7 @@
       const amt = document.getElementById('rs-amount');
       const rec = document.getElementById('rs-recipient');
       const msg = document.getElementById('rs-action-msg');
+      const recBtn = document.getElementById('rs-voice-record');
       if (!btn || !cmd || !pin) return;
       const lang = "{{ lang }}";
 
@@ -414,6 +418,79 @@
         if (!r) return null;
         return { amount: a, recipient: r };
       };
+
+      // Optional: speech-to-text using the browser (Chrome supports SpeechRecognition on localhost).
+      (() => {
+        if (!recBtn) return;
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+          recBtn.disabled = true;
+          recBtn.title = "{{ i18n.voice_not_supported }}";
+          return;
+        }
+        let recog = null;
+        let listening = false;
+
+        const langMap = {
+          "en": "en-IN",
+          "hi": "hi-IN",
+          "or": "or-IN",
+          "gu": "gu-IN",
+          "de": "de-DE",
+        };
+        const sttLang = langMap[lang] || "en-IN";
+
+        const setBtn = () => {
+          recBtn.textContent = listening ? "{{ i18n.voice_stop }}" : "{{ i18n.voice_record }}";
+          recBtn.classList.toggle("danger", listening);
+        };
+        setBtn();
+
+        recBtn.addEventListener("click", async () => {
+          try {
+            if (!listening) {
+              // Some browsers require a getUserMedia call before SpeechRecognition works reliably.
+              try {
+                await navigator.mediaDevices.getUserMedia({ audio: true });
+              } catch (e) {
+                showMsg('error', "{{ i18n.voice_mic_denied }}");
+                return;
+              }
+              recog = new SpeechRecognition();
+              recog.lang = sttLang;
+              recog.interimResults = true;
+              recog.continuous = false;
+              recog.onresult = (ev) => {
+                const parts = [];
+                for (let i = ev.resultIndex; i < ev.results.length; i++) {
+                  parts.push(ev.results[i][0].transcript);
+                }
+                const text = parts.join(" ").trim();
+                if (text) cmd.value = text;
+              };
+              recog.onerror = () => {
+                showMsg('error', "{{ i18n.voice_record_failed }}");
+              };
+              recog.onend = () => {
+                listening = false;
+                setBtn();
+              };
+              listening = true;
+              setBtn();
+              showMsg('warn', "{{ i18n.voice_listening }}");
+              recog.start();
+            } else {
+              listening = false;
+              setBtn();
+              try { if (recog) recog.stop(); } catch (e) {}
+            }
+          } catch (e) {
+            showMsg('error', "{{ i18n.voice_record_failed }}");
+            listening = false;
+            setBtn();
+          }
+        });
+      })();
 
       btn.addEventListener('click', async () => {
         btn.disabled = true;
