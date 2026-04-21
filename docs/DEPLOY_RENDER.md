@@ -17,7 +17,8 @@ Render health check:
 Set these in Render (Dashboard -> Service -> Environment):
 
 - `DATABASE_URL`
-  - Example format: `postgresql+psycopg://USER:PASSWORD@HOST:5432/DBNAME`
+  - Use Render **Internal Database URL**
+  - The app will auto-normalize `postgres://...` or `postgresql://...` to `postgresql+psycopg://...`
 - `JWT_SECRET`
   - Use a long random string
 - `FIELD_ENC_KEY`
@@ -53,4 +54,3 @@ After deploy, your live URL will serve:
 
 - Local offline-first SQLite is still used by the UI demo.
 - In production, central data is stored in Postgres via `DATABASE_URL`.
-

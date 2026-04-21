@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +25,30 @@ class Settings(BaseSettings):
 
     # Field encryption (server-side at-rest protection for sensitive fields)
     field_enc_key: str  # 32+ chars; used to derive AES-GCM key
+
+    @field_validator("database_url")
+    @classmethod
+    def _normalize_database_url(cls, v: str) -> str:
+        """
+        Render/Heroku-style Postgres URLs often come as:
+          - postgres://...
+          - postgresql://...
+
+        SQLAlchemy defaults those to psycopg2 unless a driver is specified.
+        We use psycopg (v3), so normalize to `postgresql+psycopg://...`.
+        """
+        url = (v or "").strip()
+        if not url:
+            return url
+
+        if url.startswith("postgres://"):
+            url = "postgresql+psycopg://" + url[len("postgres://") :]
+        elif url.startswith("postgresql://"):
+            url = "postgresql+psycopg://" + url[len("postgresql://") :]
+
+        # If someone configured the old psycopg2 driver explicitly, switch to psycopg (v3).
+        url = url.replace("postgresql+psycopg2://", "postgresql+psycopg://")
+        return url
 
 
 @lru_cache(maxsize=1)
