@@ -523,6 +523,40 @@ tbody tr:nth-child(odd) {
   padding: 8px 0;
 }
 
+.help-dialog::backdrop {
+  background: rgba(10, 20, 35, 0.55);
+}
+.help-dialog {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 0;
+  max-width: 720px;
+  width: min(92vw, 720px);
+}
+.help-shell {
+  padding: 18px;
+}
+.help-head h2 {
+  margin: 0;
+}
+.help-body {
+  margin-top: 12px;
+}
+.help-steps {
+  margin: 10px 0 0;
+  padding-left: 20px;
+}
+.help-steps li {
+  margin: 8px 0;
+}
+.help-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 14px;
+  padding: 0;
+}
+
 @media (max-width: 620px) {
   .container { padding: 12px; }
   .inline { grid-template-columns: 1fr; }
