@@ -1,0 +1,18 @@
+# After Midsems: Stepwise Progress Index
+
+This folder documents **after-midsem** progress (the "after" build), step-by-step.
+
+If you are looking for the earlier steps (before midsem), see:
+- `docs/STEPWISE PROGRESS/` (STEP_01 to STEP_21)
+
+## Steps (Continues After STEP_21)
+
+1. `STEP_22_AFTER_MIDSEM_OVERVIEW.md`
+2. `STEP_23_ADMIN_PORTAL_REBUILD.md`
+3. `STEP_24_OFFLINE_SYNC_ENGINE_UI.md`
+4. `STEP_25_FULL_I18N_ACROSS_PAGES.md`
+5. `STEP_26_CUSTOMER_PORTAL_CORE_FLOWS.md`
+6. `STEP_27_VOICE_ASSIST_INPUT_AND_OUTPUT.md`
+7. `STEP_28_RELIABILITY_HARDENING.md`
+8. `STEP_29_FACE_AND_DEVICE_TRUST_STABILITY.md`
+9. `STEP_30_USER_WISE_ANALYTICS_AND_DEMO_RESULT.md`

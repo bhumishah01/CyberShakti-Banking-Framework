@@ -36,7 +36,7 @@ Where it shows in demo:
 - Analytics: `/bank/analytics`
 
 Reference docs:
-- `docs/STEPWISE PROGRESS/AFTER_MIDSEM/STEP_01_ADMIN_PORTAL_REBUILD.md`
+- `docs/AFTER_MIDSEMS/STEPWISE PROGRESS/STEP_23_ADMIN_PORTAL_REBUILD.md`
 
 ---
 
@@ -57,7 +57,7 @@ Where it shows:
 - Sync Queue: `/sync/queue`
 
 Reference docs:
-- `docs/STEPWISE PROGRESS/AFTER_MIDSEM/STEP_02_OFFLINE_SYNC_ENGINE_UI.md`
+- `docs/AFTER_MIDSEMS/STEPWISE PROGRESS/STEP_24_OFFLINE_SYNC_ENGINE_UI.md`
 
 ---
 
@@ -73,7 +73,7 @@ What we did:
 - Persisted language choice via cookie so new pages remain translated.
 
 Reference docs:
-- `docs/STEPWISE PROGRESS/AFTER_MIDSEM/STEP_03_FULL_I18N_ACROSS_PAGES.md`
+- `docs/AFTER_MIDSEMS/STEPWISE PROGRESS/STEP_25_FULL_I18N_ACROSS_PAGES.md`
 
 ---
 
@@ -91,7 +91,7 @@ What we did:
 - Safety: trusted contacts + panic freeze.
 
 Reference docs:
-- `docs/STEPWISE PROGRESS/AFTER_MIDSEM/STEP_04_CUSTOMER_PORTAL_CORE_FLOWS.md`
+- `docs/AFTER_MIDSEMS/STEPWISE PROGRESS/STEP_26_CUSTOMER_PORTAL_CORE_FLOWS.md`
 
 ---
 
@@ -109,7 +109,7 @@ What we did:
   - reasons + short safety guidance can be read aloud
 
 Reference docs:
-- `docs/STEPWISE PROGRESS/AFTER_MIDSEM/STEP_05_VOICE_ASSIST_INPUT_AND_OUTPUT.md`
+- `docs/AFTER_MIDSEMS/STEPWISE PROGRESS/STEP_27_VOICE_ASSIST_INPUT_AND_OUTPUT.md`
 
 ---
 
@@ -123,7 +123,7 @@ What we fixed:
 - Error logging to `data/ui_errors.log` for quick debugging.
 
 Reference docs:
-- `docs/STEPWISE PROGRESS/AFTER_MIDSEM/STEP_06_RELIABILITY_HARDENING.md`
+- `docs/AFTER_MIDSEMS/STEPWISE PROGRESS/STEP_28_RELIABILITY_HARDENING.md`
 
 ---
 
@@ -136,7 +136,7 @@ What we did:
 - On new devices, we allow login but flag risk (`FACE_WEAK`, `NEW_DEVICE`) so transactions can be held.
 
 Reference docs:
-- `docs/STEPWISE PROGRESS/AFTER_MIDSEM/STEP_07_FACE_AND_DEVICE_TRUST_STABILITY.md`
+- `docs/AFTER_MIDSEMS/STEPWISE PROGRESS/STEP_29_FACE_AND_DEVICE_TRUST_STABILITY.md`
 
 ---
 
@@ -158,7 +158,7 @@ What we did:
     - top fraud reasons
 
 Reference docs:
-- `docs/STEPWISE PROGRESS/AFTER_MIDSEM/STEP_08_USER_WISE_ANALYTICS_AND_DEMO_RESULT.md`
+- `docs/AFTER_MIDSEMS/STEPWISE PROGRESS/STEP_30_USER_WISE_ANALYTICS_AND_DEMO_RESULT.md`
 
 ---
 
@@ -188,4 +188,3 @@ This supports the “store locally, sync later” requirement.
    - release held transaction and then sync it
 6. Open Customer portal and create a transaction:
    - show voice feedback (success/held/blocked)
-
