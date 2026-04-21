@@ -187,6 +187,7 @@
 
     <section id="send" class="card">
       <h2>{{ i18n.cust_send_money_offline }}</h2>
+      <div id="rs-action-msg"></div>
       <form id="rs-send-form" action="/customer/transactions" method="post" class="grid">
         <input type="hidden" name="lang" value="{{ lang }}">
         <input id="rs-pin" name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
@@ -369,23 +370,82 @@
       const btn = document.getElementById('rs-voice-btn');
       const cmd = document.getElementById('rs-voice-command');
       const pin = document.getElementById('rs-pin');
+      const amt = document.getElementById('rs-amount');
+      const rec = document.getElementById('rs-recipient');
+      const msg = document.getElementById('rs-action-msg');
       if (!btn || !cmd || !pin) return;
       const lang = "{{ lang }}";
+
+      const showMsg = (kind, text) => {
+        if (!msg) return;
+        const cls = kind === 'error' ? 'alert error' : (kind === 'ok' ? 'alert success' : 'alert warn');
+        msg.innerHTML = `<section class="${cls}">${String(text || '')}</section>`;
+      };
+
+      const parseLocal = (text) => {
+        const raw = String(text || '').trim();
+        if (!raw) return null;
+        // Normalize
+        let t = raw.replace(/₹/g, ' ');
+        t = t.replace(/\b(rs|inr|rupees|rupee|rupay)\b/gi, ' ');
+        t = t.replace(/\s+/g, ' ').trim();
+
+        const patterns = [
+          /^(?:send|pay|transfer)\s+(?:money\s+)?(\d+(?:\.\d+)?)\s+(?:to\s+)?(.+)$/i,
+          /^(?:send|pay|transfer)\s+(?:money\s+)?(?:to\s+)?(.+?)\s+(\d+(?:\.\d+)?)$/i,
+          /^(\d+(?:\.\d+)?)\s+(?:to\s+)?(.+)$/i,
+        ];
+        for (const p of patterns) {
+          const m = t.match(p);
+          if (!m) continue;
+          const a = parseFloat(m[1]);
+          const r = String(m[2] || '').trim();
+          if (!Number.isFinite(a) || a <= 0 || !r) continue;
+          return { amount: a, recipient: r };
+        }
+        // Fallback: first number as amount, rest as recipient.
+        const mAmt = t.match(/(\d+(?:\.\d+)?)/);
+        if (!mAmt) return null;
+        const a = parseFloat(mAmt[1]);
+        if (!Number.isFinite(a) || a <= 0) return null;
+        let r = t.replace(mAmt[1], ' ');
+        r = r.replace(/\b(send|pay|transfer|money|to)\b/gi, ' ');
+        r = r.replace(/\s+/g, ' ').trim();
+        if (!r) return null;
+        return { amount: a, recipient: r };
+      };
+
       btn.addEventListener('click', async () => {
         btn.disabled = true;
         try {
-          const payload = { pin: pin.value, command: cmd.value };
-          const r = await fetch(`/customer/api/voice?lang=${encodeURIComponent(lang)}`, {
+          if (!pin.value) {
+            showMsg('error', "{{ i18n.pin_required }}");
+            pin.focus();
+            return;
+          }
+          const parsed = parseLocal(cmd.value);
+          if (!parsed) {
+            showMsg('error', "{{ i18n.voice_parse_failed }}");
+            cmd.focus();
+            return;
+          }
+          if (amt) amt.value = String(parsed.amount);
+          if (rec) rec.value = String(parsed.recipient);
+          showMsg('warn', `Parsed: ${parsed.amount} -> ${parsed.recipient}`);
+
+          // Create tx using the same working pipeline endpoint.
+          const payload = { pin: pin.value, amount: parsed.amount, recipient: parsed.recipient };
+          const r = await fetch(`/customer/api/transactions?lang=${encodeURIComponent(lang)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
+            credentials: 'include',
             body: JSON.stringify(payload),
           });
           const j = await r.json();
           if (j.status !== 'success') throw new Error(j.message || 'error');
           window.location.href = `/dashboard/customer?lang=${encodeURIComponent(lang)}&tx=${encodeURIComponent(j.data.tx_id)}#send`;
         } catch (e) {
-          alert(String(e && e.message ? e.message : e));
+          showMsg('error', String(e && e.message ? e.message : e));
         } finally {
           btn.disabled = false;
         }
