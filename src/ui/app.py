@@ -70,6 +70,7 @@ LANG_COOKIE = "ruralshield_lang"
 FLASH_MSG_COOKIE = "ruralshield_flash_msg"
 FLASH_ERR_COOKIE = "ruralshield_flash_err"
 FLASH_VOICE_COOKIE = "ruralshield_flash_voice"
+OFFLINE_COOKIE = "ruralshield_offline_sim"
 FACE_CAPTURE_DIR = DB_PATH.parent / "face_captures"
 BUILD_ID = os.environ.get("RURALSHIELD_BUILD_ID", "after_midsem-local")
 
@@ -208,6 +209,55 @@ def _customer_redirect(lang: str, *, message: str = "", error: str = "", voice_t
 def _lang_from_request(request: Request, fallback: str = "en") -> str:
     raw = request.query_params.get("lang") or request.cookies.get(LANG_COOKIE) or fallback
     return _resolve_lang(str(raw))
+
+
+def _offline_sim_enabled(request: Request) -> bool:
+    return (request.cookies.get(OFFLINE_COOKIE, "") or "").strip() == "1"
+
+
+def _count_recent_alerts(hours: int = 24, db_path: Path = DEFAULT_DB) -> int:
+    init_db(db_path)
+    cutoff = (datetime.now(UTC) - timedelta(hours=int(hours))).isoformat()
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM alerts WHERE created_at >= ?", (cutoff,))
+        return int(cursor.fetchone()[0] or 0)
+
+
+def _compute_bank_safety_score(*, stats: dict, db_path: Path = DEFAULT_DB) -> dict[str, Any]:
+    """Lightweight health metric for a 'cool' but clean dashboard.
+
+    This is intentionally simple + explainable (good for academic evaluation).
+    """
+    alerts_24h = _count_recent_alerts(24, db_path=db_path)
+    held = int(stats.get("held_count", 0) or 0)
+    blocked = int(stats.get("blocked_count", 0) or 0)
+    high_risk = int(stats.get("high_risk_count", 0) or 0)
+    pending = int(stats.get("pending_count", 0) or 0)
+
+    penalty = (alerts_24h * 6) + (blocked * 10) + (held * 5) + (high_risk * 4) + (min(10, pending) * 2)
+    score = max(0, min(100, 100 - int(penalty)))
+
+    if score >= 80:
+        label = "Healthy"
+        tone = "good"
+    elif score >= 55:
+        label = "Watchlist"
+        tone = "warn"
+    else:
+        label = "High Risk"
+        tone = "bad"
+
+    return {
+        "score": score,
+        "label": label,
+        "tone": tone,
+        "alerts_24h": alerts_24h,
+        "held": held,
+        "blocked": blocked,
+        "high_risk": high_risk,
+        "pending": pending,
+    }
 
 
 def _read_and_clear_flash(request: Request, context: dict) -> dict:
@@ -1234,6 +1284,8 @@ def bank_dashboard(request: Request):
         return guard
     lang = _lang_from_request(request)
     context = _admin_dashboard_context(request, lang=lang)
+    context["offline_sim"] = _offline_sim_enabled(request)
+    context["safety"] = _compute_bank_safety_score(stats=context.get("stats") or {}, db_path=DEFAULT_DB)
     token = _jwt_from_request(request)
     context["server"] = {"connected": False, "error": "", "transactions": [], "fraud_logs": [], "sync_status": {}}
     # Local admin panels (always available offline).
@@ -1252,13 +1304,27 @@ def bank_dashboard(request: Request):
         "transactions": _local_transactions(DEFAULT_DB, status_filter=status_filter, limit=120),
         "view": view or "all",
     }
-    if token:
+    if token and not context["offline_sim"]:
         try:
             data = _server_dashboard_bank_data(token)
             context["server"] = {"connected": True, "error": "", **data}
         except Exception as exc:
             context["server"] = {"connected": False, "error": str(exc), "transactions": [], "fraud_logs": [], "sync_status": {}}
     return render_template(request, "bank_dashboard.html", context)
+
+
+@app.get("/bank/offline")
+def bank_offline_toggle(request: Request, mode: str = "off"):
+    """Offline/online simulator toggle for demos (cookie-based)."""
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
+    lang = _lang_from_request(request)
+    mode = (mode or "").strip().lower()
+    enabled = mode in {"on", "1", "true", "yes"}
+    resp = RedirectResponse(url=f"/bank/dashboard?lang={lang}", status_code=303)
+    resp.set_cookie(OFFLINE_COOKIE, "1" if enabled else "0", max_age=60 * 60 * 24 * 7, samesite="lax")
+    return resp
 
 
 @app.get("/bank/analytics")
@@ -2151,6 +2217,18 @@ def do_sync(
     if guard:
         return guard
     lang = _resolve_lang(lang)
+    if _offline_sim_enabled(request):
+        # Simulator mode: behave like "no internet", keep everything queued locally.
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            _admin_dashboard_context(
+                request,
+                error="Offline simulator is ON. Turn it OFF to sync to the server.",
+                lang=lang,
+            ),
+            status_code=400,
+        )
     try:
         sender = make_http_sender(server_url.strip())
         summary = sync_outbox(db_path=DEFAULT_DB, sender=sender)
@@ -3472,6 +3550,15 @@ def _bundle(lang: str) -> dict:
             "demo_map_api_title": "Backend API Endpoints (UI exposes JSON)",
             "dashboard_clean_title": "Dashboard (Clean)",
             "dashboard_clean_body": "Use this page for quick monitoring and operations. Open Analytics for risk scoring, fraud trends, high-risk users, alerts, and device monitoring.",
+            "safety_score_title": "Bank Safety Score",
+            "safety_score_hint": "Simple health gauge based on last 24 hours activity.",
+            "safety_score_breakdown": "Alerts / Held / Blocked:",
+            "offline_sim_title": "Offline Simulator",
+            "offline_on": "Offline ON",
+            "offline_off": "Online",
+            "offline_sim_hint": "When ON, sync behaves like there is no internet (offline-first demo).",
+            "turn_on": "Turn ON",
+            "turn_off": "Turn OFF",
             "users": "Users",
             "transactions": "Transactions",
             "pending_sync": "Pending Sync",

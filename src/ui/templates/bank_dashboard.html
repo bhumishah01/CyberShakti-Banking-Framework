@@ -77,6 +77,41 @@
     <section class="card">
       <h2>{{ i18n.dashboard_clean_title }}</h2>
       <p class="muted">{{ i18n.dashboard_clean_body }}</p>
+      <div class="dash-mini-grid">
+        <article class="mini-card">
+          <div class="mini-title">{{ i18n.safety_score_title }}</div>
+          <div class="score-row">
+            <div class="score-ring {{ safety.tone }}">
+              <div class="score-num">{{ safety.score }}</div>
+              <div class="score-sub">/100</div>
+            </div>
+            <div>
+              <div class="mini-kpi"><strong>{{ safety.label }}</strong></div>
+              <div class="muted small">{{ i18n.safety_score_hint }}</div>
+              <div class="muted small">{{ i18n.safety_score_breakdown }} {{ safety.alerts_24h }} / {{ safety.held }} / {{ safety.blocked }}</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="mini-card">
+          <div class="mini-title">{{ i18n.offline_sim_title }}</div>
+          <p class="muted small">
+            {% if offline_sim %}
+              <strong class="pill pill-warn">{{ i18n.offline_on }}</strong>
+            {% else %}
+              <strong class="pill pill-ok">{{ i18n.offline_off }}</strong>
+            {% endif %}
+            {{ i18n.offline_sim_hint }}
+          </p>
+          <div class="actions">
+            {% if offline_sim %}
+              <a class="button secondary" href="/bank/offline?mode=off&lang={{ lang }}">{{ i18n.turn_off }}</a>
+            {% else %}
+              <a class="button secondary" href="/bank/offline?mode=on&lang={{ lang }}">{{ i18n.turn_on }}</a>
+            {% endif %}
+          </div>
+        </article>
+      </div>
       <div class="actions">
         <a href="/bank/analytics?lang={{ lang }}" class="button">{{ i18n.analytics_button }}</a>
         <a href="/guide?lang={{ lang }}" class="button secondary">{{ i18n.demo_guide }}</a>
