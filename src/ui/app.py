@@ -16,6 +16,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 import csv
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +36,7 @@ from src.auth.service import (
     enroll_or_verify_device_id,
     enroll_or_verify_face_hash,
     get_user_auth_config,
+    remove_trusted_contact,
     set_trusted_contact,
 )
 from src.auth.biometric import compute_dhash64_from_png
@@ -205,6 +207,11 @@ def _flash_redirect(url: str, *, message: str = "", error: str = "", voice_text:
 def _customer_redirect(lang: str, *, message: str = "", error: str = "", voice_text: str = "") -> RedirectResponse:
     return _flash_redirect(f"/dashboard/customer?lang={lang}", message=message, error=error, voice_text=voice_text)
 
+def _customer_redirect_with_tx(lang: str, tx_id: str, *, message: str = "", error: str = "", voice_text: str = "") -> RedirectResponse:
+    tx_id = (tx_id or "").strip()
+    suffix = f"&tx={tx_id}#send" if tx_id else "#send"
+    return _flash_redirect(f"/dashboard/customer?lang={lang}{suffix}", message=message, error=error, voice_text=voice_text)
+
 
 def _lang_from_request(request: Request, fallback: str = "en") -> str:
     raw = request.query_params.get("lang") or request.cookies.get(LANG_COOKIE) or fallback
@@ -213,6 +220,95 @@ def _lang_from_request(request: Request, fallback: str = "en") -> str:
 
 def _offline_sim_enabled(request: Request) -> bool:
     return (request.cookies.get(OFFLINE_COOKIE, "") or "").strip() == "1"
+
+def _parse_risk_from_text(text: str) -> int | None:
+    # Best-effort extraction from legacy notification bodies like "... (risk 75/100)."
+    if not text:
+        return None
+    m = re.search(r"risk\\s+(\\d{1,3})\\s*/\\s*100", str(text), flags=re.IGNORECASE)
+    if not m:
+        return None
+    try:
+        v = int(m.group(1))
+    except Exception:
+        return None
+    return v if 0 <= v <= 100 else None
+
+
+def _localize_customer_notification(n: dict, lang: str) -> dict:
+    """Convert stored (English) notification titles/bodies into current UI language.
+
+    We keep DB writes simple (type + message), but for the demo we render in the
+    user-selected language.
+    """
+    notif_type = str((n or {}).get("notif_type", "") or "").strip()
+    raw_body = str((n or {}).get("body", "") or "")
+    risk = _parse_risk_from_text(raw_body)
+    risk_txt = f"{risk}/100" if risk is not None else ""
+
+    if notif_type == "transaction_blocked":
+        title = _t(lang, "cust_notif_blocked_title")
+        body = _tf(lang, "cust_notif_blocked_body", risk=risk_txt)
+    elif notif_type == "transaction_held":
+        title = _t(lang, "cust_notif_held_title")
+        body = _tf(lang, "cust_notif_held_body", risk=risk_txt)
+    elif notif_type == "transaction_success":
+        title = _t(lang, "cust_notif_queued_title")
+        body = _tf(lang, "cust_notif_queued_body", risk=risk_txt)
+    else:
+        # Unknown types fall back to DB message.
+        title = str((n or {}).get("title", "") or "").strip() or _t(lang, "cust_notif_generic_title")
+        body = raw_body or _t(lang, "cust_notif_generic_body")
+
+    return {
+        **(n or {}),
+        "title": title,
+        "body": body,
+    }
+
+
+def _read_tx_public(tx_id: str) -> dict | None:
+    """Read non-sensitive tx metadata without decrypting amount/recipient."""
+    init_db(DEFAULT_DB)
+    tx_id = (tx_id or "").strip()
+    if not tx_id:
+        return None
+    with sqlite3.connect(DEFAULT_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT tx_id, timestamp, risk_score, risk_level, status, action_decision, reason_codes, intervention_data
+            FROM transactions
+            WHERE tx_id = ?
+            """,
+            (tx_id,),
+        )
+        row = cursor.fetchone()
+    if not row:
+        return None
+    tx_id_v, ts, risk_score, risk_level, status, action_decision, reason_codes, intervention_data = row
+    codes = _safe_parse_reason_codes(reason_codes)
+    reasons = [_friendly_reason(c, lang="en") for c in codes]  # caller can re-localize
+    guidance: list[str] = []
+    try:
+        payload = json.loads(intervention_data or "{}")
+        if isinstance(payload, dict):
+            g = payload.get("guidance", [])
+            if isinstance(g, list):
+                guidance = [str(x) for x in g][:6]
+    except Exception:
+        guidance = []
+    return {
+        "tx_id": str(tx_id_v),
+        "timestamp": _friendly_time(ts),
+        "risk_score": int(risk_score or 0),
+        "risk_level": str(risk_level or ""),
+        "status": str(status or ""),
+        "action_decision": str(action_decision or "ALLOW"),
+        "reason_codes": codes,
+        "guidance": guidance,
+        "reasons_en": reasons,
+    }
 
 
 def _count_recent_alerts(hours: int = 24, db_path: Path = DEFAULT_DB) -> int:
@@ -527,6 +623,7 @@ def _customer_dashboard_context(
     context = _ctx(request, message=message, error=error, lang=lang, voice_text=voice_text)
     session = _user_ctx(request)
     context.update(session)
+    context["offline_sim"] = _offline_sim_enabled(request)
     context["customer_stats"] = _customer_stats(session["active_user"]) if session["active_user"] else {
         "total": 0,
         "pending": 0,
@@ -542,12 +639,20 @@ def _customer_dashboard_context(
                 "avg_amount": prof.avg_amount,
                 "tx_count": prof.tx_count,
                 "user_risk_score": prof.user_risk_score,
+                "total_amount": getattr(prof, "total_amount", 0.0),
+                "last_tx_at": _friendly_time(prof.last_tx_at) if getattr(prof, "last_tx_at", "") else "-",
                 "preferred_hours": preferred_hours(prof, top_n=3),
             }
         except Exception:
-            context["profile"] = {"avg_amount": 0.0, "tx_count": 0, "user_risk_score": 0, "preferred_hours": []}
+            context["profile"] = {"avg_amount": 0.0, "tx_count": 0, "user_risk_score": 0, "total_amount": 0.0, "last_tx_at": "-", "preferred_hours": []}
         context["mini_statement"] = _recent_tx_meta(session["active_user"], limit=5)
         context["last_sync_at"] = _last_sync_time()
+        # Simple balance (demo): start at 50,000 and subtract local total outgoing amount.
+        try:
+            spent = float((context.get("profile") or {}).get("total_amount", 0.0) or 0.0)
+        except Exception:
+            spent = 0.0
+        context["local_balance"] = max(0.0, 50000.0 - spent)
         # Safety settings (trusted contact + freeze) shown in customer UI.
         try:
             auth_cfg = get_user_auth_config(user_id=session["active_user"], db_path=DEFAULT_DB)
@@ -557,7 +662,8 @@ def _customer_dashboard_context(
         context["freeze_until"] = str(auth_cfg.get("freeze_until", "") or "").strip() or "-"
         # Notifications panel (customer)
         try:
-            context["notifications"] = list_notifications(role="customer", user_id=session["active_user"], db_path=DEFAULT_DB, limit=10)
+            raw = list_notifications(role="customer", user_id=session["active_user"], db_path=DEFAULT_DB, limit=10)
+            context["notifications"] = [_localize_customer_notification(n, lang) for n in (raw or [])]
         except Exception:
             context["notifications"] = []
         # Simple user risk indicator for low-literacy UX.
@@ -1265,11 +1371,42 @@ def customer_home(request: Request):
         alerts.append(f"{_t(lang, 'cust_alert_clear_title')} {_t(lang, 'cust_alert_clear_body')}")
     context["alerts"] = alerts
 
+    # Optional: show the last transaction decision without decrypting amount/recipient.
+    tx_id = (request.query_params.get("tx") or "").strip()
+    if tx_id:
+        pub = _read_tx_public(tx_id)
+        if pub:
+            codes = pub.get("reason_codes", []) or []
+            context["last_tx"] = {
+                "tx_id": pub.get("tx_id", tx_id),
+                "timestamp": pub.get("timestamp", ""),
+                "risk_score": int(pub.get("risk_score", 0) or 0),
+                "risk_level": _friendly_risk(str(pub.get("risk_level", "LOW")), lang=lang),
+                "status": _friendly_status(str(pub.get("status", "")), lang=lang),
+                "decision": _friendly_action(str(pub.get("action_decision", "ALLOW")), lang=lang),
+                "reasons": [_friendly_reason(str(c), lang=lang) for c in codes] or [_t(lang, "no_alert")],
+                "guidance": [str(x) for x in (pub.get("guidance", []) or [])],
+            }
+
     context = _read_and_clear_flash(request, context)
     resp = render_template(request, "customer_home.html", context)
     resp.delete_cookie(FLASH_MSG_COOKIE)
     resp.delete_cookie(FLASH_ERR_COOKIE)
     resp.delete_cookie(FLASH_VOICE_COOKIE)
+    return resp
+
+
+@app.get("/customer/offline")
+def customer_offline_toggle(request: Request, mode: str = "off"):
+    """Offline/online simulator toggle for customer demos (cookie-based)."""
+    guard = _require_role(request, "customer")
+    if guard:
+        return guard
+    lang = _lang_from_request(request)
+    mode = (mode or "").strip().lower()
+    enabled = mode in {"on", "1", "true", "yes"}
+    resp = RedirectResponse(url=f"/dashboard/customer?lang={lang}", status_code=303)
+    resp.set_cookie(OFFLINE_COOKIE, "1" if enabled else "0", max_age=60 * 60 * 24 * 7, samesite="lax")
     return resp
 
 
@@ -1870,9 +2007,172 @@ def add_customer_transaction(
             action=stored.action_decision,
             guidance=list(stored.intervention_guidance),
         )
-        return _customer_redirect(lang, message=msg, voice_text=voice_text)
+        return _customer_redirect_with_tx(lang, stored.tx_id, message=msg, voice_text=voice_text)
     except Exception as exc:
         return _customer_redirect(lang, error=str(exc))
+
+
+def _parse_voice_command(text: str) -> tuple[float | None, str]:
+    """Parse a basic command like: 'Send 500 to Ramesh'."""
+    raw = (text or "").strip()
+    if not raw:
+        return (None, "")
+    # Amount: first number in the string
+    m_amt = re.search(r"(?P<amt>\\d+(?:\\.\\d+)?)", raw)
+    amt = None
+    if m_amt:
+        try:
+            amt = float(m_amt.group("amt"))
+        except Exception:
+            amt = None
+    # Recipient: after 'to' (or last token if missing)
+    rec = ""
+    m_to = re.search(r"\\bto\\b\\s+(?P<rec>.+)$", raw, flags=re.IGNORECASE)
+    if m_to:
+        rec = m_to.group("rec").strip()
+    else:
+        # Heuristic: drop the amount and common verbs
+        cleaned = re.sub(r"\\d+(?:\\.\\d+)?", "", raw).strip()
+        cleaned = re.sub(r"\\b(send|transfer|pay)\\b", "", cleaned, flags=re.IGNORECASE).strip()
+        rec = cleaned
+    return (amt, rec)
+
+
+@app.post("/customer/api/transactions")
+async def customer_api_create_transaction(request: Request):
+    """AJAX-friendly endpoint so the customer portal never redirects to an error page."""
+    guard = _require_role(request, "customer")
+    if guard:
+        return _json_err("forbidden", status_code=403)
+    lang = _lang_from_request(request)
+    user_id = request.cookies.get(USER_COOKIE, "").strip()
+    if not user_id:
+        return _json_err(_t(lang, "not_logged_in"), status_code=401)
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+
+    pin = str(payload.get("pin", "") or "").strip()
+    recipient = str(payload.get("recipient", "") or "").strip()
+    try:
+        amount = float(payload.get("amount", 0) or 0)
+    except Exception:
+        amount = 0.0
+
+    if not pin:
+        return _json_err(_t(lang, "pin_required"), status_code=400)
+    if not recipient:
+        return _json_err(_t(lang, "recipient_required"), status_code=400)
+    if amount <= 0:
+        return _json_err(_t(lang, "amount_invalid"), status_code=400)
+
+    device_untrusted = _user_ctx(request).get("device_trust") == "untrusted"
+    try:
+        stored = create_secure_transaction(
+            user_id=user_id,
+            pin=pin,
+            amount=amount,
+            recipient=recipient,
+            db_path=DEFAULT_DB,
+            extra_reason_codes=(["NEW_DEVICE"] if device_untrusted else None),
+            extra_risk_points=(35 if device_untrusted else 0),
+            force_hold=device_untrusted,
+        )
+        reasons = [str(x) for x in (stored.reason_codes or [])]
+        decision = str(stored.action_decision or "ALLOW")
+        return _json_ok(
+            {
+                "tx_id": stored.tx_id,
+                "risk_score": int(stored.risk_score),
+                "risk_level": str(stored.risk_level),
+                "decision": decision,
+                "status": str(stored.status),
+                "reasons": reasons,
+                "reasons_text": [_friendly_reason(r, lang=lang) for r in reasons] or [_t(lang, "no_alert")],
+                "details_url": f"/customer/tx/{stored.tx_id}?lang={lang}",
+            },
+            message=_t(lang, "tx_saved"),
+        )
+    except Exception as exc:
+        return _json_err(str(exc), status_code=400)
+
+
+@app.get("/customer/api/summary")
+def customer_api_summary(request: Request):
+    guard = _require_role(request, "customer")
+    if guard:
+        return _json_err("forbidden", status_code=403)
+    lang = _lang_from_request(request)
+    ctx = _customer_dashboard_context(request, lang=lang)
+    # Strip to safe fields only.
+    data = {
+        "active_user": ctx.get("active_user", ""),
+        "device_trust": ctx.get("device_trust", "trusted"),
+        "offline_sim": bool(ctx.get("offline_sim")),
+        "local_balance": float(ctx.get("local_balance", 0.0) or 0.0),
+        "stats": ctx.get("customer_stats", {}),
+        "profile": ctx.get("profile", {}),
+        "last_sync_at": ctx.get("last_sync_at", "-"),
+        "mini_statement": ctx.get("mini_statement", []),
+        "notifications": ctx.get("notifications", []),
+    }
+    return _json_ok(data)
+
+
+@app.post("/customer/api/voice")
+async def customer_api_voice(request: Request):
+    guard = _require_role(request, "customer")
+    if guard:
+        return _json_err("forbidden", status_code=403)
+    lang = _lang_from_request(request)
+    user_id = request.cookies.get(USER_COOKIE, "").strip()
+    if not user_id:
+        return _json_err(_t(lang, "not_logged_in"), status_code=401)
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    pin = str(payload.get("pin", "") or "").strip()
+    command = str(payload.get("command", "") or "").strip()
+    if not pin:
+        return _json_err(_t(lang, "pin_required"), status_code=400)
+    amt, rec = _parse_voice_command(command)
+    if amt is None or amt <= 0 or not rec:
+        return _json_err(_t(lang, "voice_parse_failed"), status_code=400)
+    # Reuse the same pipeline.
+    fake = {"pin": pin, "amount": amt, "recipient": rec}
+    # Call underlying function by directly creating tx (avoid HTTP recursion).
+    device_untrusted = _user_ctx(request).get("device_trust") == "untrusted"
+    try:
+        stored = create_secure_transaction(
+            user_id=user_id,
+            pin=pin,
+            amount=float(amt),
+            recipient=str(rec),
+            db_path=DEFAULT_DB,
+            extra_reason_codes=(["NEW_DEVICE"] if device_untrusted else None),
+            extra_risk_points=(35 if device_untrusted else 0),
+            force_hold=device_untrusted,
+        )
+        reasons = [str(x) for x in (stored.reason_codes or [])]
+        decision = str(stored.action_decision or "ALLOW")
+        return _json_ok(
+            {
+                "parsed": {"amount": float(amt), "recipient": str(rec)},
+                "tx_id": stored.tx_id,
+                "risk_score": int(stored.risk_score),
+                "risk_level": str(stored.risk_level),
+                "decision": decision,
+                "status": str(stored.status),
+                "reasons": reasons,
+                "reasons_text": [_friendly_reason(r, lang=lang) for r in reasons] or [_t(lang, "no_alert")],
+                "details_url": f"/customer/tx/{stored.tx_id}?lang={lang}",
+            },
+            message=_t(lang, "tx_saved"),
+        )
+    except Exception as exc:
+        return _json_err(str(exc), status_code=400)
 
 
 @app.post("/customer/trusted-contact")
@@ -1892,6 +2192,27 @@ def update_customer_trusted_contact(
     try:
         set_trusted_contact(user_id=user_id, pin=pin.strip(), trusted_contact=trusted_contact.strip(), db_path=DEFAULT_DB)
         msg = f"{_t(lang, 'trusted_updated')} {user_id}."
+        return _customer_redirect(lang, message=msg)
+    except Exception as exc:
+        return _customer_redirect(lang, error=str(exc))
+
+
+@app.post("/customer/trusted-contact/remove")
+def remove_customer_trusted_contact(
+    request: Request,
+    pin: str = Form(...),
+    lang: str = Form(default="en"),
+):
+    guard = _require_role(request, "customer")
+    if guard:
+        return guard
+    lang = _resolve_lang(lang)
+    user_id = request.cookies.get(USER_COOKIE, "").strip()
+    if not user_id:
+        return _customer_redirect(lang, error=_t(lang, "not_logged_in"))
+    try:
+        remove_trusted_contact(user_id=user_id, pin=pin.strip(), db_path=DEFAULT_DB)
+        msg = f"{_t(lang, 'trusted_removed')} {user_id}."
         return _customer_redirect(lang, message=msg)
     except Exception as exc:
         return _customer_redirect(lang, error=str(exc))
@@ -3505,6 +3826,23 @@ def _bundle(lang: str) -> dict:
             "cust_unlock": "Unlock Details",
             "cust_enter_pin_to_view": "Enter your PIN to view the decrypted amount and recipient.",
             "cust_why_title": "Why this status",
+            "cust_last_activity_label": "Last Activity",
+            "cust_notif_blocked_title": "Transaction blocked",
+            "cust_notif_blocked_body": "Your transfer was blocked for safety (risk {risk}).",
+            "cust_notif_held_title": "Transaction held",
+            "cust_notif_held_body": "Your transfer is held for review (risk {risk}).",
+            "cust_notif_queued_title": "Transaction queued",
+            "cust_notif_queued_body": "Saved offline and queued for sync (risk {risk}).",
+            "cust_notif_generic_title": "Notification",
+            "cust_notif_generic_body": "Update available.",
+            "cust_server_balance_label": "Server balance",
+            "cust_offline_first_label": "Offline-first",
+            "pin_required": "PIN is required.",
+            "recipient_required": "Recipient is required.",
+            "amount_invalid": "Enter a valid amount.",
+            "voice_parse_failed": "Could not understand the command. Try: Send 500 to Ramesh",
+            "ph_voice_command": "Send 500 to Ramesh",
+            "voice_send": "Voice Send",
             "admin_portal_eyebrow": "Bank/Admin Portal",
             "admin_portal_title": "Bank/Admin Security Portal",
             "admin_portal_subtitle": "Central controls for fraud review, sync monitoring, and audit visibility.",
@@ -3737,6 +4075,7 @@ def _bundle(lang: str) -> dict:
             "run_scenario_btn": "Run Scenario",
             "save_user": "Save User",
             "set_trusted": "Set Trusted Contact",
+            "remove_trusted": "Remove Trusted Contact",
             "enable_freeze": "Enable Panic Freeze",
             "create_tx": "Create Transaction",
             "open_tx_list": "Open Transaction List",
@@ -3947,6 +4286,7 @@ def _bundle(lang: str) -> dict:
             "run_scenario_btn": "सीनारियो चलाएं",
             "save_user": "उपयोगकर्ता सहेजें",
             "set_trusted": "विश्वसनीय संपर्क सेट करें",
+            "remove_trusted": "विश्वसनीय संपर्क हटाएं",
             "enable_freeze": "पैनिक फ्रीज़ चालू करें",
             "create_tx": "लेनदेन बनाएं",
             "open_tx_list": "लेनदेन सूची खोलें",
@@ -4194,6 +4534,7 @@ def _bundle(lang: str) -> dict:
             "run_scenario_btn": "ପରିସ୍ଥିତି ଚାଲାନ୍ତୁ",
             "save_user": "ବ୍ୟବହାରକାରୀ ସେଭ୍ କରନ୍ତୁ",
             "set_trusted": "ଭରସାଯୋଗ୍ୟ ସଂଯୋଗ ସେଟ୍ କରନ୍ତୁ",
+            "remove_trusted": "ଭରସାଯୋଗ୍ୟ ସଂଯୋଗ ହଟାନ୍ତୁ",
             "enable_freeze": "ପ୍ୟାନିକ ଫ୍ରିଜ୍ ଚାଲୁ କରନ୍ତୁ",
             "create_tx": "ଟ୍ରାନ୍ଜାକ୍ସନ ସୃଷ୍ଟି",
             "open_tx_list": "ଟ୍ରାନ୍ଜାକ୍ସନ ତାଲିକା ଖୋଲନ୍ତୁ",
@@ -4442,6 +4783,7 @@ def _bundle(lang: str) -> dict:
             "run_scenario_btn": "સીનારિયો ચલાવો",
             "save_user": "વપરાશકર્તા સંગ્રહો",
             "set_trusted": "વિશ્વસનીય સંપર્ક સેટ કરો",
+            "remove_trusted": "વિશ્વસનીય સંપર્ક દૂર કરો",
             "enable_freeze": "પેનિક ફ્રીઝ સક્રિય કરો",
             "create_tx": "લેનદેન બનાવો",
             "open_tx_list": "લેનદેન યાદી ખોલો",
@@ -4689,6 +5031,7 @@ def _bundle(lang: str) -> dict:
             "run_scenario_btn": "Szenario ausführen",
             "save_user": "Benutzer speichern",
             "set_trusted": "Vertrauenskontakt festlegen",
+            "remove_trusted": "Vertrauenskontakt entfernen",
             "enable_freeze": "Panik-Sperre aktivieren",
             "create_tx": "Transaktion erstellen",
             "open_tx_list": "Transaktionsliste öffnen",
@@ -4904,6 +5247,7 @@ def _t(lang: str, key: str) -> str:
             "release_success": "Held transaction released and queued for sync.",
             "release_failed": "Release failed: transaction not found, not in HOLD state, or approval invalid.",
             "trusted_updated": "Trusted contact updated for user",
+            "trusted_removed": "Trusted contact removed for user",
             "freeze_enabled": "Panic freeze enabled until",
             "invalid_pin_existing": "Invalid PIN for existing user.",
             "night_sync_done": "Night sync simulated: {count} transactions marked synced.",
@@ -4943,6 +5287,7 @@ def _t(lang: str, key: str) -> str:
             "release_success": "रुका हुआ लेनदेन जारी कर दिया गया और सिंक कतार में भेजा गया।",
             "release_failed": "रिलीज़ विफल: लेनदेन नहीं मिला, HOLD में नहीं है, या स्वीकृति गलत है।",
             "trusted_updated": "उपयोगकर्ता के लिए विश्वसनीय संपर्क अपडेट किया गया",
+            "trusted_removed": "उपयोगकर्ता के लिए विश्वसनीय संपर्क हटाया गया",
             "freeze_enabled": "पैनिक फ्रीज़ सक्रिय, समय तक",
             "invalid_pin_existing": "मौजूदा उपयोगकर्ता के लिए PIN अमान्य है।",
             "night_sync_done": "नाइट सिंक सिम्युलेट हुआ: {count} लेनदेन सिंक चिह्नित।",
@@ -4980,6 +5325,26 @@ def _t(lang: str, key: str) -> str:
             "cust_unlock": "विवरण खोलें",
             "cust_enter_pin_to_view": "राशि और प्राप्तकर्ता देखने के लिए PIN डालें।",
             "cust_why_title": "स्थिति का कारण",
+            "cust_user_risk_score": "यूज़र जोखिम",
+            "cust_avg_amount": "औसत राशि",
+            "cust_preferred_hours": "पसंदीदा समय",
+            "cust_last_activity_label": "अंतिम गतिविधि",
+            "cust_notif_blocked_title": "लेनदेन ब्लॉक किया गया",
+            "cust_notif_blocked_body": "सुरक्षा के लिए ट्रांसफर ब्लॉक किया गया (risk {risk}).",
+            "cust_notif_held_title": "लेनदेन रोका गया",
+            "cust_notif_held_body": "ट्रांसफर समीक्षा के लिए रोका गया (risk {risk}).",
+            "cust_notif_queued_title": "लेनदेन कतार में",
+            "cust_notif_queued_body": "ऑफलाइन सेव हुआ और सिंक के लिए कतार में है (risk {risk}).",
+            "cust_notif_generic_title": "सूचना",
+            "cust_notif_generic_body": "अपडेट उपलब्ध है।",
+            "pin_required": "PIN आवश्यक है।",
+            "recipient_required": "प्राप्तकर्ता आवश्यक है।",
+            "amount_invalid": "सही राशि डालें।",
+            "voice_parse_failed": "कमांड समझ नहीं आया। उदाहरण: Send 500 to Ramesh",
+            "ph_voice_command": "Send 500 to Ramesh",
+            "voice_send": "वॉइस से भेजें",
+            "cust_server_balance_label": "सर्वर बैलेंस",
+            "cust_offline_first_label": "ऑफलाइन-फर्स्ट",
         },
         "or": {
             "no_alert": "କୌଣସି ଆଲର୍ଟ ଟ୍ରିଗର ହୋଇନି",
@@ -5011,6 +5376,7 @@ def _t(lang: str, key: str) -> str:
             "release_success": "ହୋଲ୍ଡ ଟ୍ରାନ୍ଜାକ୍ସନ ରିଲିଜ୍ ହେଲା ଏବଂ ସିଙ୍କ ପାଇଁ ପଠାଗଲା।",
             "release_failed": "ରିଲିଜ୍ ବିଫଳ: ଟ୍ରାନ୍ଜାକ୍ସନ ମିଳିଲା ନାହିଁ, HOLD ନୁହେଁ, କିମ୍ବା ସ୍ୱୀକୃତି ଭୁଲ।",
             "trusted_updated": "ଉପଯୋଗକର୍ତ୍ତା ପାଇଁ ଭରସାଯୋଗ୍ୟ ସଂଯୋଗ ଅଦ୍ୟତନ",
+            "trusted_removed": "ଉପଯୋଗକର୍ତ୍ତା ପାଇଁ ଭରସାଯୋଗ୍ୟ ସଂଯୋଗ କାଢ଼ାଗଲା",
             "freeze_enabled": "ପ୍ୟାନିକ ଫ୍ରିଜ୍ ସକ୍ରିୟ, ସମୟ ପର୍ଯ୍ୟନ୍ତ",
             "invalid_pin_existing": "ପୂର୍ବରୁ ଥିବା ବ୍ୟବହାରକାରୀ ପାଇଁ PIN ଅବୈଧ।",
             "night_sync_done": "ନାଇଟ୍ ସିଙ୍କ ସିମ୍ୟୁଲେଟ୍: {count} ଟ୍ରାନ୍ଜାକ୍ସନ ସିଙ୍କ ଚିହ୍ନିତ।",
@@ -5048,6 +5414,26 @@ def _t(lang: str, key: str) -> str:
             "cust_unlock": "ବିବରଣୀ ଅନଲକ୍ କରନ୍ତୁ",
             "cust_enter_pin_to_view": "ରାଶି ଏବଂ ପ୍ରାପ୍ତକର୍ତ୍ତା ଦେଖିବା ପାଇଁ PIN ଦିଅନ୍ତୁ।",
             "cust_why_title": "ଏହି ସ୍ଥିତି କାହିଁକି",
+            "cust_user_risk_score": "ବ୍ୟବହାରକାରୀ ଝୁମ୍ପ",
+            "cust_avg_amount": "ସାଧାରଣ ରାଶି",
+            "cust_preferred_hours": "ପସନ୍ଦ ସମୟ",
+            "cust_last_activity_label": "ଶେଷ କାର୍ଯ୍ୟ",
+            "cust_notif_blocked_title": "ଟ୍ରାନ୍ଜାକ୍ସନ ବ୍ଲକ୍",
+            "cust_notif_blocked_body": "ସୁରକ୍ଷା ପାଇଁ ଟ୍ରାନ୍ସଫର୍ ବ୍ଲକ୍ ହେଲା (risk {risk}).",
+            "cust_notif_held_title": "ଟ୍ରାନ୍ଜାକ୍ସନ ଧରାଗଲା",
+            "cust_notif_held_body": "ରିଭ୍ୟୁ ପାଇଁ ଟ୍ରାନ୍ସଫର୍ ଧରାଗଲା (risk {risk}).",
+            "cust_notif_queued_title": "ଟ୍ରାନ୍ଜାକ୍ସନ କ୍ୟୁ",
+            "cust_notif_queued_body": "ଅଫଲାଇନ ସେଭ୍ ଏବଂ ସିଙ୍କ ପାଇଁ କ୍ୟୁ ରେ (risk {risk}).",
+            "cust_notif_generic_title": "ନୋଟିଫିକେସନ୍",
+            "cust_notif_generic_body": "ଅପଡେଟ୍ ମିଳିଲା।",
+            "pin_required": "PIN ଆବଶ୍ୟକ।",
+            "recipient_required": "ପ୍ରାପ୍ତକର୍ତ୍ତା ଆବଶ୍ୟକ।",
+            "amount_invalid": "ଠିକ୍ ରାଶି ଦିଅନ୍ତୁ।",
+            "voice_parse_failed": "କମାଣ୍ଡ ବୁଝି ପାରିଲି ନାହିଁ। ଉଦାହରଣ: Send 500 to Ramesh",
+            "ph_voice_command": "Send 500 to Ramesh",
+            "voice_send": "ଭଏସ୍ ରେ ପଠାନ୍ତୁ",
+            "cust_server_balance_label": "ସର୍ଭର ବ୍ୟାଲାନ୍ସ",
+            "cust_offline_first_label": "ଅଫଲାଇନ-ଫର୍ଷ୍ଟ",
         },
         "gu": {
             "no_alert": "કોઈ એલર્ટ ટ્રિગર નથી",
@@ -5079,6 +5465,7 @@ def _t(lang: str, key: str) -> str:
             "release_success": "રોકાયેલ ટ્રાન્ઝેક્શન રિલીઝ થયું અને સિંક માટે કતારબદ્ધ છે.",
             "release_failed": "રિલીઝ નિષ્ફળ: ટ્રાન્ઝેક્શન મળ્યું નહીં, HOLD સ્થિતિમાં નથી, અથવા મંજૂરી અમાન્ય.",
             "trusted_updated": "વપરાશકર્તા માટે વિશ્વસનીય સંપર્ક અપડેટ થયો",
+            "trusted_removed": "વપરાશકર્તા માટે વિશ્વસનીય સંપર્ક દૂર થયો",
             "freeze_enabled": "પેનિક ફ્રીઝ સક્રિય થયું જ્યાં સુધી",
             "invalid_pin_existing": "હાજર વપરાશકર્તા માટે PIN અમાન્ય છે.",
             "night_sync_done": "નાઇટ સિંક સિમ્યુલેટ થયું: {count} ટ્રાન્ઝેક્શન સિંક તરીકે ચિહ્નિત.",
@@ -5116,6 +5503,26 @@ def _t(lang: str, key: str) -> str:
             "cust_unlock": "વિગતો અનલોક",
             "cust_enter_pin_to_view": "રકમ અને પ્રાપ્તકર્તા જોવા માટે PIN નાખો.",
             "cust_why_title": "આ સ્થિતિ કેમ",
+            "cust_user_risk_score": "યુઝર જોખમ",
+            "cust_avg_amount": "સરેરાશ રકમ",
+            "cust_preferred_hours": "પસંદ સમય",
+            "cust_last_activity_label": "છેલ્લી પ્રવૃત્તિ",
+            "cust_notif_blocked_title": "લેનદેન બ્લોક",
+            "cust_notif_blocked_body": "સુરક્ષા માટે ટ્રાન્સફર બ્લોક થયું (risk {risk}).",
+            "cust_notif_held_title": "લેનદેન રોકાયું",
+            "cust_notif_held_body": "સમીક્ષા માટે ટ્રાન્સફર રોકાયું (risk {risk}).",
+            "cust_notif_queued_title": "લેનદેન કતારમાં",
+            "cust_notif_queued_body": "ઓફલાઇન સેવ થયું અને સિંક માટે કતારમાં છે (risk {risk}).",
+            "cust_notif_generic_title": "નોટિફિકેશન",
+            "cust_notif_generic_body": "અપડેટ ઉપલબ્ધ છે.",
+            "pin_required": "PIN જરૂરી છે.",
+            "recipient_required": "પ્રાપ્તકર્તા જરૂરી છે.",
+            "amount_invalid": "માન્ય રકમ નાખો.",
+            "voice_parse_failed": "કમાન્ડ સમજાઈ નથી. ઉદાહરણ: Send 500 to Ramesh",
+            "ph_voice_command": "Send 500 to Ramesh",
+            "voice_send": "વૉઇસથી મોકલો",
+            "cust_server_balance_label": "સર્વર બેલેન્સ",
+            "cust_offline_first_label": "ઓફલાઇન-ફર્સ્ટ",
         },
         "de": {
             "no_alert": "Keine Alarme ausgelöst",
@@ -5147,6 +5554,7 @@ def _t(lang: str, key: str) -> str:
             "release_success": "Gehaltene Transaktion freigegeben und für Sync vorgemerkt.",
             "release_failed": "Freigabe fehlgeschlagen: Transaktion nicht gefunden, nicht im HOLD-Status oder Freigabe ungültig.",
             "trusted_updated": "Vertrauenskontakt aktualisiert für Benutzer",
+            "trusted_removed": "Vertrauenskontakt entfernt für Benutzer",
             "freeze_enabled": "Panik-Freeze aktiv bis",
             "invalid_pin_existing": "Ungültige PIN für bestehenden Benutzer.",
             "night_sync_done": "Nachtsync simuliert: {count} Transaktionen als synchronisiert markiert.",
@@ -5184,6 +5592,26 @@ def _t(lang: str, key: str) -> str:
             "cust_unlock": "Details entsperren",
             "cust_enter_pin_to_view": "PIN eingeben, um Betrag und Empfänger zu entschlüsseln.",
             "cust_why_title": "Warum dieser Status",
+            "cust_user_risk_score": "Benutzer-Risiko",
+            "cust_avg_amount": "Durchschnittsbetrag",
+            "cust_preferred_hours": "Bevorzugte Zeiten",
+            "cust_last_activity_label": "Letzte Aktivitaet",
+            "cust_notif_blocked_title": "Transaktion blockiert",
+            "cust_notif_blocked_body": "Die Ueberweisung wurde zur Sicherheit blockiert (Risiko {risk}).",
+            "cust_notif_held_title": "Transaktion gehalten",
+            "cust_notif_held_body": "Die Ueberweisung wird geprueft (Risiko {risk}).",
+            "cust_notif_queued_title": "Transaktion vorgemerkt",
+            "cust_notif_queued_body": "Offline gespeichert und zur Synchronisation vorgemerkt (Risiko {risk}).",
+            "cust_notif_generic_title": "Benachrichtigung",
+            "cust_notif_generic_body": "Es gibt ein Update.",
+            "pin_required": "PIN ist erforderlich.",
+            "recipient_required": "Empfaenger ist erforderlich.",
+            "amount_invalid": "Bitte einen gueltigen Betrag eingeben.",
+            "voice_parse_failed": "Befehl nicht verstanden. Beispiel: Send 500 to Ramesh",
+            "ph_voice_command": "Send 500 to Ramesh",
+            "voice_send": "Per Stimme senden",
+            "cust_server_balance_label": "Server-Saldo",
+            "cust_offline_first_label": "Offline-First",
         },
     }
     base = dictionary["en"]

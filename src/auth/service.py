@@ -167,6 +167,13 @@ def set_trusted_contact(
     config["trusted_contact"] = trusted_contact.strip()
     _update_auth_config(user_id=user_id, config=config, db_path=db_path)
 
+def remove_trusted_contact(user_id: str, pin: str, db_path: Path = DB_PATH) -> None:
+    """Remove trusted contact (set to empty) after validating PIN."""
+    _ = derive_session_key(user_id=user_id, pin=pin, db_path=db_path)
+    config = get_user_auth_config(user_id=user_id, db_path=db_path)
+    config["trusted_contact"] = ""
+    _update_auth_config(user_id=user_id, config=config, db_path=db_path)
+
 
 def enable_panic_freeze(
     user_id: str, pin: str, minutes: int = 60, db_path: Path = DB_PATH

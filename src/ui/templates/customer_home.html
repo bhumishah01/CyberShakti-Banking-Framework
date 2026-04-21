@@ -6,7 +6,7 @@
   <title>{{ i18n.page_title_customer_dashboard }}</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
-<body>
+<body data-offline-sim="{{ '1' if offline_sim else '0' }}">
   <main class="container">
     <header>
       <div class="top-row">
@@ -41,10 +41,21 @@
     <section class="card">
       <h2>{{ i18n.cust_account_overview }}</h2>
       <section class="stats-grid">
-        <article class="stat-card"><h3>{{ i18n.cust_balance_demo_label }}</h3><p>{{ "%.2f"|format(server.balance if server.connected else 50000.0) }}</p></article>
+        <article class="stat-card">
+          <h3>{{ i18n.cust_balance_demo_label }}</h3>
+          <p id="rs-balance">{{ "%.2f"|format(local_balance) }}</p>
+          <div class="muted small" id="rs-balance-note">
+            {% if server.connected %}
+              {{ i18n.cust_server_balance_label }}: {{ "%.2f"|format(server.balance) }}
+            {% else %}
+              {{ i18n.cust_offline_first_label }}
+            {% endif %}
+          </div>
+        </article>
         <article class="stat-card"><h3>{{ i18n.transactions }}</h3><p>{{ customer_stats.total }}</p></article>
-        <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p>{{ customer_stats.pending }}</p></article>
-        <article class="stat-card"><h3>{{ i18n.held }}</h3><p>{{ customer_stats.held }}</p></article>
+        <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p id="rs-pending">{{ customer_stats.pending }}</p></article>
+        <article class="stat-card"><h3>{{ i18n.held }}</h3><p id="rs-held">{{ customer_stats.held }}</p></article>
+        <article class="stat-card"><h3>{{ i18n.cust_last_activity_label }}</h3><p id="rs-last">{{ profile.last_tx_at }}</p></article>
       </section>
       <div style="margin-top:10px;">
         {% if user_risk_badge == "warning" %}
@@ -52,11 +63,11 @@
         {% else %}
           <span class="status-chip ok">{{ i18n.cust_risk_safe }}</span>
         {% endif %}
-        <span class="status-chip">{{ i18n.cust_user_risk_score }}: {{ profile.user_risk_score }}/100</span>
+        <span class="status-chip" id="rs-user-risk">{{ i18n.cust_user_risk_score }}: {{ profile.user_risk_score }}/100</span>
       </div>
       <p class="muted small" style="margin-top:8px;">
-        {{ i18n.cust_avg_amount }}: {{ "%.2f"|format(profile.avg_amount) }}
-        | {{ i18n.cust_preferred_hours }}: {{ (profile.preferred_hours or [])|join(", ") if (profile.preferred_hours or []) else "-" }}
+        <span id="rs-avg">{{ i18n.cust_avg_amount }}: {{ "%.2f"|format(profile.avg_amount) }}</span>
+        | <span id="rs-hours">{{ i18n.cust_preferred_hours }}: {{ (profile.preferred_hours or [])|join(", ") if (profile.preferred_hours or []) else "-" }}</span>
       </p>
       <p class="muted small" style="margin-top:10px;">
         {{ i18n.cust_offline_first_note }}
@@ -83,7 +94,7 @@
 
     <section class="card">
       <h2>{{ i18n.cust_notifications }}</h2>
-      <ul class="list">
+      <ul class="list" id="rs-notifs">
         {% for n in notifications %}
           <li>
             <strong>{{ n.title }}</strong>
@@ -110,7 +121,7 @@
               <th>{{ i18n.cust_details }}</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody id="rs-mini-body">
             {% for tx in mini_statement %}
               <tr>
                 <td>{{ tx.timestamp }}</td>
@@ -131,24 +142,56 @@
     <section class="card">
       <h2>{{ i18n.cust_sync_status }}</h2>
       <div class="stats-grid">
-        <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p>{{ customer_stats.pending }}</p></article>
-        <article class="stat-card"><h3>{{ i18n.synced }}</h3><p>{{ customer_stats.synced }}</p></article>
-        <article class="stat-card"><h3>{{ i18n.cust_last_sync }}</h3><p>{{ last_sync_at }}</p></article>
+        <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p id="rs-pending2">{{ customer_stats.pending }}</p></article>
+        <article class="stat-card"><h3>{{ i18n.synced }}</h3><p id="rs-synced">{{ customer_stats.synced }}</p></article>
+        <article class="stat-card"><h3>{{ i18n.cust_last_sync }}</h3><p id="rs-last-sync">{{ last_sync_at }}</p></article>
+      </div>
+      <div class="actions" style="margin-top:10px;">
+        {% if offline_sim %}
+          <a class="button secondary" href="/customer/offline?mode=off&lang={{ lang }}">{{ i18n.turn_off }}</a>
+        {% else %}
+          <a class="button secondary" href="/customer/offline?mode=on&lang={{ lang }}">{{ i18n.turn_on }}</a>
+        {% endif %}
       </div>
       <div class="alert warn offline-banner" hidden>
         {{ i18n.cust_offline_mode }}
       </div>
     </section>
 
+    {% if last_tx %}
+      <section class="card note" id="rs-last-tx">
+        <h2>{{ i18n.cust_tx_details }}</h2>
+        <p class="muted small">{{ i18n.time }}: {{ last_tx.timestamp }} | {{ i18n.tx_id }}: <code>{{ last_tx.tx_id }}</code></p>
+        <p>
+          <strong>{{ i18n.decision_label }}</strong> {{ last_tx.decision }}
+          | <strong>{{ i18n.risk_label }}</strong> {{ last_tx.risk_level }} ({{ last_tx.risk_score }}/100)
+          | <strong>{{ i18n.status_label }}</strong> {{ last_tx.status }}
+        </p>
+        <p class="muted small">{{ i18n.cust_why_title }}:</p>
+        <ul class="list compact">
+          {% for r in last_tx.reasons %}
+            <li>{{ r }}</li>
+          {% endfor %}
+        </ul>
+        <div class="actions">
+          <a class="button secondary" href="/customer/tx/{{ last_tx.tx_id }}?lang={{ lang }}">{{ i18n.cust_view }}</a>
+        </div>
+      </section>
+    {% endif %}
+
     <section id="send" class="card">
       <h2>{{ i18n.cust_send_money_offline }}</h2>
-      <form action="/customer/transactions" method="post" class="grid">
+      <form id="rs-send-form" action="/customer/transactions" method="post" class="grid">
         <input type="hidden" name="lang" value="{{ lang }}">
-        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
-        <input name="amount" placeholder="{{ i18n.ph_amount }}" type="number" step="0.01" min="1" required>
-        <input name="recipient" placeholder="{{ i18n.ph_recipient_name }}" required>
-        <button type="submit">{{ i18n.create_tx }}</button>
+        <input id="rs-pin" name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+        <input id="rs-amount" name="amount" placeholder="{{ i18n.ph_amount }}" type="number" step="0.01" min="1" required>
+        <input id="rs-recipient" name="recipient" placeholder="{{ i18n.ph_recipient_name }}" required>
+        <button id="rs-send-btn" type="submit">{{ i18n.create_tx }}</button>
       </form>
+      <div class="grid" style="margin-top:10px;">
+        <input id="rs-voice-command" placeholder="{{ i18n.ph_voice_command }}">
+        <button id="rs-voice-btn" type="button" class="button secondary">{{ i18n.voice_send }}</button>
+      </div>
       <p class="muted small" style="margin-top:8px;">
         {{ i18n.cust_send_result_note }}
       </p>
@@ -174,6 +217,11 @@
         <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
         <input name="trusted_contact" placeholder="{{ i18n.ph_trusted_contact }}" required>
         <button type="submit">{{ i18n.set_trusted }}</button>
+      </form>
+      <form action="/customer/trusted-contact/remove" method="post" class="grid release-grid">
+        <input type="hidden" name="lang" value="{{ lang }}">
+        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>
+        <button type="submit" class="button secondary">{{ i18n.remove_trusted }}</button>
       </form>
       <form action="/customer/panic-freeze" method="post" class="grid release-grid">
         <input type="hidden" name="lang" value="{{ lang }}">
@@ -207,11 +255,135 @@
       const banner = document.querySelector('.offline-banner');
       if (!banner) return;
       const update = () => {
-        banner.hidden = !!navigator.onLine;
+        const forced = (document.body.getAttribute('data-offline-sim') || '') === '1';
+        banner.hidden = !!navigator.onLine && !forced;
       };
       window.addEventListener('online', update);
       window.addEventListener('offline', update);
       update();
+    })();
+
+    (() => {
+      // Lightweight live updates (offline-first): refresh summary panels without manual reload.
+      const lang = "{{ lang }}";
+      const setText = (id, v) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = String(v);
+      };
+      const refresh = async () => {
+        try {
+          const r = await fetch(`/customer/api/summary?lang=${encodeURIComponent(lang)}`, { credentials: 'same-origin' });
+          const j = await r.json();
+          if (!j || j.status !== 'success') return;
+          const d = j.data || {};
+          setText('rs-balance', (Number(d.local_balance || 0)).toFixed(2));
+          setText('rs-pending', (d.stats || {}).pending || 0);
+          setText('rs-pending2', (d.stats || {}).pending || 0);
+          setText('rs-held', (d.stats || {}).held || 0);
+          setText('rs-synced', (d.stats || {}).synced || 0);
+          setText('rs-last-sync', d.last_sync_at || '-');
+          const prof = d.profile || {};
+          setText('rs-last', prof.last_tx_at || '-');
+          setText('rs-user-risk', `{{ i18n.cust_user_risk_score }}: ${prof.user_risk_score || 0}/100`);
+
+          // Notifications
+          const notifUl = document.getElementById('rs-notifs');
+          if (notifUl) {
+            const items = Array.isArray(d.notifications) ? d.notifications : [];
+            if (items.length === 0) {
+              notifUl.innerHTML = `<li class="muted">{{ i18n.cust_no_notifications }}</li>`;
+            } else {
+              notifUl.innerHTML = items.slice(0, 10).map((n) => {
+                const title = (n && n.title) ? String(n.title) : '';
+                const body = (n && n.body) ? String(n.body) : '';
+                return `<li><strong>${title}</strong><div class="muted small">${body}</div></li>`;
+              }).join('');
+            }
+          }
+
+          // Mini statement (safe metadata only)
+          const miniBody = document.getElementById('rs-mini-body');
+          if (miniBody) {
+            const txs = Array.isArray(d.mini_statement) ? d.mini_statement : [];
+            if (txs.length === 0) {
+              miniBody.innerHTML = `<tr><td colspan="5" class="muted">{{ i18n.cust_no_transactions }}</td></tr>`;
+            } else {
+              miniBody.innerHTML = txs.slice(0, 5).map((tx) => {
+                const t = tx.timestamp || '';
+                const id = tx.tx_id || '';
+                const risk = `${tx.risk_score || 0} (${tx.risk_level || ''})`;
+                const st = tx.status || '';
+                const url = `/customer/tx/${encodeURIComponent(id)}?lang=${encodeURIComponent(lang)}`;
+                return `<tr><td>${t}</td><td><code>${id}</code></td><td>${risk}</td><td>${st}</td><td><a class="linkish" href="${url}">{{ i18n.cust_view }}</a></td></tr>`;
+              }).join('');
+            }
+          }
+        } catch (e) {
+          // ignore (offline / server down)
+        }
+      };
+      refresh();
+      setInterval(refresh, 7000);
+    })();
+
+    (() => {
+      // AJAX send money: avoids navigation to error pages and gives clear result.
+      const form = document.getElementById('rs-send-form');
+      const btn = document.getElementById('rs-send-btn');
+      const pin = document.getElementById('rs-pin');
+      const amt = document.getElementById('rs-amount');
+      const rec = document.getElementById('rs-recipient');
+      if (!form || !btn || !pin || !amt || !rec) return;
+      const lang = "{{ lang }}";
+      form.addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        btn.disabled = true;
+        try {
+          const payload = { pin: pin.value, amount: amt.value, recipient: rec.value };
+          const r = await fetch(`/customer/api/transactions?lang=${encodeURIComponent(lang)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(payload),
+          });
+          const j = await r.json();
+          if (j.status !== 'success') throw new Error(j.message || 'error');
+          // redirect to show the last tx panel (no sensitive fields)
+          window.location.href = `/dashboard/customer?lang=${encodeURIComponent(lang)}&tx=${encodeURIComponent(j.data.tx_id)}#send`;
+        } catch (e) {
+          alert(String(e && e.message ? e.message : e));
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    })();
+
+    (() => {
+      // Voice-assisted command (basic simulation): "Send 500 to Ramesh".
+      const btn = document.getElementById('rs-voice-btn');
+      const cmd = document.getElementById('rs-voice-command');
+      const pin = document.getElementById('rs-pin');
+      if (!btn || !cmd || !pin) return;
+      const lang = "{{ lang }}";
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          const payload = { pin: pin.value, command: cmd.value };
+          const r = await fetch(`/customer/api/voice?lang=${encodeURIComponent(lang)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(payload),
+          });
+          const j = await r.json();
+          if (j.status !== 'success') throw new Error(j.message || 'error');
+          window.location.href = `/dashboard/customer?lang=${encodeURIComponent(lang)}&tx=${encodeURIComponent(j.data.tx_id)}#send`;
+        } catch (e) {
+          alert(String(e && e.message ? e.message : e));
+        } finally {
+          btn.disabled = false;
+        }
+      });
     })();
 
     (() => {
