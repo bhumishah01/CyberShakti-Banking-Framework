@@ -173,5 +173,29 @@ def _risk_level(score: int) -> str:
     return "LOW"
 
 
-def _parse_time(value: str) -> datetime:
-    return datetime.fromisoformat(value)
+def _parse_time(value) -> datetime:
+    """Defensive ISO timestamp parser.
+
+    Some payloads can accidentally carry a dict-like timestamp. datetime.fromisoformat
+    calls `.split()` internally, so non-strings can raise AttributeError. We prefer
+    a safe fallback over crashing the fraud engine.
+    """
+    if value is None:
+        return datetime.now(UTC)
+    if isinstance(value, dict):
+        for k in ("timestamp", "created_at", "value", "$date"):
+            v = value.get(k)
+            if isinstance(v, str) and v.strip():
+                value = v.strip()
+                break
+        else:
+            value = str(value)
+    if not isinstance(value, str):
+        value = str(value)
+    value = value.strip()
+    if not value:
+        return datetime.now(UTC)
+    try:
+        return datetime.fromisoformat(value)
+    except Exception:
+        return datetime.now(UTC)

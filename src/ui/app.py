@@ -2028,35 +2028,69 @@ def add_customer_transaction(
 
 
 def _parse_voice_command(text: str) -> tuple[float | None, str]:
-    """Parse a basic command like: 'Send 500 to Ramesh'."""
+    """Parse a basic command like: 'Send 500 to Ramesh'.
+
+    We keep this lightweight (no ML) but accept several common real phrases:
+    - Send 500 to Ramesh
+    - Send to Ramesh 500
+    - Pay Ramesh 500
+    - 500 to Ramesh
+    - 500 Ramesh
+    """
     raw = (text or "").strip()
     if not raw:
         return (None, "")
     # Normalize common currency markers.
     raw = raw.replace("₹", " ")
-    raw = re.sub(r"\\b(rs|inr)\\b", " ", raw, flags=re.IGNORECASE)
-    raw = re.sub(r"\\s+", " ", raw).strip()
-    # Amount: first number in the string
-    m_amt = re.search(r"(?P<amt>\\d+(?:\\.\\d+)?)", raw)
-    amt = None
-    if m_amt:
+    raw = re.sub(r"\b(rs|inr|rupees|rupee|rupay)\b", " ", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"\s+", " ", raw).strip()
+
+    # Try pattern-based parsing first (more reliable than heuristics).
+    # 1) Verb amount [to] recipient
+    m = re.match(
+        r"(?i)^(?:send|pay|transfer)\s+(?P<amt>\d+(?:\.\d+)?)\s+(?:to\s+)?(?P<rec>.+)$",
+        raw,
+    )
+    if not m:
+        # 2) Verb [to] recipient amount
+        m = re.match(
+            r"(?i)^(?:send|pay|transfer)\s+(?:to\s+)?(?P<rec>.+?)\s+(?P<amt>\d+(?:\.\d+)?)$",
+            raw,
+        )
+    if not m:
+        # 3) amount [to] recipient
+        m = re.match(
+            r"(?i)^(?P<amt>\d+(?:\.\d+)?)\s+(?:to\s+)?(?P<rec>.+)$",
+            raw,
+        )
+
+    amt: float | None = None
+    rec = ""
+    if m:
         try:
-            amt = float(m_amt.group("amt"))
+            amt = float(m.group("amt"))
         except Exception:
             amt = None
-    # Recipient: after 'to' (or after amount if missing)
-    rec = ""
-    m_to = re.search(r"\\bto\\b\\s+(?P<rec>.+)$", raw, flags=re.IGNORECASE)
-    if m_to:
-        rec = m_to.group("rec").strip()
-    else:
-        # Heuristic: drop the amount and common verbs
-        cleaned = re.sub(r"\\d+(?:\\.\\d+)?", "", raw).strip()
-        cleaned = re.sub(r"\\b(send|transfer|pay)\\b", "", cleaned, flags=re.IGNORECASE).strip()
-        rec = cleaned
-        if not rec and m_amt:
-            # Another heuristic: take everything after the number.
-            rec = raw[m_amt.end():].strip()
+        rec = str(m.group("rec") or "").strip()
+
+    if amt is None or not rec:
+        # Fallback heuristic: take first number as amount and remaining tokens as recipient.
+        m_amt = re.search(r"(?P<amt>\d+(?:\.\d+)?)", raw)
+        if m_amt:
+            try:
+                amt = float(m_amt.group("amt"))
+            except Exception:
+                amt = None
+            # Remove verb + amount + connector "to" to estimate recipient.
+            cleaned = raw
+            cleaned = re.sub(r"(?i)\b(send|transfer|pay)\b", " ", cleaned).strip()
+            cleaned = cleaned.replace(m_amt.group("amt"), " ")
+            cleaned = re.sub(r"(?i)\bto\b", " ", cleaned)
+            cleaned = re.sub(r"\s+", " ", cleaned).strip()
+            rec = cleaned
+
+    # Final normalize recipient.
+    rec = re.sub(r"\s+", " ", (rec or "")).strip()
     return (amt, rec)
 
 
@@ -3704,7 +3738,28 @@ def _friendly_reason(code: str, lang: str = "en") -> str:
     return mapping.get(code, code.replace("_", " ").title())
 
 
-def _friendly_time(iso_ts: str) -> str:
+def _friendly_time(iso_ts) -> str:
+    """Best-effort ISO time formatter.
+
+    This is intentionally defensive: if a dict leaks into the timestamp field
+    (e.g., {"timestamp": "..."}), datetime.fromisoformat will crash because it
+    calls `.split()` internally. We never want the UI to crash on time display.
+    """
+    if iso_ts is None:
+        return "-"
+    if isinstance(iso_ts, dict):
+        for k in ("timestamp", "created_at", "updated_at", "value", "$date"):
+            v = iso_ts.get(k)
+            if isinstance(v, str) and v.strip():
+                iso_ts = v.strip()
+                break
+        else:
+            iso_ts = str(iso_ts)
+    if not isinstance(iso_ts, str):
+        iso_ts = str(iso_ts)
+    iso_ts = iso_ts.strip()
+    if not iso_ts:
+        return "-"
     try:
         dt = datetime.fromisoformat(iso_ts)
         return dt.strftime("%d %b %Y, %I:%M %p")
