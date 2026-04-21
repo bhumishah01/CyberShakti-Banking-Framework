@@ -25,11 +25,76 @@
             </select>
           </form>
           <a href="/bank/analytics?lang={{ lang }}" class="button secondary">{{ i18n.analytics_button }}</a>
+          <button type="button" class="button secondary" id="openDemoMap">{{ i18n.demo_map_button }}</button>
           <a href="/guide?lang={{ lang }}" class="button secondary">{{ i18n.demo_guide }}</a>
           <a href="/logout?lang={{ lang }}" class="button secondary">{{ i18n.logout }}</a>
         </div>
       </div>
     </header>
+
+    <dialog id="demoMapDialog" class="help-dialog">
+      <form method="dialog" class="help-shell">
+        <header class="help-head">
+          <h2>{{ i18n.demo_map_title }}</h2>
+          <p class="muted">{{ i18n.demo_map_intro }}</p>
+        </header>
+        <section class="help-body">
+          <h3>{{ i18n.demo_map_urls_title }}</h3>
+          <ul class="list compact">
+            <li><strong>{{ i18n.demo_map_login }}</strong> <span class="muted small"><code>http://127.0.0.1:8502/bank</code></span></li>
+            <li><strong>{{ i18n.demo_map_dashboard }}</strong> <span class="muted small"><code>http://127.0.0.1:8502/bank/dashboard</code></span></li>
+            <li><strong>{{ i18n.demo_map_analytics }}</strong> <span class="muted small"><code>http://127.0.0.1:8502/bank/analytics</code></span></li>
+          </ul>
+
+          <h3 style="margin-top:12px;">{{ i18n.demo_map_core_title }}</h3>
+          <ul class="list compact">
+            <li><strong>{{ i18n.demo_map_item1 }}</strong> <span class="muted small">{{ i18n.demo_map_item1_where }}</span></li>
+            <li><strong>{{ i18n.demo_map_item2 }}</strong> <span class="muted small">{{ i18n.demo_map_item2_where }}</span></li>
+            <li><strong>{{ i18n.demo_map_item3 }}</strong> <span class="muted small">{{ i18n.demo_map_item3_where }}</span></li>
+          </ul>
+
+          <h3 style="margin-top:12px;">{{ i18n.demo_map_alerts_title }}</h3>
+          <ul class="list compact">
+            <li><strong>{{ i18n.demo_map_item4 }}</strong> <span class="muted small">{{ i18n.demo_map_item4_where }}</span></li>
+            <li><strong>{{ i18n.demo_map_item5 }}</strong> <span class="muted small">{{ i18n.demo_map_item5_where }}</span></li>
+          </ul>
+
+          <h3 style="margin-top:12px;">{{ i18n.demo_map_intel_title }}</h3>
+          <ul class="list compact">
+            <li><strong>{{ i18n.demo_map_item6 }}</strong> <span class="muted small">{{ i18n.demo_map_item6_where }}</span></li>
+            <li><strong>{{ i18n.demo_map_item7 }}</strong> <span class="muted small">{{ i18n.demo_map_item7_where }}</span></li>
+            <li><strong>{{ i18n.demo_map_item8 }}</strong> <span class="muted small">{{ i18n.demo_map_item8_where }}</span></li>
+          </ul>
+
+          <h3 style="margin-top:12px;">{{ i18n.demo_map_controls_title }}</h3>
+          <ul class="list compact">
+            <li><strong>{{ i18n.demo_map_item9 }}</strong> <span class="muted small">{{ i18n.demo_map_item9_where }}</span></li>
+            <li><strong>{{ i18n.demo_map_item10 }}</strong> <span class="muted small">{{ i18n.demo_map_item10_where }}</span></li>
+          </ul>
+
+          <h3 style="margin-top:12px;">{{ i18n.demo_map_bonus_title }}</h3>
+          <ul class="list compact">
+            <li><strong>{{ i18n.demo_map_item11 }}</strong> <span class="muted small">{{ i18n.demo_map_item11_where }}</span></li>
+            <li><strong>{{ i18n.demo_map_item12 }}</strong> <span class="muted small">{{ i18n.demo_map_item12_where }}</span></li>
+          </ul>
+
+          <h3 style="margin-top:12px;">{{ i18n.demo_map_api_title }}</h3>
+          <ul class="list compact">
+            <li><span class="muted small"><code>GET /admin/api/user-profile/{user_id}</code></span></li>
+            <li><span class="muted small"><code>GET /admin/api/alerts</code></span></li>
+            <li><span class="muted small"><code>GET /admin/api/fraud-trends?days=7</code></span></li>
+            <li><span class="muted small"><code>GET /admin/api/high-risk-users?limit=20</code></span></li>
+            <li><span class="muted small"><code>GET /admin/api/devices?limit=200</code></span></li>
+            <li><span class="muted small"><code>POST /admin/api/transactions/{tx_id}/review</code></span></li>
+            <li><span class="muted small"><code>POST /admin/api/users/{user_id}/freeze</code></span></li>
+            <li><span class="muted small"><code>POST /admin/api/users/{user_id}/unfreeze</code></span></li>
+          </ul>
+        </section>
+        <menu class="help-actions">
+          <button class="button" value="close">{{ i18n.help_close }}</button>
+        </menu>
+      </form>
+    </dialog>
 
     {% if message %}
       <section class="alert success">{{ message }}</section>
@@ -506,6 +571,12 @@
 
   <script>
     (() => {
+      const mapBtn = document.getElementById("openDemoMap");
+      const mapDlg = document.getElementById("demoMapDialog");
+      if (mapBtn && mapDlg && typeof mapDlg.showModal === "function") {
+        mapBtn.addEventListener("click", () => mapDlg.showModal());
+      }
+
       const btn = document.querySelector(".voice-btn");
       if (!btn || !window.speechSynthesis) return;
       btn.addEventListener("click", () => {
