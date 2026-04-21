@@ -164,26 +164,39 @@
       </div>
     </section>
 
-    {% if last_tx %}
-      <section class="card note" id="rs-last-tx">
-        <h2>{{ i18n.cust_tx_details }}</h2>
-        <p class="muted small">{{ i18n.time }}: {{ last_tx.timestamp }} | {{ i18n.tx_id }}: <code>{{ last_tx.tx_id }}</code></p>
-        <p>
-          <strong>{{ i18n.decision_label }}</strong> {{ last_tx.decision }}
-          | <strong>{{ i18n.risk_label }}</strong> {{ last_tx.risk_level }} ({{ last_tx.risk_score }}/100)
-          | <strong>{{ i18n.status_label }}</strong> {{ last_tx.status }}
-        </p>
-        <p class="muted small">{{ i18n.cust_why_title }}:</p>
-        <ul class="list compact">
-          {% for r in last_tx.reasons %}
-            <li>{{ r }}</li>
-          {% endfor %}
-        </ul>
-        <div class="actions">
-          <a class="button secondary" href="/customer/tx/{{ last_tx.tx_id }}?lang={{ lang }}">{{ i18n.cust_view }}</a>
-        </div>
-      </section>
-    {% endif %}
+	    {% if last_tx %}
+	      <section class="card note" id="rs-last-tx">
+	        <h2>{{ i18n.cust_tx_details }}</h2>
+	        <p class="muted small">{{ i18n.time }}: {{ last_tx.timestamp }} | {{ i18n.tx_id }}: <code>{{ last_tx.tx_id }}</code></p>
+	        <p>
+	          <strong>{{ i18n.decision_label }}</strong> {{ last_tx.decision }}
+	          | <strong>{{ i18n.risk_label }}</strong> {{ last_tx.risk_level }} ({{ last_tx.risk_score }}/100)
+	          | <strong>{{ i18n.status_label }}</strong> {{ last_tx.status }}
+	        </p>
+	        <p class="muted small">{{ i18n.cust_why_title }}:</p>
+	        <ul class="list compact">
+	          {% for r in last_tx.reasons %}
+	            <li>{{ r }}</li>
+	          {% endfor %}
+	        </ul>
+	        {% if last_tx.guidance and (last_tx.guidance|length) > 0 %}
+	          <p class="muted small" style="margin-top:10px;">{{ i18n.cust_safety_guidance_title }}:</p>
+	          <ul class="list compact">
+	            {% for g in last_tx.guidance %}
+	              <li>{{ g }}</li>
+	            {% endfor %}
+	          </ul>
+	          {% if last_tx.voice_text %}
+	            <div class="actions">
+	              <button type="button" class="button secondary voice-btn" data-voice-text="{{ last_tx.voice_text|e }}">{{ i18n.cust_read_guidance }}</button>
+	            </div>
+	          {% endif %}
+	        {% endif %}
+	        <div class="actions">
+	          <a class="button secondary" href="/customer/tx/{{ last_tx.tx_id }}?lang={{ lang }}">{{ i18n.cust_view }}</a>
+	        </div>
+	      </section>
+	    {% endif %}
 
     <section id="send" class="card">
       <h2>{{ i18n.cust_send_money_offline }}</h2>
@@ -530,13 +543,15 @@
     })();
 
     (() => {
-      const btn = document.querySelector(".voice-btn");
-      if (!btn || !window.speechSynthesis) return;
-      btn.addEventListener("click", () => {
-        const text = btn.getAttribute("data-voice-text") || "";
-        if (!text) return;
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+      const btns = document.querySelectorAll(".voice-btn");
+      if (!btns.length || !window.speechSynthesis) return;
+      btns.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const text = btn.getAttribute("data-voice-text") || "";
+          if (!text) return;
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+        });
       });
     })();
   </script>
