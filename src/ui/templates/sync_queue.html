@@ -53,22 +53,22 @@
 	      </div>
 	      </div>
 	      <div class="table-wrap">
-	        <table>
+	        <table class="table-fixed">
 	          <thead>
 	            <tr>
 	              <th style="width:44px;">✓</th>
-	              <th>{{ i18n.time }}</th>
+	              <th class="nowrap" style="width:170px;">{{ i18n.time }}</th>
 	              <th>{{ i18n.outbox_id }}</th>
 	              <th>{{ i18n.tx_id }}</th>
-	              <th>{{ i18n.user_label }}</th>
+	              <th class="nowrap" style="width:70px;">{{ i18n.user_label }}</th>
 	              <th>{{ i18n.status }}</th>
-              <th>{{ i18n.sync_state }}</th>
-              <th>{{ i18n.retry_count }}</th>
-              <th>{{ i18n.next_retry }}</th>
-              <th>{{ i18n.last_error }}</th>
-              <th>{{ i18n.action }}</th>
-            </tr>
-          </thead>
+	              <th>{{ i18n.sync_state }}</th>
+	              <th class="nowrap" style="width:90px;">{{ i18n.retry_count }}</th>
+	              <th class="nowrap" style="width:140px;">{{ i18n.next_retry }}</th>
+	              <th>{{ i18n.last_error }}</th>
+	              <th class="nowrap" style="width:200px;">{{ i18n.action }}</th>
+	            </tr>
+	          </thead>
 	          <tbody>
 	            {% for row in rows %}
 	            <tr>
@@ -79,25 +79,33 @@
 	                  <span class="muted">-</span>
 	                {% endif %}
 	              </td>
-	              <td>{{ row.created_at }}</td>
-	              <td class="mono">{{ row.outbox_id }}</td>
-	              <td class="mono">{{ row.tx_id }}</td>
-	              <td class="mono">{{ row.user_id }}</td>
-              <td>{{ row.tx_status }}</td>
-              <td>{{ row.sync_state }}</td>
-              <td>{{ row.retry_count }}</td>
-              <td>{{ row.next_retry }}</td>
-              <td>{{ row.last_error }}</td>
-              <td>
-                {% if row.sync_state in ['PENDING', 'RETRYING'] %}
-                  <form action="/sync/one" method="post">
+	              <td class="nowrap">{{ row.created_at }}</td>
+	              <td>
+	                <span class="mono" title="{{ row.outbox_id }}">
+	                  {{ row.outbox_id[:8] }}…{{ row.outbox_id[-4:] }}
+	                </span>
+	              </td>
+	              <td>
+	                <span class="mono" title="{{ row.tx_id }}">
+	                  {{ row.tx_id[:8] }}…{{ row.tx_id[-4:] }}
+	                </span>
+	              </td>
+	              <td class="nowrap">{{ row.user_id }}</td>
+	              <td>{{ row.tx_status }}</td>
+	              <td>{{ row.sync_state }}</td>
+	              <td>{{ row.retry_count }}</td>
+	              <td>{{ row.next_retry }}</td>
+	              <td class="td-truncate" title="{{ row.last_error }}">{{ row.last_error }}</td>
+	              <td>
+	                {% if row.sync_state in ['PENDING', 'RETRYING'] %}
+	                  <form action="/sync/one" method="post">
                     <input type="hidden" name="lang" value="{{ lang }}">
                     <input type="hidden" name="outbox_id" value="{{ row.outbox_id }}">
                     <input type="hidden" name="server_url" value="{{ server_url }}">
                     <button type="submit" class="button secondary">{{ i18n.sync_this_one }}</button>
                   </form>
-                {% elif row.sync_state == 'HOLD' %}
-                  <form action="/transactions/release" method="post" class="grid" style="grid-template-columns: 1fr 1fr 1fr; gap: 6px;">
+	                {% elif row.sync_state == 'HOLD' %}
+	                  <form action="/transactions/release" method="post" class="grid" style="grid-template-columns: 1fr 1fr 1fr; gap: 6px;">
                     <input type="hidden" name="lang" value="{{ lang }}">
                     <input type="hidden" name="tx_id" value="{{ row.tx_id }}">
                     <input type="hidden" name="user_id" value="{{ row.user_id }}">

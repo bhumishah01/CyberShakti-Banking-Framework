@@ -443,7 +443,22 @@ tbody tr:nth-child(odd) {
   font-family: "SFMono-Regular", Menlo, Monaco, monospace;
   font-size: 0.8rem;
   max-width: 210px;
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: normal;
+}
+.mono.break {
+  white-space: normal;
   word-break: break-all;
+}
+.nowrap { white-space: nowrap; }
+.table-fixed { table-layout: fixed; }
+.td-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .pill {
   display: inline-block;
