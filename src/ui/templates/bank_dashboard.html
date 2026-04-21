@@ -265,6 +265,7 @@
               <th>{{ i18n.admin_last_activity }}</th>
               <th>{{ i18n.admin_tx_count }}</th>
               <th>{{ i18n.admin_avg_amount }}</th>
+              <th>{{ i18n.admin_peak_hours }}</th>
               <th>{{ i18n.admin_user_controls }}</th>
             </tr>
           </thead>
@@ -276,6 +277,7 @@
                 <td>{{ u.last_tx_at }}</td>
                 <td>{{ u.tx_count }}</td>
                 <td>{{ "%.2f"|format(u.avg_amount) }}</td>
+                <td class="muted small">{{ u.peak_hours }}</td>
                 <td>
                   <form action="/admin/api/users/{{ u.user_id }}/freeze" method="post" style="display:flex; gap:8px; align-items:center;">
                     <input type="hidden" name="minutes" value="60">
@@ -288,7 +290,7 @@
               </tr>
             {% endfor %}
             {% if (local_admin.high_risk_users|length) == 0 %}
-              <tr><td colspan="6" class="muted">{{ i18n.admin_no_high_risk_users }}</td></tr>
+              <tr><td colspan="7" class="muted">{{ i18n.admin_no_high_risk_users }}</td></tr>
             {% endif %}
           </tbody>
         </table>

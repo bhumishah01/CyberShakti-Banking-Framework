@@ -635,7 +635,7 @@ def _high_risk_users(db_path: Path = DEFAULT_DB, limit: int = 10) -> list[dict]:
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT user_id, user_risk_score, last_tx_at, tx_count, avg_amount
+            SELECT user_id, user_risk_score, last_tx_at, tx_count, avg_amount, hour_hist
             FROM user_profiles
             ORDER BY user_risk_score DESC, updated_at DESC
             LIMIT ?
@@ -644,7 +644,26 @@ def _high_risk_users(db_path: Path = DEFAULT_DB, limit: int = 10) -> list[dict]:
         )
         rows = cursor.fetchall()
     items = []
-    for user_id, risk, last_tx_at, tx_count, avg_amount in rows:
+    for user_id, risk, last_tx_at, tx_count, avg_amount, hour_hist_raw in rows:
+        peak = "-"
+        try:
+            hist = json.loads(hour_hist_raw or "{}")
+            if isinstance(hist, dict):
+                pairs = []
+                for k, v in hist.items():
+                    try:
+                        hour = int(k)
+                        count = int(v)
+                    except Exception:
+                        continue
+                    if 0 <= hour <= 23 and count > 0:
+                        pairs.append((count, hour))
+                pairs.sort(reverse=True)
+                top_hours = [h for _, h in pairs[:2]]
+                if top_hours:
+                    peak = ", ".join([f"{h:02d}:00" for h in top_hours])
+        except Exception:
+            peak = "-"
         items.append(
             {
                 "user_id": user_id,
@@ -652,6 +671,7 @@ def _high_risk_users(db_path: Path = DEFAULT_DB, limit: int = 10) -> list[dict]:
                 "last_tx_at": _friendly_time(last_tx_at) if last_tx_at else "-",
                 "tx_count": int(tx_count or 0),
                 "avg_amount": float(avg_amount or 0.0),
+                "peak_hours": peak,
             }
         )
     return items
@@ -3310,6 +3330,7 @@ def _bundle(lang: str) -> dict:
             "admin_last_activity": "Last Activity",
             "admin_tx_count": "Tx Count",
             "admin_avg_amount": "Avg Amount",
+            "admin_peak_hours": "Peak Hours",
             "admin_no_high_risk_users": "No high-risk users yet.",
             "admin_user_controls": "User Controls",
             "admin_freeze_60": "Freeze 60m",
