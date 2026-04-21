@@ -36,6 +36,7 @@ from src.auth.service import (
     enable_panic_freeze,
     enroll_or_verify_device_id,
     enroll_or_verify_face_hash,
+    refresh_face_hash_on_trusted_device,
     get_user_auth_config,
     remove_trusted_contact,
     set_trusted_contact,
@@ -1355,16 +1356,6 @@ def login(
                 err = _t(lang, "customer_login_failed")
             context = _login_context(request, lang=lang, mode="customer", error=err)
             return render_template(request, "login.html", context, status_code=400)
-        ok, why = enroll_or_verify_face_hash(
-            user_id=user_id.strip(),
-            pin=pin.strip(),
-            captured_algo=captured_algo,
-            captured_hash=captured_hash,
-            db_path=DEFAULT_DB,
-        )
-        if not ok:
-            context = _login_context(request, lang=lang, mode="customer", error=_t(lang, "face_mismatch"))
-            return render_template(request, "login.html", context, status_code=400)
         ok_dev, dev_reason = enroll_or_verify_device_id(
             user_id=user_id.strip(),
             pin=pin.strip(),
@@ -1374,10 +1365,35 @@ def login(
         if not ok_dev:
             context = _login_context(request, lang=lang, mode="customer", error=_t(lang, "device_required"))
             return render_template(request, "login.html", context, status_code=400)
+
+        # Face verification (prototype):
+        # - Verify using a tolerant threshold (in auth/service.py).
+        # - If the device is already trusted, auto-refresh the stored face template on mismatch
+        #   (prevents repeated demo-blocking failures due to lighting/webcam drift).
+        face_ok, face_why = enroll_or_verify_face_hash(
+            user_id=user_id.strip(),
+            pin=pin.strip(),
+            captured_algo=captured_algo,
+            captured_hash=captured_hash,
+            db_path=DEFAULT_DB,
+        )
+        face_verified = bool(face_ok)
+        if (not face_ok) and dev_reason != "new_device":
+            try:
+                refresh_face_hash_on_trusted_device(
+                    user_id=user_id.strip(),
+                    pin=pin.strip(),
+                    captured_algo=captured_algo,
+                    captured_hash=captured_hash,
+                    db_path=DEFAULT_DB,
+                )
+                face_verified = True
+            except Exception:
+                face_verified = False
         response = RedirectResponse(url=f"/dashboard/customer?lang={lang}", status_code=303)
         response.set_cookie(ROLE_COOKIE, "customer")
         response.set_cookie(USER_COOKIE, user_id.strip())
-        response.set_cookie(FACE_COOKIE, "1")
+        response.set_cookie(FACE_COOKIE, "1" if face_verified else "0")
         response.set_cookie(DEVICE_COOKIE, "untrusted" if dev_reason == "new_device" else "trusted")
         # After-midsem: mint server JWT session (PIN-as-password) for API-backed dashboard.
         try:
@@ -1386,6 +1402,12 @@ def login(
                 response.set_cookie(JWT_COOKIE, token, httponly=True, samesite="lax")
         except Exception:
             pass
+        # Non-blocking warning: face is weak on an untrusted/new device.
+        if (not face_verified) and dev_reason == "new_device":
+            try:
+                response.set_cookie(FLASH_ERR_COOKIE, _t(lang, "face_weak_warning"), samesite="lax")
+            except Exception:
+                pass
         return response
 
     if role == "bank":
@@ -2242,16 +2264,27 @@ async def customer_api_create_transaction(request: Request):
         return _json_err(_t(lang, "amount_invalid"), status_code=400)
 
     device_untrusted = _user_ctx(request).get("device_trust") == "untrusted"
+    face_verified = request.cookies.get(FACE_COOKIE, "") == "1"
     try:
+        extra_codes: list[str] = []
+        extra_points = 0
+        force_hold = False
+        if device_untrusted:
+            extra_codes.append("NEW_DEVICE")
+            extra_points += 35
+            force_hold = True
+        if not face_verified:
+            extra_codes.append("FACE_WEAK")
+            extra_points += 10
         stored = create_secure_transaction(
             user_id=user_id,
             pin=pin,
             amount=amount,
             recipient=recipient,
             db_path=DEFAULT_DB,
-            extra_reason_codes=(["NEW_DEVICE"] if device_untrusted else None),
-            extra_risk_points=(35 if device_untrusted else 0),
-            force_hold=device_untrusted,
+            extra_reason_codes=(extra_codes or None),
+            extra_risk_points=extra_points,
+            force_hold=force_hold,
         )
         reasons = [str(x) for x in (stored.reason_codes or [])]
         decision = str(stored.action_decision or "ALLOW")
@@ -2315,19 +2348,28 @@ async def customer_api_voice(request: Request):
     if amt is None or amt <= 0 or not rec:
         return _json_err(_t(lang, "voice_parse_failed"), status_code=400)
     # Reuse the same pipeline.
-    fake = {"pin": pin, "amount": amt, "recipient": rec}
-    # Call underlying function by directly creating tx (avoid HTTP recursion).
     device_untrusted = _user_ctx(request).get("device_trust") == "untrusted"
+    face_verified = request.cookies.get(FACE_COOKIE, "") == "1"
     try:
+        extra_codes: list[str] = []
+        extra_points = 0
+        force_hold = False
+        if device_untrusted:
+            extra_codes.append("NEW_DEVICE")
+            extra_points += 35
+            force_hold = True
+        if not face_verified:
+            extra_codes.append("FACE_WEAK")
+            extra_points += 10
         stored = create_secure_transaction(
             user_id=user_id,
             pin=pin,
             amount=float(amt),
             recipient=str(rec),
             db_path=DEFAULT_DB,
-            extra_reason_codes=(["NEW_DEVICE"] if device_untrusted else None),
-            extra_risk_points=(35 if device_untrusted else 0),
-            force_hold=device_untrusted,
+            extra_reason_codes=(extra_codes or None),
+            extra_risk_points=extra_points,
+            force_hold=force_hold,
         )
         reasons = [str(x) for x in (stored.reason_codes or [])]
         decision = str(stored.action_decision or "ALLOW")
@@ -3839,6 +3881,7 @@ def _friendly_reason(code: str, lang: str = "en") -> str:
             "RAPID_BURST": "Multiple rapid transactions",
             "AUTH_FAILURES": "Recent failed login attempts",
             "NEW_DEVICE": "New device detected for this account",
+            "FACE_WEAK": "Face match is weak on this device",
         },
         "hi": {
             "NEW_RECIPIENT": "नया प्राप्तकर्ता पहले नहीं देखा गया",
@@ -3847,6 +3890,7 @@ def _friendly_reason(code: str, lang: str = "en") -> str:
             "RAPID_BURST": "कम समय में कई लेनदेन",
             "AUTH_FAILURES": "हाल में लॉगिन विफल प्रयास",
             "NEW_DEVICE": "इस खाते के लिए नया डिवाइस पाया गया",
+            "FACE_WEAK": "इस डिवाइस पर फेस मैच कमजोर है",
         },
         "or": {
             "NEW_RECIPIENT": "ନୂତନ ପ୍ରାପ୍ତକର୍ତ୍ତା ପୂର୍ବରୁ ଦେଖାଯାଇନି",
@@ -3855,6 +3899,7 @@ def _friendly_reason(code: str, lang: str = "en") -> str:
             "RAPID_BURST": "କମ୍ ସମୟରେ ଅନେକ ଟ୍ରାନ୍ଜାକ୍ସନ",
             "AUTH_FAILURES": "ସମ୍ପ୍ରତି ଲଗଇନ ବିଫଳ ପ୍ରୟାସ",
             "NEW_DEVICE": "ଏହି ଆକାଉଣ୍ଟ ପାଇଁ ନୂତନ ଡିଭାଇସ ଚିହ୍ନଟ",
+            "FACE_WEAK": "ଏହି ଡିଭାଇସ୍ ରେ ଫେସ ମ୍ୟାଚ୍ ଦୁର୍ବଳ",
         },
         "gu": {
             "NEW_RECIPIENT": "નવો પ્રાપ્તકર્તા અગાઉ જોયેલો નથી",
@@ -3863,6 +3908,7 @@ def _friendly_reason(code: str, lang: str = "en") -> str:
             "RAPID_BURST": "ઓછા સમયમાં ઘણા ટ્રાન્ઝેક્શન",
             "AUTH_FAILURES": "તાજેતરના લોગિન નિષ્ફળ પ્રયાસો",
             "NEW_DEVICE": "આ ખાતા માટે નવું ડિવાઇસ મળ્યું",
+            "FACE_WEAK": "આ ડિવાઇસ પર ફેસ મેચ નબળો છે",
         },
         "de": {
             "NEW_RECIPIENT": "Neuer Empfänger bisher unbekannt",
@@ -3871,6 +3917,7 @@ def _friendly_reason(code: str, lang: str = "en") -> str:
             "RAPID_BURST": "Viele schnelle Transaktionen",
             "AUTH_FAILURES": "Letzte fehlgeschlagene Logins",
             "NEW_DEVICE": "Neues Gerät für dieses Konto erkannt",
+            "FACE_WEAK": "Face-Match ist auf diesem Gerät schwach",
         },
     }.get(lang, {})
     return mapping.get(code, code.replace("_", " ").title())
@@ -4121,6 +4168,7 @@ def _bundle(lang: str) -> dict:
             "face_camera_wait": "Camera is loading. Please wait a moment and try again.",
             "face_captured_ok": "Face captured successfully. You can now log in.",
             "face_mismatch": "Face verification failed. Please try again in good lighting and face the camera.",
+            "face_weak_warning": "Face match is weak on this device. For safety, risky transactions may be held for review.",
             "device_required": "Device verification is required. Please refresh and try again.",
             "login_switch_title": "Portal Access",
             "login_switch_body": "Use separate links for the customer and bank/admin sides of the system.",
@@ -4514,6 +4562,8 @@ def _bundle(lang: str) -> dict:
             "face_camera_error": "कैमरा एक्सेस नहीं मिला। परमिशन दें और फिर कोशिश करें।",
             "face_camera_wait": "कैमरा लोड हो रहा है। थोड़ा इंतजार करें।",
             "face_captured_ok": "फेस कैप्चर हो गया। अब लॉगिन करें।",
+            "face_mismatch": "फेस सत्यापन असफल। कृपया अच्छी रोशनी में कैमरे की ओर देखें और फिर कोशिश करें।",
+            "face_weak_warning": "इस डिवाइस पर फेस मैच कमजोर है। सुरक्षा के लिए जोखिम वाले लेन-देन समीक्षा हेतु रोके जा सकते हैं।",
             "login_switch_title": "पोर्टल एक्सेस",
             "login_switch_body": "ग्राहक और बैंक/एडमिन के लिए अलग लिंक उपयोग करें।",
             "page_title_customer_dashboard": "ग्राहक पोर्टल - RuralShield",
@@ -4806,6 +4856,8 @@ def _bundle(lang: str) -> dict:
             "face_camera_error": "କ୍ୟାମେରା ଆକ୍ସେସ୍ ବିଫଳ। ପରମିଶନ୍ ଦିଅନ୍ତୁ ଏବଂ ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ।",
             "face_camera_wait": "କ୍ୟାମେରା ଲୋଡ୍ ହେଉଛି। ଅଳ୍ପ ସମୟ ପରେ ଚେଷ୍ଟା କରନ୍ତୁ।",
             "face_captured_ok": "ଫେସ କ୍ୟାପଚର୍ ହେଲା। ଏବେ ଲଗଇନ୍ କରନ୍ତୁ।",
+            "face_mismatch": "ଫେସ ସତ୍ୟାପନ ବିଫଳ। ଭଲ ଆଲୋକରେ କ୍ୟାମେରା ଦିଗରେ ଦେଖି ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ।",
+            "face_weak_warning": "ଏହି ଡିଭାଇସ୍ ରେ ଫେସ ମ୍ୟାଚ୍ ଦୁର୍ବଳ। ସୁରକ୍ଷା ପାଇଁ ଝୁମ୍ପପୂର୍ଣ୍ଣ ଟ୍ରାନ୍ଜାକ୍ସନ ସମୀକ୍ଷା ପାଇଁ ରୋକାଯାଇପାରେ।",
             "login_switch_title": "ପୋର୍ଟାଲ ଆକ୍ସେସ୍",
             "login_switch_body": "ଗ୍ରାହକ ଏବଂ ବ୍ୟାଙ୍କ/ଏଡମିନ ପାଇଁ ଅଲଗା ଲିଙ୍କ ବ୍ୟବହାର କରନ୍ତୁ।",
             "page_title_customer_dashboard": "ଗ୍ରାହକ ପୋର୍ଟାଲ - RuralShield",
@@ -5098,6 +5150,8 @@ def _bundle(lang: str) -> dict:
             "face_camera_error": "કેમેરા ઍક્સેસ નિષ્ફળ. પરમિશન આપો અને ફરી પ્રયત્ન કરો.",
             "face_camera_wait": "કેમેરા લોડ થઈ રહ્યો છે. થોડી વાર રાહ જુઓ.",
             "face_captured_ok": "ફેસ કૅપ્ચર થયું. હવે લૉગિન કરો.",
+            "face_mismatch": "ફેસ ચકાસણી નિષ્ફળ. સારી લાઇટમાં કેમેરા તરફ જુઓ અને ફરી પ્રયત્ન કરો.",
+            "face_weak_warning": "આ ડિવાઇસ પર ફેસ મેચ નબળો છે. સુરક્ષા માટે જોખમી ટ્રાન્ઝેક્શન સમીક્ષા માટે રોકાઈ શકે છે.",
             "login_switch_title": "પોર્ટલ ઍક્સેસ",
             "login_switch_body": "કસ્ટમર અને બેંક/એડમિન માટે અલગ લિંક્સ વાપરો.",
             "page_title_customer_dashboard": "ગ્રાહક પોર્ટલ - RuralShield",
@@ -5390,6 +5444,8 @@ def _bundle(lang: str) -> dict:
             "face_camera_error": "Kamera-Zugriff fehlgeschlagen. Bitte Berechtigung erlauben und erneut versuchen.",
             "face_camera_wait": "Kamera laedt. Bitte kurz warten.",
             "face_captured_ok": "Face aufgenommen. Du kannst jetzt einloggen.",
+            "face_mismatch": "Face-Verifikation fehlgeschlagen. Bitte bei gutem Licht in die Kamera schauen und erneut versuchen.",
+            "face_weak_warning": "Face-Match ist auf diesem Gerät schwach. Zur Sicherheit können riskante Transaktionen zur Prüfung gehalten werden.",
             "login_switch_title": "Portal-Zugriff",
             "login_switch_body": "Verwende getrennte Links fuer Kunden- und Bank/Admin-Seite.",
             "page_title_customer_dashboard": "Kundenportal - RuralShield",

@@ -441,7 +441,7 @@ def enroll_or_verify_face_hash(
     captured_hash: str,
     *,
     # Slightly relaxed threshold improves stability across low-end webcams / lighting changes.
-    max_distance: int = 18,
+    max_distance: int = 24,
     db_path: Path = DB_PATH,
 ) -> tuple[bool, str]:
     """Enroll face hash on first use; verify on subsequent logins.
@@ -487,6 +487,50 @@ def enroll_or_verify_face_hash(
 
     distance = hamming_distance_hex64(stored_hash, captured_hash)
     return (distance <= max_distance), ("verified" if distance <= max_distance else "mismatch")
+
+
+def refresh_face_hash_on_trusted_device(
+    *,
+    user_id: str,
+    pin: str,
+    captured_algo: str,
+    captured_hash: str,
+    db_path: Path = DB_PATH,
+) -> None:
+    """Refresh stored face hash after successful PIN on a trusted device.
+
+    Why this exists:
+    - Webcam lighting/angle changes can cause dHash drift and repeated false mismatches.
+    - For a demo/prototype, it's better UX to "heal" the template when device trust is high.
+
+    Security note:
+    - Call this ONLY after device verification indicates the device is trusted (not new_device).
+    """
+    _ = derive_session_key(user_id=user_id, pin=pin, db_path=db_path)
+    config = get_user_auth_config(user_id=user_id, db_path=db_path)
+    old_algo = str(config.get("face_hash_algo", "") or "")
+    old_hash = str(config.get("face_hash", "") or "")
+
+    captured_algo = (captured_algo or "").strip().lower()
+    captured_hash = (captured_hash or "").strip().lower()
+    if not captured_algo or not captured_hash:
+        return
+
+    config["face_hash_algo"] = captured_algo
+    config["face_hash"] = captured_hash
+    _update_auth_config(user_id=user_id, config=config, db_path=db_path)
+
+    # Log only that a refresh happened; do not store the raw hash in logs.
+    log_change(
+        entity_type="user",
+        entity_id=user_id,
+        field_name="face_hash",
+        old_value="<set>" if (old_algo or old_hash) else "",
+        new_value="<refreshed>",
+        actor=user_id,
+        source="face_refresh_trusted_device",
+        db_path=db_path,
+    )
 
 
 def enroll_or_verify_device_id(
