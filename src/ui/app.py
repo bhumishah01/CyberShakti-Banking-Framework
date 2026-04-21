@@ -1531,6 +1531,16 @@ def customer_home(request: Request):
         pub = _read_tx_public(tx_id)
         if pub:
             codes = pub.get("reason_codes", []) or []
+            guidance = [str(x) for x in (pub.get("guidance", []) or [])]
+            try:
+                last_voice = _build_voice_prompt(
+                    lang=lang,
+                    risk_level=str(pub.get("risk_level", "LOW") or "LOW"),
+                    action=str(pub.get("action_decision", "ALLOW") or "ALLOW"),
+                    guidance=guidance,
+                )
+            except Exception:
+                last_voice = ""
             context["last_tx"] = {
                 "tx_id": pub.get("tx_id", tx_id),
                 "timestamp": pub.get("timestamp", ""),
@@ -1539,7 +1549,8 @@ def customer_home(request: Request):
                 "status": _friendly_status(str(pub.get("status", "")), lang=lang),
                 "decision": _friendly_action(str(pub.get("action_decision", "ALLOW")), lang=lang),
                 "reasons": [_friendly_reason(str(c), lang=lang) for c in codes] or [_t(lang, "no_alert")],
-                "guidance": [str(x) for x in (pub.get("guidance", []) or [])],
+                "guidance": guidance,
+                "voice_text": last_voice,
             }
 
     context = _read_and_clear_flash(request, context)
@@ -1700,14 +1711,34 @@ def bank_demo_run(request: Request, lang: str = Form(default="en")):
             created += 1
 
         msg = _tf(lang, "demo_run_done", users=len(users), tx=created)
-        # Go straight to Analytics so the professor immediately sees all panels populated.
+        # Go to a dedicated result page (not the analytics page) to avoid confusion in demos.
         return _flash_redirect(
-            f"/bank/analytics?lang={lang}",
+            f"/bank/demo/result?lang={lang}",
             message=msg,
             voice_text=_t(lang, "demo_run_voice"),
         )
     except Exception as exc:
         return _flash_redirect(f"/bank/dashboard?lang={lang}", error=str(exc))
+
+@app.get("/bank/demo/result")
+def bank_demo_result(request: Request):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
+    lang = _lang_from_request(request)
+    context = _admin_dashboard_context(request, lang=lang)
+    context = _read_and_clear_flash(request, context)
+    context["demo_links"] = {
+        "dashboard": f"/bank/dashboard?lang={lang}",
+        "analytics": f"/bank/analytics?lang={lang}",
+        "sync_queue": f"/sync/queue?lang={lang}",
+        "walkthrough": f"/demo/walkthrough?lang={lang}",
+    }
+    resp = render_template(request, "bank_demo_result.html", context)
+    resp.delete_cookie(FLASH_MSG_COOKIE)
+    resp.delete_cookie(FLASH_ERR_COOKIE)
+    resp.delete_cookie(FLASH_VOICE_COOKIE)
+    return resp
 
 
 @app.get("/bank/analytics")
@@ -1720,6 +1751,7 @@ def bank_analytics(request: Request):
     context = _admin_dashboard_context(request, lang=lang)
 
     # Local analytics (offline-first)
+    selected_user = (request.query_params.get("user") or "").strip()
     context["local_admin"] = {
         "overview": _local_admin_overview(DEFAULT_DB),
         "risk_distribution": _risk_distribution(DEFAULT_DB),
@@ -1730,6 +1762,9 @@ def bank_analytics(request: Request):
         "devices": list_devices(DEFAULT_DB, limit=80),
         "notifications": list_notifications(role="bank", user_id=None, db_path=DEFAULT_DB, limit=30),
     }
+
+    # User-wise analytics (requested): compare all users + deep dive for one user.
+    context["user_analytics"] = _bank_user_analytics(DEFAULT_DB, selected_user=selected_user, lang=lang)
 
     # Optional server analytics (if JWT session exists)
     token = _jwt_from_request(request)
@@ -1742,6 +1777,150 @@ def bank_analytics(request: Request):
             context["server"] = {"connected": False, "error": str(exc), "transactions": [], "fraud_logs": [], "sync_status": {}}
 
     return render_template(request, "bank_analytics.html", context)
+
+
+def _bank_user_analytics(db_path: Path, *, selected_user: str, lang: str) -> dict:
+    """Compute user-wise analytics using local SQLite (offline-first).
+
+    Returns:
+    - users: list of known user_ids for dropdown
+    - compare: pie data by tx count (top N users)
+    - selected: detailed analytics for one user (if selected_user provided)
+    """
+    init_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id FROM users ORDER BY created_at DESC LIMIT 50")
+        users = [row[0] for row in cursor.fetchall()]
+
+        cursor.execute("SELECT user_id, COUNT(*) AS c FROM transactions GROUP BY user_id ORDER BY c DESC LIMIT 8")
+        top = cursor.fetchall()
+
+    total = sum(int(c or 0) for _, c in top) or 1
+    compare = [{"label": str(uid), "count": int(c or 0), "pct": int(round((int(c or 0) / total) * 100))} for uid, c in top]
+
+    selected = None
+    if selected_user:
+        selected = _single_user_insights(db_path, user_id=selected_user, lang=lang)
+
+    return {
+        "users": users,
+        "selected_user": selected_user,
+        "compare": compare,
+        "selected": selected,
+    }
+
+
+def _single_user_insights(db_path: Path, *, user_id: str, lang: str) -> dict:
+    """Per-user charts: hour usage, reasons, risk bucket counts, failed attempts."""
+    init_db(db_path)
+    user_id = user_id.strip()
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT failed_attempts, last_auth_at, auth_config FROM users WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        if not row:
+            return {"user_id": user_id, "not_found": True}
+        failed_attempts, last_auth_at, auth_cfg_raw = row
+        try:
+            auth_cfg = json.loads(auth_cfg_raw or "{}")
+        except Exception:
+            auth_cfg = {}
+        if not isinstance(auth_cfg, dict):
+            auth_cfg = {}
+
+        cursor.execute(
+            """
+            SELECT timestamp, risk_level, risk_score, status, reason_codes
+            FROM transactions
+            WHERE user_id = ?
+            ORDER BY timestamp DESC
+            LIMIT 400
+            """,
+            (user_id,),
+        )
+        tx_rows = cursor.fetchall()
+
+        cursor.execute("SELECT tx_count, avg_amount, hour_hist, user_risk_score, last_tx_at FROM user_profiles WHERE user_id = ?", (user_id,))
+        prof = cursor.fetchone()
+
+    tx_count = 0
+    avg_amount = 0.0
+    hour_hist = {}
+    user_risk_score = 0
+    last_tx_at = ""
+    if prof:
+        tx_count, avg_amount, hour_hist_raw, user_risk_score, last_tx_at = prof
+        try:
+            hour_hist = json.loads(hour_hist_raw or "{}")
+        except Exception:
+            hour_hist = {}
+        if not isinstance(hour_hist, dict):
+            hour_hist = {}
+
+    # Aggregate
+    risk_buckets = {"LOW": 0, "MEDIUM": 0, "HIGH": 0}
+    reasons_count: dict[str, int] = {}
+    late_night = 0
+    held = 0
+    blocked = 0
+    for ts, risk_level, risk_score, status, reasons_raw in tx_rows:
+        lvl = str(risk_level or "LOW").upper()
+        if lvl not in risk_buckets:
+            lvl = "LOW"
+        risk_buckets[lvl] += 1
+        st = str(status or "")
+        if st in {"HOLD_FOR_REVIEW", "AWAITING_TRUSTED_APPROVAL"}:
+            held += 1
+        if st.startswith("BLOCKED") or st in {"BLOCKED_LOCAL", "REJECTED_INTEGRITY_FAIL"}:
+            blocked += 1
+
+        # Late-night: 11 PM - 5 AM IST based on timestamp
+        try:
+            dt = datetime.fromisoformat(str(ts))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=UTC)
+            dt_ist = dt.astimezone(ZoneInfo("Asia/Kolkata"))
+            if dt_ist.hour >= 23 or dt_ist.hour <= 5:
+                late_night += 1
+        except Exception:
+            pass
+
+        rc = _safe_parse_reason_codes(reasons_raw if isinstance(reasons_raw, str) else json.dumps(reasons_raw or {}))
+        for code in rc:
+            reasons_count[str(code)] = int(reasons_count.get(str(code), 0)) + 1
+
+    # Top reasons (explainable)
+    top_reasons = sorted(reasons_count.items(), key=lambda kv: kv[1], reverse=True)[:6]
+    top_reasons_fmt = [{"reason": _friendly_reason(code, lang=lang), "code": code, "count": count} for code, count in top_reasons]
+
+    # Hour histogram bar chart values (0-23)
+    bars = []
+    max_bar = 1
+    for h in range(24):
+        v = int(hour_hist.get(str(h), 0) or 0)
+        max_bar = max(max_bar, v)
+        bars.append({"hour": h, "count": v})
+
+    return {
+        "user_id": user_id,
+        "not_found": False,
+        "user_risk_score": int(user_risk_score or 0),
+        "tx_count": int(tx_count or 0),
+        "avg_amount": float(avg_amount or 0.0),
+        "last_tx_at": _friendly_time(last_tx_at),
+        "failed_attempts": int(failed_attempts or 0),
+        "last_auth_at": _friendly_time(last_auth_at),
+        "trusted_contact": str(auth_cfg.get("trusted_contact", "") or ""),
+        "freeze_until": _friendly_time(str(auth_cfg.get("freeze_until", "") or "")) if auth_cfg.get("freeze_until") else "-",
+        "risk_buckets": risk_buckets,
+        "top_reasons": top_reasons_fmt,
+        "late_night_count": int(late_night),
+        "held_count": int(held),
+        "blocked_count": int(blocked),
+        "hour_bars": bars,
+        "hour_max": int(max_bar),
+    }
 
 
 @app.post("/bank/server/tx/review")
@@ -3765,9 +3944,9 @@ def _run_professor_walkthrough(lang: str) -> dict:
 @app.post("/transactions/release")
 def release_transaction(
     request: Request,
-    tx_id: str = Form(...),
-    user_id: str = Form(...),
-    pin: str = Form(...),
+    tx_id: str = Form(default=""),
+    user_id: str = Form(default=""),
+    pin: str = Form(default=""),
     approval_code: str = Form(default=""),
     lang: str = Form(default="en"),
 ):
@@ -3775,12 +3954,18 @@ def release_transaction(
     if guard:
         return guard
     lang = _resolve_lang(lang)
+    tx_id = (tx_id or "").strip()
+    user_id = (user_id or "").strip()
+    pin = (pin or "").strip()
+    approval_code = (approval_code or "").strip()
+    if not tx_id or not user_id or not pin:
+        return _flash_redirect(f"/sync/queue?lang={lang}", error=_t(lang, "release_missing"))
     try:
         released = release_held_transaction(
-            tx_id=tx_id.strip(),
-            user_id=user_id.strip(),
-            pin=pin.strip(),
-            approval_code=approval_code.strip(),
+            tx_id=tx_id,
+            user_id=user_id,
+            pin=pin,
+            approval_code=approval_code,
             db_path=DEFAULT_DB,
         )
         if released:
@@ -4177,6 +4362,8 @@ def _bundle(lang: str) -> dict:
             "cust_unlock": "Unlock Details",
             "cust_enter_pin_to_view": "Enter your PIN to view the decrypted amount and recipient.",
             "cust_why_title": "Why this status",
+            "cust_safety_guidance_title": "Safety guidance",
+            "cust_read_guidance": "Read Safety Guidance",
             "cust_last_activity_label": "Last Activity",
             "cust_notif_blocked_title": "Transaction blocked",
             "cust_notif_blocked_body": "Your transfer was blocked for safety (risk {risk}).",
@@ -4331,6 +4518,23 @@ def _bundle(lang: str) -> dict:
             "analytics_title": "Analytics Dashboard",
             "analytics_subtitle": "All monitoring signals in one place: risk scores, behavior profiling, alerts, devices, and trends.",
             "analytics_graph_aria": "Fraud trend graph",
+            "userwise_analytics_title": "User-wise Analytics",
+            "userwise_analytics_hint": "Compare activity across users, then open a single user to see time patterns, failed logins, and reasons.",
+            "userwise_compare_title": "Compare Users (by transaction volume)",
+            "userwise_compare_hint": "Top users by number of local transactions.",
+            "userwise_compare_axis": "Transactions",
+            "userwise_select_title": "Deep Dive: One User",
+            "userwise_select_hint": "Select a user to view categorized patterns (late-night usage, failed logins, held/blocked).",
+            "userwise_choose_user": "Choose a user",
+            "userwise_view_user": "View User Analytics",
+            "userwise_user_header": "Selected user",
+            "userwise_patterns_title": "Risk Patterns",
+            "userwise_late_night": "Late-night tx",
+            "userwise_failed_logins": "Failed logins",
+            "userwise_hour_chart": "Usage Time Pattern (Hours)",
+            "userwise_hour_hint": "Histogram based on stored profile (preferred usage hours).",
+            "userwise_hour_axis": "Hours (0-23)",
+            "userwise_top_reasons": "Top Risk Reasons (Explainable)",
             "analytics_hint": "Everything here is computed from offline-first SQLite (low-end device friendly). When the central server is available, it can be cross-checked via the Server API.",
             "demo_map_button": "Demo Map",
             "demo_map_title": "Admin Demo Map (What to Show Where)",
@@ -4384,8 +4588,13 @@ def _bundle(lang: str) -> dict:
             "turn_on": "Turn ON",
             "turn_off": "Turn OFF",
             "demo_run_button": "1-Click Demo Run",
-            "demo_run_done": "Demo ready: created {users} users and {tx} transactions. Opening Analytics.",
-            "demo_run_voice": "Demo data created. Opening analytics dashboard now.",
+            "demo_run_done": "Demo ready: created {users} users and {tx} transactions.",
+            "demo_run_voice": "Demo data created. You can open analytics and sync queue now.",
+            "page_title_demo_result": "Demo Ready - RuralShield",
+            "demo_result_title": "Demo Pack Ready",
+            "demo_result_subtitle": "Next steps for your professor demo",
+            "demo_result_next_title": "What You Can Show Next",
+            "demo_result_next_body": "Open Analytics to show risk scoring, fraud trends, high-risk users, devices, and alerts. Open Sync Queue to sync selected records or release held transactions.",
             "sync_this_one": "Sync This",
             "sync_selected": "Sync Selected",
             "sync_selected_hint": "Select one or more pending rows, then sync only those records.",
@@ -4863,8 +5072,13 @@ def _bundle(lang: str) -> dict:
             "turn_on": "चालू करें",
             "turn_off": "बंद करें",
             "demo_run_button": "1‑क्लिक डेमो रन",
-            "demo_run_done": "डेमो तैयार: {users} उपयोगकर्ता और {tx} लेनदेन बनाए गए। Analytics खोल रहे हैं।",
-            "demo_run_voice": "डेमो डेटा बन गया। अब Analytics डैशबोर्ड खोल रहा हूँ।",
+            "demo_run_done": "डेमो तैयार: {users} उपयोगकर्ता और {tx} लेनदेन बनाए गए।",
+            "demo_run_voice": "डेमो डेटा बन गया। अब आप Analytics और Sync Queue खोल सकते हैं।",
+            "page_title_demo_result": "डेमो तैयार - RuralShield",
+            "demo_result_title": "डेमो पैक तैयार",
+            "demo_result_subtitle": "प्रोफेसर डेमो के लिए अगला कदम",
+            "demo_result_next_title": "अब क्या दिखाएं",
+            "demo_result_next_body": "Analytics खोलें: जोखिम स्कोर, ट्रेंड, हाई‑रिस्क यूज़र, डिवाइस, अलर्ट। Sync Queue खोलें: चयनित रिकॉर्ड सिंक या होल्ड लेनदेन रिलीज।",
             "sync_this_one": "सिर्फ़ इसे सिंक करें",
             "sync_selected": "चुने हुए सिंक करें",
             "sync_selected_hint": "एक या अधिक पेंडिंग रो चुनें, और केवल वही रिकॉर्ड सिंक करें।",
@@ -5165,8 +5379,13 @@ def _bundle(lang: str) -> dict:
             "turn_on": "ଅନ୍ କରନ୍ତୁ",
             "turn_off": "ଅଫ୍ କରନ୍ତୁ",
             "demo_run_button": "1-କ୍ଲିକ୍ ଡେମୋ ରନ୍",
-            "demo_run_done": "ଡେମୋ ପ୍ରସ୍ତୁତ: {users} ବ୍ୟବହାରକାରୀ ଏବଂ {tx} ଟ୍ରାନ୍ଜାକ୍ସନ ସୃଷ୍ଟି। Analytics ଖୋଲୁଛି।",
-            "demo_run_voice": "ଡେମୋ ଡାଟା ତିଆରି ହେଲା। ଏବେ Analytics ଖୋଲୁଛି।",
+            "demo_run_done": "ଡେମୋ ପ୍ରସ୍ତୁତ: {users} ବ୍ୟବହାରକାରୀ ଏବଂ {tx} ଟ୍ରାନ୍ଜାକ୍ସନ ସୃଷ୍ଟି।",
+            "demo_run_voice": "ଡେମୋ ଡାଟା ତିଆରି। ଏବେ ଆପଣ Analytics ଏବଂ Sync Queue ଖୋଲିପାରିବେ।",
+            "page_title_demo_result": "ଡେମୋ ପ୍ରସ୍ତୁତ - RuralShield",
+            "demo_result_title": "ଡେମୋ ପ୍ୟାକ୍ ପ୍ରସ୍ତୁତ",
+            "demo_result_subtitle": "ପ୍ରୋଫେସର୍ ଡେମୋ ପାଇଁ ଅଗ୍ରଗତି",
+            "demo_result_next_title": "ପରବର୍ତ୍ତୀରେ କ'ଣ ଦେଖାଇବେ",
+            "demo_result_next_body": "Analytics ଖୋଲନ୍ତୁ: ଝୁମ୍ପ ସ୍କୋର୍, ଟ୍ରେଣ୍ଡ, ହାଇ-ରିସ୍କ ଯୁଜର୍, ଡିଭାଇସ୍, ଅଲର୍ଟ। Sync Queue ଖୋଲନ୍ତୁ: ଚୟନିତ ରେକର୍ଡ ସିଙ୍କ କିମ୍ବା held ଟ୍ରାନ୍ଜାକ୍ସନ release କରନ୍ତୁ।",
             "sync_this_one": "ଏହାକୁ ସିଙ୍କ କରନ୍ତୁ",
             "sync_selected": "ଚୟନିତ ସିଙ୍କ",
             "sync_selected_hint": "ଗୋଟିଏ କିମ୍ବା ଅଧିକ ପେଣ୍ଡିଂ ରୋ ଚୟନ କରନ୍ତୁ, କେବଳ ସେଗୁଡିକୁ ସିଙ୍କ କରନ୍ତୁ।",
@@ -5467,8 +5686,13 @@ def _bundle(lang: str) -> dict:
             "turn_on": "ON કરો",
             "turn_off": "OFF કરો",
             "demo_run_button": "1-ક્લિક ડેમો રન",
-            "demo_run_done": "ડેમો તૈયાર: {users} યુઝર અને {tx} ટ્રાન્ઝેક્શન બનાવ્યા. Analytics ખોલી રહ્યા છીએ.",
-            "demo_run_voice": "ડેમો ડેટા બન્યું. હવે Analytics ડેશબોર્ડ ખોલી રહ્યા છીએ.",
+            "demo_run_done": "ડેમો તૈયાર: {users} યુઝર અને {tx} ટ્રાન્ઝેક્શન બનાવ્યા.",
+            "demo_run_voice": "ડેમો ડેટા બન્યું. હવે તમે Analytics અને Sync Queue ખોલી શકો છો.",
+            "page_title_demo_result": "ડેમો તૈયાર - RuralShield",
+            "demo_result_title": "ડેમો પૅક તૈયાર",
+            "demo_result_subtitle": "પ્રોફેસર ડેમો માટે આગળના પગલા",
+            "demo_result_next_title": "આગળ શું બતાવવું",
+            "demo_result_next_body": "Analytics ખોલો: જોખમ સ્કોર, ટ્રેન્ડ, હાઈ-રિસ્ક યુઝર્સ, ડિવાઇસ, એલર્ટ. Sync Queue ખોલો: પસંદ કરેલ રેકોર્ડ સિંક અથવા held ટ્રાન્ઝેક્શન રિલીઝ.",
             "sync_this_one": "ફક્ત આ સિંક કરો",
             "sync_selected": "પસંદ કરેલ સિંક",
             "sync_selected_hint": "એક અથવા વધુ પેન્ડિંગ રો પસંદ કરો અને ફક્ત તે જ રેકોર્ડ્સ સિંક કરો.",
@@ -5769,8 +5993,13 @@ def _bundle(lang: str) -> dict:
             "turn_on": "AN",
             "turn_off": "AUS",
             "demo_run_button": "1-Klick Demo",
-            "demo_run_done": "Demo bereit: {users} Benutzer und {tx} Transaktionen erstellt. Öffne Analytics.",
-            "demo_run_voice": "Demo-Daten erstellt. Öffne jetzt das Analytics-Dashboard.",
+            "demo_run_done": "Demo bereit: {users} Benutzer und {tx} Transaktionen erstellt.",
+            "demo_run_voice": "Demo-Daten erstellt. Du kannst jetzt Analytics und Sync Queue öffnen.",
+            "page_title_demo_result": "Demo bereit - RuralShield",
+            "demo_result_title": "Demo-Paket bereit",
+            "demo_result_subtitle": "Nächste Schritte für die Vorführung",
+            "demo_result_next_title": "Was Sie als Nächstes zeigen können",
+            "demo_result_next_body": "Öffnen Sie Analytics: Risiko-Scoring, Trends, High-Risk-User, Geräte, Alerts. Öffnen Sie Sync Queue: Auswahl syncen oder held Transaktionen freigeben.",
             "sync_this_one": "Nur dieses syncen",
             "sync_selected": "Auswahl syncen",
             "sync_selected_hint": "Wähle eine oder mehrere pending Zeilen und synchronisiere nur diese Records.",
@@ -5836,6 +6065,7 @@ def _t(lang: str, key: str) -> str:
             "demo_seeded": "Demo data seeded. Use user_id=demo_user and pin=1234.",
             "release_success": "Held transaction released and queued for sync.",
             "release_failed": "Release failed: transaction not found, not in HOLD state, or approval invalid.",
+            "release_missing": "Please enter Tx ID, User ID, and PIN to release a held transaction.",
             "trusted_updated": "Trusted contact updated for user",
             "trusted_removed": "Trusted contact removed for user",
             "freeze_enabled": "Panic freeze enabled until",
@@ -5876,6 +6106,7 @@ def _t(lang: str, key: str) -> str:
             "demo_seeded": "डेमो डेटा तैयार। user_id=demo_user और pin=1234 उपयोग करें।",
             "release_success": "रुका हुआ लेनदेन जारी कर दिया गया और सिंक कतार में भेजा गया।",
             "release_failed": "रिलीज़ विफल: लेनदेन नहीं मिला, HOLD में नहीं है, या स्वीकृति गलत है।",
+            "release_missing": "रिलीज़ के लिए Tx ID, User ID और PIN भरें।",
             "trusted_updated": "उपयोगकर्ता के लिए विश्वसनीय संपर्क अपडेट किया गया",
             "trusted_removed": "उपयोगकर्ता के लिए विश्वसनीय संपर्क हटाया गया",
             "freeze_enabled": "पैनिक फ्रीज़ सक्रिय, समय तक",
@@ -5915,6 +6146,8 @@ def _t(lang: str, key: str) -> str:
             "cust_unlock": "विवरण खोलें",
             "cust_enter_pin_to_view": "राशि और प्राप्तकर्ता देखने के लिए PIN डालें।",
             "cust_why_title": "स्थिति का कारण",
+            "cust_safety_guidance_title": "सुरक्षा मार्गदर्शन",
+            "cust_read_guidance": "सुरक्षा मार्गदर्शन सुनें",
             "cust_user_risk_score": "यूज़र जोखिम",
             "cust_avg_amount": "औसत राशि",
             "cust_preferred_hours": "पसंदीदा समय",
@@ -5971,6 +6204,7 @@ def _t(lang: str, key: str) -> str:
             "demo_seeded": "ଡେମୋ ଡାଟା ପ୍ରସ୍ତୁତ। user_id=demo_user ଏବଂ pin=1234 ବ୍ୟବହାର କରନ୍ତୁ।",
             "release_success": "ହୋଲ୍ଡ ଟ୍ରାନ୍ଜାକ୍ସନ ରିଲିଜ୍ ହେଲା ଏବଂ ସିଙ୍କ ପାଇଁ ପଠାଗଲା।",
             "release_failed": "ରିଲିଜ୍ ବିଫଳ: ଟ୍ରାନ୍ଜାକ୍ସନ ମିଳିଲା ନାହିଁ, HOLD ନୁହେଁ, କିମ୍ବା ସ୍ୱୀକୃତି ଭୁଲ।",
+            "release_missing": "ରିଲିଜ୍ ପାଇଁ Tx ID, User ID ଏବଂ PIN ଭରନ୍ତୁ।",
             "trusted_updated": "ଉପଯୋଗକର୍ତ୍ତା ପାଇଁ ଭରସାଯୋଗ୍ୟ ସଂଯୋଗ ଅଦ୍ୟତନ",
             "trusted_removed": "ଉପଯୋଗକର୍ତ୍ତା ପାଇଁ ଭରସାଯୋଗ୍ୟ ସଂଯୋଗ କାଢ଼ାଗଲା",
             "freeze_enabled": "ପ୍ୟାନିକ ଫ୍ରିଜ୍ ସକ୍ରିୟ, ସମୟ ପର୍ଯ୍ୟନ୍ତ",
@@ -6010,6 +6244,8 @@ def _t(lang: str, key: str) -> str:
             "cust_unlock": "ବିବରଣୀ ଅନଲକ୍ କରନ୍ତୁ",
             "cust_enter_pin_to_view": "ରାଶି ଏବଂ ପ୍ରାପ୍ତକର୍ତ୍ତା ଦେଖିବା ପାଇଁ PIN ଦିଅନ୍ତୁ।",
             "cust_why_title": "ଏହି ସ୍ଥିତି କାହିଁକି",
+            "cust_safety_guidance_title": "ସୁରକ୍ଷା ମାର୍ଗଦର୍ଶନ",
+            "cust_read_guidance": "ସୁରକ୍ଷା ମାର୍ଗଦର୍ଶନ ସୁଣନ୍ତୁ",
             "cust_user_risk_score": "ବ୍ୟବହାରକାରୀ ଝୁମ୍ପ",
             "cust_avg_amount": "ସାଧାରଣ ରାଶି",
             "cust_preferred_hours": "ପସନ୍ଦ ସମୟ",
@@ -6066,6 +6302,7 @@ def _t(lang: str, key: str) -> str:
             "demo_seeded": "ડેમો ડેટા સીડ થયું. user_id=demo_user અને pin=1234 વાપરો.",
             "release_success": "રોકાયેલ ટ્રાન્ઝેક્શન રિલીઝ થયું અને સિંક માટે કતારબદ્ધ છે.",
             "release_failed": "રિલીઝ નિષ્ફળ: ટ્રાન્ઝેક્શન મળ્યું નહીં, HOLD સ્થિતિમાં નથી, અથવા મંજૂરી અમાન્ય.",
+            "release_missing": "રિલીઝ માટે Tx ID, User ID અને PIN દાખલ કરો.",
             "trusted_updated": "વપરાશકર્તા માટે વિશ્વસનીય સંપર્ક અપડેટ થયો",
             "trusted_removed": "વપરાશકર્તા માટે વિશ્વસનીય સંપર્ક દૂર થયો",
             "freeze_enabled": "પેનિક ફ્રીઝ સક્રિય થયું જ્યાં સુધી",
@@ -6105,6 +6342,8 @@ def _t(lang: str, key: str) -> str:
             "cust_unlock": "વિગતો અનલોક",
             "cust_enter_pin_to_view": "રકમ અને પ્રાપ્તકર્તા જોવા માટે PIN નાખો.",
             "cust_why_title": "આ સ્થિતિ કેમ",
+            "cust_safety_guidance_title": "સુરક્ષા માર્ગદર્શન",
+            "cust_read_guidance": "સુરક્ષા માર્ગદર્શન સાંભળો",
             "cust_user_risk_score": "યુઝર જોખમ",
             "cust_avg_amount": "સરેરાશ રકમ",
             "cust_preferred_hours": "પસંદ સમય",
@@ -6161,6 +6400,7 @@ def _t(lang: str, key: str) -> str:
             "demo_seeded": "Demo-Daten erzeugt. user_id=demo_user und pin=1234 verwenden.",
             "release_success": "Gehaltene Transaktion freigegeben und für Sync vorgemerkt.",
             "release_failed": "Freigabe fehlgeschlagen: Transaktion nicht gefunden, nicht im HOLD-Status oder Freigabe ungültig.",
+            "release_missing": "Bitte Tx ID, User ID und PIN eingeben, um eine gehaltene Transaktion freizugeben.",
             "trusted_updated": "Vertrauenskontakt aktualisiert für Benutzer",
             "trusted_removed": "Vertrauenskontakt entfernt für Benutzer",
             "freeze_enabled": "Panik-Freeze aktiv bis",
@@ -6200,6 +6440,8 @@ def _t(lang: str, key: str) -> str:
             "cust_unlock": "Details entsperren",
             "cust_enter_pin_to_view": "PIN eingeben, um Betrag und Empfänger zu entschlüsseln.",
             "cust_why_title": "Warum dieser Status",
+            "cust_safety_guidance_title": "Sicherheits-Hinweise",
+            "cust_read_guidance": "Sicherheits-Hinweise vorlesen",
             "cust_user_risk_score": "Benutzer-Risiko",
             "cust_avg_amount": "Durchschnittsbetrag",
             "cust_preferred_hours": "Bevorzugte Zeiten",

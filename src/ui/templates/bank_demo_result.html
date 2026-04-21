@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ i18n.page_title_demo_result }}</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <div class="top-row">
+        <div>
+          <div class="eyebrow">{{ i18n.admin_portal_eyebrow }}</div>
+          <h1>{{ i18n.demo_result_title }}</h1>
+          <p>{{ i18n.demo_result_subtitle }}</p>
+        </div>
+        <div class="header-actions">
+          <form action="/bank/demo/result" method="get" class="lang-form">
+            <label for="lang">{{ i18n.lang_label }}</label>
+            <select id="lang" name="lang" onchange="this.form.submit()">
+              {% for item in langs %}
+              <option value="{{ item.code }}" {% if item.code == lang %}selected{% endif %}>{{ item.label }}</option>
+              {% endfor %}
+            </select>
+          </form>
+          <a href="{{ demo_links.dashboard }}" class="button secondary">{{ i18n.back_to_dashboard }}</a>
+          <a href="/logout?lang={{ lang }}" class="button secondary">{{ i18n.logout }}</a>
+        </div>
+      </div>
+    </header>
+
+    {% if message %}
+      <section class="alert success">{{ message }}</section>
+    {% endif %}
+    {% if error %}
+      <section class="alert error">{{ error }}</section>
+    {% endif %}
+
+    <section class="card">
+      <h2>{{ i18n.demo_result_next_title }}</h2>
+      <p class="muted small">{{ i18n.demo_result_next_body }}</p>
+      <div class="actions">
+        <a class="button" href="{{ demo_links.analytics }}">{{ i18n.analytics_button }}</a>
+        <a class="button secondary" href="{{ demo_links.sync_queue }}">{{ i18n.sync_queue_open }}</a>
+        <a class="button secondary" href="{{ demo_links.walkthrough }}">{{ i18n.demo_walkthrough }}</a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
+

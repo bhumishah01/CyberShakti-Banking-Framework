@@ -37,17 +37,128 @@
       <section class="alert error">{{ error }}</section>
     {% endif %}
 
-    <section class="card">
-      <h2>{{ i18n.admin_overview_title }}</h2>
-      <p class="muted small">{{ i18n.analytics_hint }}</p>
-      <section class="stats-grid">
-        <article class="stat-card"><h3>{{ i18n.users }}</h3><p>{{ local_admin.overview.user_count }}</p></article>
-        <article class="stat-card"><h3>{{ i18n.transactions }}</h3><p>{{ local_admin.overview.tx_count }}</p></article>
-        <article class="stat-card"><h3>{{ i18n.admin_allowed }}</h3><p>{{ local_admin.overview.allowed }}</p></article>
-        <article class="stat-card"><h3>{{ i18n.held }}</h3><p>{{ local_admin.overview.held }}</p></article>
-        <article class="stat-card"><h3>{{ i18n.blocked }}</h3><p>{{ local_admin.overview.blocked }}</p></article>
-        <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p>{{ local_admin.overview.pending_sync }}</p></article>
-      </section>
+	    <section class="card">
+	      <h2>{{ i18n.admin_overview_title }}</h2>
+	      <p class="muted small">{{ i18n.analytics_hint }}</p>
+	      <section class="stats-grid">
+	        <a class="stat-card-link" href="/users/list?lang={{ lang }}">
+	          <article class="stat-card"><h3>{{ i18n.users }}</h3><p>{{ local_admin.overview.user_count }}</p></article>
+	        </a>
+	        <a class="stat-card-link" href="/transactions/all?lang={{ lang }}">
+	          <article class="stat-card"><h3>{{ i18n.transactions }}</h3><p>{{ local_admin.overview.tx_count }}</p></article>
+	        </a>
+	        <a class="stat-card-link" href="/transactions/all?lang={{ lang }}">
+	          <article class="stat-card"><h3>{{ i18n.admin_allowed }}</h3><p>{{ local_admin.overview.allowed }}</p></article>
+	        </a>
+	        <a class="stat-card-link" href="/transactions/list/held?lang={{ lang }}">
+	          <article class="stat-card"><h3>{{ i18n.held }}</h3><p>{{ local_admin.overview.held }}</p></article>
+	        </a>
+	        <a class="stat-card-link" href="/transactions/list/blocked?lang={{ lang }}">
+	          <article class="stat-card"><h3>{{ i18n.blocked }}</h3><p>{{ local_admin.overview.blocked }}</p></article>
+	        </a>
+	        <a class="stat-card-link" href="/sync/queue?lang={{ lang }}">
+	          <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p>{{ local_admin.overview.pending_sync }}</p></article>
+	        </a>
+	    </section>
+
+	    <section class="card">
+	      <h2>{{ i18n.userwise_analytics_title }}</h2>
+	      <p class="muted small">{{ i18n.userwise_analytics_hint }}</p>
+
+	      <div class="admin-insights-grid">
+	        <article class="card inset-card">
+	          <h3>{{ i18n.userwise_compare_title }}</h3>
+	          <p class="muted small">{{ i18n.userwise_compare_hint }}</p>
+	          <div class="chart-wrap">
+	            <svg class="mini-chart" viewBox="0 0 640 180" role="img" aria-label="User comparison chart">
+	              <rect x="0" y="0" width="640" height="180" fill="#fbfdff" stroke="var(--border)"></rect>
+	              {% set items = user_analytics.compare %}
+	              {% set maxc = 1 %}
+	              {% for it in items %}{% if it.count > maxc %}{% set maxc = it.count %}{% endif %}{% endfor %}
+	              {% for it in items %}
+	                {% set i = loop.index0 %}
+	                {% set x = 60 + (i * 70) %}
+	                {% set h = (120 * it.count / maxc) %}
+	                <rect x="{{ x }}" y="{{ 150 - h }}" width="44" height="{{ h }}" fill="#224c9a" opacity="0.85"></rect>
+	                <text x="{{ x }}" y="168" font-size="11" fill="#20304a">{{ it.label }}</text>
+	                <text x="{{ x }}" y="{{ 146 - h }}" font-size="11" fill="#20304a">{{ it.count }}</text>
+	              {% endfor %}
+	              <text x="18" y="34" font-size="12" fill="#57637a">{{ i18n.userwise_compare_axis }}</text>
+	            </svg>
+	          </div>
+	        </article>
+
+	        <article class="card inset-card">
+	          <h3>{{ i18n.userwise_select_title }}</h3>
+	          <p class="muted small">{{ i18n.userwise_select_hint }}</p>
+	          <form action="/bank/analytics" method="get" class="grid" style="margin-top:10px;">
+	            <input type="hidden" name="lang" value="{{ lang }}">
+	            <select name="user" required>
+	              <option value="">{{ i18n.userwise_choose_user }}</option>
+	              {% for u in user_analytics.users %}
+	                <option value="{{ u }}" {% if u == user_analytics.selected_user %}selected{% endif %}>{{ u }}</option>
+	              {% endfor %}
+	            </select>
+	            <button type="submit">{{ i18n.userwise_view_user }}</button>
+	          </form>
+
+	          {% if user_analytics.selected and not user_analytics.selected.not_found %}
+	            <div class="card note compact-card" style="margin-top:12px;">
+	              <div class="muted small">{{ i18n.userwise_user_header }}</div>
+	              <div style="font-weight:800; font-size:1.1rem;">
+	                {{ user_analytics.selected.user_id }} · {{ i18n.admin_user_risk }} {{ user_analytics.selected.user_risk_score }}/100
+	              </div>
+	              <div class="muted small">
+	                {{ i18n.admin_tx_count }}: {{ user_analytics.selected.tx_count }} ·
+	                {{ i18n.admin_avg_amount }}: {{ "%.2f"|format(user_analytics.selected.avg_amount) }} ·
+	                {{ i18n.admin_last_activity }}: {{ user_analytics.selected.last_tx_at }}
+	              </div>
+	            </div>
+
+	            <div class="card inset-card" style="margin-top:12px;">
+	              <h3>{{ i18n.userwise_patterns_title }}</h3>
+	              <div class="stats-grid" style="margin-top:10px;">
+	                <article class="stat-card"><h3>{{ i18n.userwise_late_night }}</h3><p>{{ user_analytics.selected.late_night_count }}</p></article>
+	                <article class="stat-card"><h3>{{ i18n.userwise_failed_logins }}</h3><p>{{ user_analytics.selected.failed_attempts }}</p></article>
+	                <article class="stat-card"><h3>{{ i18n.held }}</h3><p>{{ user_analytics.selected.held_count }}</p></article>
+	                <article class="stat-card"><h3>{{ i18n.blocked }}</h3><p>{{ user_analytics.selected.blocked_count }}</p></article>
+	              </div>
+	            </div>
+
+	            <div class="card inset-card" style="margin-top:12px;">
+	              <h3>{{ i18n.userwise_hour_chart }}</h3>
+	              <p class="muted small">{{ i18n.userwise_hour_hint }}</p>
+	              <div class="chart-wrap">
+	                <svg class="mini-chart" viewBox="0 0 640 180" role="img" aria-label="Hour usage">
+	                  <rect x="0" y="0" width="640" height="180" fill="#fbfdff" stroke="var(--border)"></rect>
+	                  {% set bars = user_analytics.selected.hour_bars %}
+	                  {% set maxv = user_analytics.selected.hour_max %}
+	                  {% for b in bars %}
+	                    {% set i = loop.index0 %}
+	                    {% set x = 40 + (i * 24) %}
+	                    {% set h = (120 * b.count / (maxv if maxv else 1)) %}
+	                    <rect x="{{ x }}" y="{{ 150 - h }}" width="16" height="{{ h }}" fill="#0a9396" opacity="0.9"></rect>
+	                  {% endfor %}
+	                  <text x="18" y="34" font-size="12" fill="#57637a">{{ i18n.userwise_hour_axis }}</text>
+	                </svg>
+	              </div>
+	            </div>
+
+	            <div class="card inset-card" style="margin-top:12px;">
+	              <h3>{{ i18n.userwise_top_reasons }}</h3>
+	              <ul class="list compact">
+	                {% for r in user_analytics.selected.top_reasons %}
+	                  <li><strong>{{ r.reason }}</strong> <span class="muted small">({{ r.count }})</span></li>
+	                {% endfor %}
+	                {% if (user_analytics.selected.top_reasons|length) == 0 %}
+	                  <li class="muted">{{ i18n.admin_no_top_reasons }}</li>
+	                {% endif %}
+	              </ul>
+	            </div>
+	          {% endif %}
+	        </article>
+	      </div>
+	    </section>
 
       <section class="admin-insights-grid">
         <article class="card inset-card">
