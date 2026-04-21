@@ -86,7 +86,17 @@
               <div class="score-sub">/100</div>
             </div>
             <div>
-              <div class="mini-kpi"><strong>{{ safety.label }}</strong></div>
+              <div class="mini-kpi">
+                <strong>
+                  {% if safety.tone == 'good' %}
+                    {{ i18n.safety_label_healthy }}
+                  {% elif safety.tone == 'warn' %}
+                    {{ i18n.safety_label_watchlist }}
+                  {% else %}
+                    {{ i18n.safety_label_high_risk }}
+                  {% endif %}
+                </strong>
+              </div>
               <div class="muted small">{{ i18n.safety_score_hint }}</div>
               <div class="muted small">{{ i18n.safety_score_breakdown }} {{ safety.alerts_24h }} / {{ safety.held }} / {{ safety.blocked }}</div>
             </div>
