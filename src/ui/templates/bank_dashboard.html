@@ -132,27 +132,38 @@
       </div>
     </section>
 
-    <section id="operations" class="card">
-      <h2>{{ i18n.nav_operations }}</h2>
-      <div class="actions">
-        <a href="/sync/queue?lang={{ lang }}" class="button secondary">{{ i18n.sync_queue_open }}</a>
-        <a href="/audit/events?lang={{ lang }}" class="button secondary">{{ i18n.audit_events }}</a>
-        <a href="/change-log?lang={{ lang }}" class="button secondary">{{ i18n.change_log_full }}</a>
-      </div>
-      <form action="/sync" method="post" class="grid inline" style="margin-top:10px;">
-        <input type="hidden" name="lang" value="{{ lang }}">
-        <input name="server_url" placeholder="{{ i18n.ph_server_url }}" value="{{ server_url }}" required>
-        <button type="submit">{{ i18n.sync_pending }}</button>
-      </form>
-      <form action="/transactions/release" method="post" class="grid release-grid">
-        <input type="hidden" name="lang" value="{{ lang }}">
-        <input name="tx_id" placeholder="{{ i18n.ph_held_tx_id }}">
-        <input name="user_id" placeholder="{{ i18n.ph_user_id }}">
-        <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4">
-        <input name="approval_code" placeholder="{{ i18n.ph_approval_code }}">
-        <button type="submit">{{ i18n.release_held }}</button>
-      </form>
-    </section>
+	    <section id="operations" class="card">
+	      <h2>{{ i18n.nav_operations }}</h2>
+	      <div class="actions">
+	        <a href="/sync/queue?lang={{ lang }}" class="button secondary">{{ i18n.sync_queue_open }}</a>
+	        <a href="/audit/events?lang={{ lang }}" class="button secondary">{{ i18n.audit_events }}</a>
+	        <a href="/change-log?lang={{ lang }}" class="button secondary">{{ i18n.change_log_full }}</a>
+	      </div>
+	      <p class="muted small" style="margin-top:10px;">
+	        {{ i18n.ops_hint_syncqueue }}
+	      </p>
+
+	      <details class="tools-panel" style="margin-top:10px;">
+	        <summary>{{ i18n.ops_quick_sync }}</summary>
+	        <form action="/sync" method="post" class="grid inline" style="margin-top:10px;">
+	          <input type="hidden" name="lang" value="{{ lang }}">
+	          <input name="server_url" placeholder="{{ i18n.ph_server_url }}" value="{{ server_url }}" required>
+	          <button type="submit">{{ i18n.sync_pending }}</button>
+	        </form>
+	      </details>
+
+	      <details class="tools-panel" style="margin-top:10px;">
+	        <summary>{{ i18n.ops_release_manual }}</summary>
+	        <form action="/transactions/release" method="post" class="grid release-grid" style="margin-top:10px;">
+	          <input type="hidden" name="lang" value="{{ lang }}">
+	          <input name="tx_id" placeholder="{{ i18n.ph_held_tx_id }}">
+	          <input name="user_id" placeholder="{{ i18n.ph_user_id }}">
+	          <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4">
+	          <input name="approval_code" placeholder="{{ i18n.ph_approval_code }}">
+	          <button type="submit">{{ i18n.release_held }}</button>
+	        </form>
+	      </details>
+	    </section>
 
     <section id="admin" class="card">
       <h2>{{ i18n.nav_admin }}</h2>

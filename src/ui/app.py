@@ -71,6 +71,7 @@ FACE_COOKIE = "ruralshield_face_verified"
 DEVICE_COOKIE = "ruralshield_device_trust"
 JWT_COOKIE = "ruralshield_jwt"
 LANG_COOKIE = "ruralshield_lang"
+SERVER_URL_COOKIE = "ruralshield_server_url"
 FLASH_MSG_COOKIE = "ruralshield_flash_msg"
 FLASH_ERR_COOKIE = "ruralshield_flash_err"
 FLASH_VOICE_COOKIE = "ruralshield_flash_voice"
@@ -2885,16 +2886,7 @@ def do_sync(
     lang = _resolve_lang(lang)
     if _offline_sim_enabled(request):
         # Simulator mode: behave like "no internet", keep everything queued locally.
-        return templates.TemplateResponse(
-            request,
-            "index.html",
-            _admin_dashboard_context(
-                request,
-                error=_t(lang, "offline_sync_blocked"),
-                lang=lang,
-            ),
-            status_code=400,
-        )
+        return _flash_redirect(f"/sync/queue?lang={lang}", error=_t(lang, "offline_sync_blocked"))
     try:
         sender = make_http_sender(server_url.strip())
         summary = sync_outbox(db_path=DEFAULT_DB, sender=sender)
@@ -2903,9 +2895,19 @@ def do_sync(
             f"processed={summary.processed}, synced={summary.synced}, "
             f"duplicates={summary.duplicates}, retried={summary.retried}"
         )
-        return _flash_redirect(f"/sync/queue?lang={lang}", message=msg)
+        resp = _flash_redirect(f"/sync/queue?lang={lang}", message=msg)
+        try:
+            resp.set_cookie(SERVER_URL_COOKIE, server_url.strip(), max_age=60 * 60 * 24 * 14, samesite="lax")
+        except Exception:
+            pass
+        return resp
     except Exception as exc:
-        return _flash_redirect(f"/sync/queue?lang={lang}", error=str(exc))
+        resp = _flash_redirect(f"/sync/queue?lang={lang}", error=str(exc))
+        try:
+            resp.set_cookie(SERVER_URL_COOKIE, server_url.strip(), max_age=60 * 60 * 24 * 14, samesite="lax")
+        except Exception:
+            pass
+        return resp
 
 
 @app.post("/sync/one")
@@ -2929,9 +2931,72 @@ def do_sync_one(
             msg = _t(lang, "sync_one_not_found")
         else:
             msg = _tf(lang, "sync_one_done", synced=summary.synced, duplicates=summary.duplicates, retried=summary.retried)
-        return _flash_redirect(f"/sync/queue?lang={lang}", message=msg)
+        resp = _flash_redirect(f"/sync/queue?lang={lang}", message=msg)
+        try:
+            resp.set_cookie(SERVER_URL_COOKIE, server_url.strip(), max_age=60 * 60 * 24 * 14, samesite="lax")
+        except Exception:
+            pass
+        return resp
     except Exception as exc:
-        return _flash_redirect(f"/sync/queue?lang={lang}", error=str(exc))
+        resp = _flash_redirect(f"/sync/queue?lang={lang}", error=str(exc))
+        try:
+            resp.set_cookie(SERVER_URL_COOKIE, server_url.strip(), max_age=60 * 60 * 24 * 14, samesite="lax")
+        except Exception:
+            pass
+        return resp
+
+
+@app.post("/sync/selected")
+async def do_sync_selected(
+    request: Request,
+    server_url: str = Form(DEFAULT_SERVER_URL),
+    lang: str = Form(default="en"),
+):
+    """Manual sync: sync only selected outbox items (by outbox_id)."""
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
+    lang = _resolve_lang(lang)
+    if _offline_sim_enabled(request):
+        return _flash_redirect(f"/sync/queue?lang={lang}", error=_t(lang, "offline_sync_blocked"))
+
+    outbox_ids: list[str] = []
+    try:
+        form = await request.form()
+        outbox_ids = list(form.getlist("outbox_id"))
+    except Exception:
+        outbox_ids = []
+
+    outbox_ids = [str(x).strip() for x in outbox_ids if str(x).strip()]
+    if not outbox_ids:
+        return _flash_redirect(f"/sync/queue?lang={lang}", error=_t(lang, "sync_selected_none"))
+
+    sender = make_http_sender(server_url.strip())
+    processed = 0
+    synced = 0
+    duplicates = 0
+    retried = 0
+    errors: list[str] = []
+    for oid in outbox_ids[:50]:
+        try:
+            summary = sync_outbox_one(db_path=DEFAULT_DB, sender=sender, outbox_id=oid)
+            processed += summary.processed
+            synced += summary.synced
+            duplicates += summary.duplicates
+            retried += summary.retried
+        except Exception as exc:
+            retried += 1
+            errors.append(f"{oid[:8]}...: {exc}")
+
+    msg = _tf(lang, "sync_selected_done", processed=processed, synced=synced, duplicates=duplicates, retried=retried)
+    if errors:
+        msg += " " + _tf(lang, "sync_selected_errors", count=len(errors)) + " " + "; ".join(errors[:2])
+    resp = _flash_redirect(f"/sync/queue?lang={lang}", message=msg)
+    try:
+        resp.set_cookie(SERVER_URL_COOKIE, server_url.strip(), max_age=60 * 60 * 24 * 14, samesite="lax")
+    except Exception:
+        pass
+    return resp
 
 @app.get("/sync/queue")
 def view_sync_queue(request: Request, lang: str = "en"):
@@ -2942,11 +3007,11 @@ def view_sync_queue(request: Request, lang: str = "en"):
     lang = _resolve_lang(lang)
     rows = _fetch_outbox_rows()
     context = _admin_dashboard_context(request, lang=lang)
-    context["server_url"] = DEFAULT_SERVER_URL
+    context["server_url"] = str(request.cookies.get(SERVER_URL_COOKIE, "") or "").strip() or DEFAULT_SERVER_URL
     context["rows"] = rows
     context["stats"] = _outbox_stats(rows)
     context = _read_and_clear_flash(request, context)
-    resp = templates.TemplateResponse(request, "sync_queue.html", context)
+    resp = render_template(request, "sync_queue.html", context)
     resp.delete_cookie(FLASH_MSG_COOKIE)
     resp.delete_cookie(FLASH_ERR_COOKIE)
     resp.delete_cookie(FLASH_VOICE_COOKIE)
@@ -2979,11 +3044,8 @@ def simulate_night_sync(request: Request, lang: str = Form(default="en")):
                 tx_ids,
             )
         conn.commit()
-    rows = _fetch_outbox_rows()
-    context = _admin_dashboard_context(request, message=_t(lang, "night_sync_done").format(count=len(tx_ids)), lang=lang)
-    context["rows"] = rows
-    context["stats"] = _outbox_stats(rows)
-    return templates.TemplateResponse(request, "sync_queue.html", context)
+    msg = _t(lang, "night_sync_done").format(count=len(tx_ids))
+    return _flash_redirect(f"/sync/queue?lang={lang}", message=msg)
 
 
 @app.get("/audit")
@@ -4325,8 +4387,13 @@ def _bundle(lang: str) -> dict:
             "demo_run_done": "Demo ready: created {users} users and {tx} transactions. Opening Analytics.",
             "demo_run_voice": "Demo data created. Opening analytics dashboard now.",
             "sync_this_one": "Sync This",
+            "sync_selected": "Sync Selected",
+            "sync_selected_hint": "Select one or more pending rows, then sync only those records.",
             "sync_one_done": "Single sync complete: synced={synced}, duplicates={duplicates}, retried={retried}.",
             "sync_one_not_found": "That outbox item was not found (or already synced).",
+            "sync_selected_none": "No items selected. Tick the checkbox for a pending row first.",
+            "sync_selected_done": "Selected sync complete: processed={processed}, synced={synced}, duplicates={duplicates}, retried={retried}.",
+            "sync_selected_errors": "{count} item(s) had errors:",
             "offline_sync_blocked": "Offline simulator is ON. Turn it OFF to sync to the server.",
             "users": "Users",
             "transactions": "Transactions",
@@ -4343,6 +4410,9 @@ def _bundle(lang: str) -> dict:
             "audit_events_title": "Audit Events",
             "sync_queue_title": "Offline Sync Queue",
             "sync_queue_subtitle": "Pending local transactions waiting for night sync",
+            "ops_hint_syncqueue": "Open Sync Queue to sync specific items, sync selected rows, and release held transactions before syncing.",
+            "ops_quick_sync": "Quick Sync (All Pending)",
+            "ops_release_manual": "Manual Release Held (By Tx ID)",
             "section_1": "1. Register / Replace User",
             "section_2": "2. Create Secure Transaction",
             "section_3": "3. View Transactions",
@@ -4775,6 +4845,9 @@ def _bundle(lang: str) -> dict:
             "demo_page_5": "Change Log: बदलाव के पुराने/नए मान।",
             "sync_queue_title": "ऑफलाइन सिंक कतार",
             "sync_queue_subtitle": "स्थानीय लंबित लेनदेन जो नाइट सिंक की प्रतीक्षा में हैं",
+            "ops_hint_syncqueue": "विशिष्ट आइटम सिंक करने, चयनित रो सिंक करने और सिंक से पहले होल्ड लेनदेन रिलीज करने के लिए Sync Queue खोलें।",
+            "ops_quick_sync": "क्विक सिंक (सभी पेंडिंग)",
+            "ops_release_manual": "मैनुअल रिलीज (Tx ID द्वारा)",
             "dashboard_clean_title": "डैशबोर्ड",
             "dashboard_clean_body": "त्वरित मॉनिटरिंग और ऑपरेशन्स के लिए इस पेज का उपयोग करें। जोखिम स्कोर, ट्रेंड, अलर्ट, डिवाइस और अन्य विवरण देखने के लिए Analytics खोलें।",
             "safety_score_title": "बैंक सेफ्टी स्कोर",
@@ -4793,8 +4866,13 @@ def _bundle(lang: str) -> dict:
             "demo_run_done": "डेमो तैयार: {users} उपयोगकर्ता और {tx} लेनदेन बनाए गए। Analytics खोल रहे हैं।",
             "demo_run_voice": "डेमो डेटा बन गया। अब Analytics डैशबोर्ड खोल रहा हूँ।",
             "sync_this_one": "सिर्फ़ इसे सिंक करें",
+            "sync_selected": "चुने हुए सिंक करें",
+            "sync_selected_hint": "एक या अधिक पेंडिंग रो चुनें, और केवल वही रिकॉर्ड सिंक करें।",
             "sync_one_done": "सिंगल सिंक पूर्ण: synced={synced}, duplicates={duplicates}, retried={retried}.",
             "sync_one_not_found": "यह आउटबॉक्स आइटम नहीं मिला (या पहले से सिंक हो चुका है)।",
+            "sync_selected_none": "कोई आइटम चयनित नहीं। पहले पेंडिंग रो का चेकबॉक्स टिक करें।",
+            "sync_selected_done": "चयनित सिंक पूर्ण: processed={processed}, synced={synced}, duplicates={duplicates}, retried={retried}.",
+            "sync_selected_errors": "{count} आइटम में त्रुटि:",
             "offline_sync_blocked": "ऑफलाइन सिम्युलेटर चालू है। सर्वर पर सिंक करने के लिए इसे बंद करें।",
             "admin_portal_eyebrow": "बैंक/एडमिन पोर्टल",
             "admin_portal_title": "बैंक/एडमिन सुरक्षा पोर्टल",
@@ -5069,6 +5147,9 @@ def _bundle(lang: str) -> dict:
             "demo_page_5": "Change Log: ପରିବର୍ତ୍ତନ ପାଇଁ ପୁରୁଣା/ନୂତନ ମୂଲ୍ୟ।",
             "sync_queue_title": "ଅଫଲାଇନ ସିଙ୍କ କ୍ୟୁ",
             "sync_queue_subtitle": "ରାତି ସିଙ୍କ ପାଇଁ ପ୍ରତୀକ୍ଷା କରୁଥିବା ସ୍ଥାନୀୟ ଟ୍ରାନ୍ଜାକ୍ସନ",
+            "ops_hint_syncqueue": "ନିର୍ଦ୍ଦିଷ୍ଟ ଆଇଟମ୍ ସିଙ୍କ, ଚୟନିତ ରୋ ସିଙ୍କ, ଏବଂ ସିଙ୍କ ପୂର୍ବରୁ held ଟ୍ରାନ୍ଜାକ୍ସନ release କରିବା ପାଇଁ Sync Queue ଖୋଲନ୍ତୁ।",
+            "ops_quick_sync": "କ୍ୱିକ୍ ସିଙ୍କ (ସମସ୍ତ ପେଣ୍ଡିଂ)",
+            "ops_release_manual": "ମାନୁଆଲ୍ ରିଲିଜ୍ (Tx ID ଦ୍ୱାରା)",
             "dashboard_clean_title": "ଡ୍ୟାଶବୋର୍ଡ",
             "dashboard_clean_body": "ତ୍ୱରିତ ମନିଟରିଂ ଏବଂ ଅପରେସନ୍ ପାଇଁ ଏହି ପେଜ୍ ବ୍ୟବହାର କରନ୍ତୁ। ଝୁମ୍ପ ସ୍କୋର୍, ଟ୍ରେଣ୍ଡ, ଅଲର୍ଟ, ଡିଭାଇସ୍ ଇତ୍ୟାଦି ପାଇଁ Analytics ଖୋଲନ୍ତୁ।",
             "safety_score_title": "ବ୍ୟାଙ୍କ ସେଫ୍ଟି ସ୍କୋର୍",
@@ -5087,8 +5168,13 @@ def _bundle(lang: str) -> dict:
             "demo_run_done": "ଡେମୋ ପ୍ରସ୍ତୁତ: {users} ବ୍ୟବହାରକାରୀ ଏବଂ {tx} ଟ୍ରାନ୍ଜାକ୍ସନ ସୃଷ୍ଟି। Analytics ଖୋଲୁଛି।",
             "demo_run_voice": "ଡେମୋ ଡାଟା ତିଆରି ହେଲା। ଏବେ Analytics ଖୋଲୁଛି।",
             "sync_this_one": "ଏହାକୁ ସିଙ୍କ କରନ୍ତୁ",
+            "sync_selected": "ଚୟନିତ ସିଙ୍କ",
+            "sync_selected_hint": "ଗୋଟିଏ କିମ୍ବା ଅଧିକ ପେଣ୍ଡିଂ ରୋ ଚୟନ କରନ୍ତୁ, କେବଳ ସେଗୁଡିକୁ ସିଙ୍କ କରନ୍ତୁ।",
             "sync_one_done": "ସିଙ୍ଗଲ୍ ସିଙ୍କ ସମାପ୍ତ: synced={synced}, duplicates={duplicates}, retried={retried}.",
             "sync_one_not_found": "ଏହି ଆଉଟବକ୍ସ ଆଇଟମ୍ ମିଳିଲା ନାହିଁ (କିମ୍ବା ପୂର୍ବରୁ ସିଙ୍କ ହୋଇଗଲା)।",
+            "sync_selected_none": "କିଛି ଚୟନ ହୋଇନାହିଁ। ପ୍ରଥମେ ପେଣ୍ଡିଂ ରୋରେ ଚେକବକ୍ସ ଟିକ୍ କରନ୍ତୁ।",
+            "sync_selected_done": "ଚୟନିତ ସିଙ୍କ ସମାପ୍ତ: processed={processed}, synced={synced}, duplicates={duplicates}, retried={retried}.",
+            "sync_selected_errors": "{count} ଆଇଟମ୍ ରେ ତ୍ରୁଟି:",
             "offline_sync_blocked": "ଅଫଲାଇନ ସିମୁଲେଟର୍ ଅନ୍ ଅଛି। ସର୍ଭରକୁ ସିଙ୍କ କରିବା ପାଇଁ ଏହାକୁ ଅଫ୍ କରନ୍ତୁ।",
             "admin_portal_eyebrow": "ବ୍ୟାଙ୍କ/ଏଡମିନ ପୋର୍ଟାଲ",
             "admin_portal_title": "ବ୍ୟାଙ୍କ/ଏଡମିନ ସୁରକ୍ଷା ପୋର୍ଟାଲ",
@@ -5363,6 +5449,9 @@ def _bundle(lang: str) -> dict:
             "demo_page_5": "Change Log: ફેરફારો માટે જૂના/નવા મૂલ્યો.",
             "sync_queue_title": "ઓફલાઇન સિંક કતાર",
             "sync_queue_subtitle": "રાત્રે સિંક માટે રાહ જોતા લોકલ ટ્રાન્ઝેક્શન",
+            "ops_hint_syncqueue": "વિશિષ્ટ આઇટમ સિંક, પસંદ કરેલ રો સિંક, અને સિંક પહેલાં held ટ્રાન્ઝેક્શન release કરવા માટે Sync Queue ખોલો.",
+            "ops_quick_sync": "ક્વિક સિંક (બધા પેન્ડિંગ)",
+            "ops_release_manual": "મેન્યુઅલ રિલીઝ (Tx ID દ્વારા)",
             "dashboard_clean_title": "ડેશબોર્ડ",
             "dashboard_clean_body": "ઝડપી મોનિટરિંગ અને ઓપરેશન માટે આ પેજનો ઉપયોગ કરો. જોખમ સ્કોર, ટ્રેન્ડ, એલર્ટ, ડિવાઇસ વગેરે માટે Analytics ખોલો.",
             "safety_score_title": "બેન્ક સેફ્ટી સ્કોર",
@@ -5381,8 +5470,13 @@ def _bundle(lang: str) -> dict:
             "demo_run_done": "ડેમો તૈયાર: {users} યુઝર અને {tx} ટ્રાન્ઝેક્શન બનાવ્યા. Analytics ખોલી રહ્યા છીએ.",
             "demo_run_voice": "ડેમો ડેટા બન્યું. હવે Analytics ડેશબોર્ડ ખોલી રહ્યા છીએ.",
             "sync_this_one": "ફક્ત આ સિંક કરો",
+            "sync_selected": "પસંદ કરેલ સિંક",
+            "sync_selected_hint": "એક અથવા વધુ પેન્ડિંગ રો પસંદ કરો અને ફક્ત તે જ રેકોર્ડ્સ સિંક કરો.",
             "sync_one_done": "સિંગલ સિંક પૂર્ણ: synced={synced}, duplicates={duplicates}, retried={retried}.",
             "sync_one_not_found": "આ આઉટબોક્સ આઇટમ મળ્યું નથી (અથવા પહેલેથી સિંક થઈ ગયું છે).",
+            "sync_selected_none": "કોઈ આઇટમ પસંદ નથી. પહેલા પેન્ડિંગ રોનો ચેકબોક્સ ટિક કરો.",
+            "sync_selected_done": "પસંદ કરેલ સિંક પૂર્ણ: processed={processed}, synced={synced}, duplicates={duplicates}, retried={retried}.",
+            "sync_selected_errors": "{count} આઇટમમાં ભૂલ:",
             "offline_sync_blocked": "ઓફલાઇન સિમ્યુલેટર ON છે. સર્વર પર સિંક કરવા માટે તેને OFF કરો.",
             "admin_portal_eyebrow": "બેંક/એડમિન પોર્ટલ",
             "admin_portal_title": "બેંક/એડમિન સુરક્ષા પોર્ટલ",
@@ -5657,6 +5751,9 @@ def _bundle(lang: str) -> dict:
             "demo_page_5": "Change Log: alte/neue Werte für Änderungen.",
             "sync_queue_title": "Offline-Sync-Warteschlange",
             "sync_queue_subtitle": "Lokale Transaktionen warten auf den Nachtsync",
+            "ops_hint_syncqueue": "Öffne Sync Queue, um einzelne Items zu syncen, Auswahl zu syncen und held Transaktionen vor dem Sync freizugeben.",
+            "ops_quick_sync": "Quick Sync (Alle Pending)",
+            "ops_release_manual": "Manuelles Release (per Tx ID)",
             "dashboard_clean_title": "Dashboard",
             "dashboard_clean_body": "Diese Seite ist für schnelles Monitoring und Betrieb. Öffnen Sie Analytics für Risikoscoring, Trends, Warnungen, Geräte und Details.",
             "safety_score_title": "Bank-Sicherheits-Score",
@@ -5675,8 +5772,13 @@ def _bundle(lang: str) -> dict:
             "demo_run_done": "Demo bereit: {users} Benutzer und {tx} Transaktionen erstellt. Öffne Analytics.",
             "demo_run_voice": "Demo-Daten erstellt. Öffne jetzt das Analytics-Dashboard.",
             "sync_this_one": "Nur dieses syncen",
+            "sync_selected": "Auswahl syncen",
+            "sync_selected_hint": "Wähle eine oder mehrere pending Zeilen und synchronisiere nur diese Records.",
             "sync_one_done": "Einzelsync fertig: synced={synced}, duplicates={duplicates}, retried={retried}.",
             "sync_one_not_found": "Dieses Outbox-Item wurde nicht gefunden (oder ist bereits synchronisiert).",
+            "sync_selected_none": "Keine Items ausgewählt. Bitte Checkbox bei einer pending Zeile aktivieren.",
+            "sync_selected_done": "Auswahl-Sync fertig: processed={processed}, synced={synced}, duplicates={duplicates}, retried={retried}.",
+            "sync_selected_errors": "{count} Item(s) hatten Fehler:",
             "offline_sync_blocked": "Offline-Simulator ist AN. Schalten Sie ihn AUS, um zum Server zu synchronisieren.",
             "admin_portal_eyebrow": "Bank/Admin-Portal",
             "admin_portal_title": "Bank/Admin-Sicherheitsportal",
