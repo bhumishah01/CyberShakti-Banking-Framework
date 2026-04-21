@@ -83,6 +83,7 @@
                         <table class="table">
                           <thead>
                             <tr>
+                              <th>{{ i18n.name }}</th>
                               <th>{{ i18n.user_label }}</th>
                               <th>{{ i18n.created_at }}</th>
                             </tr>
@@ -90,6 +91,7 @@
                           <tbody>
                             {% for u in known_users %}
                               <tr>
+                                <td class="muted small">{{ u.display_name if u.display_name else "-" }}</td>
                                 <td><code>{{ u.user_id }}</code></td>
                                 <td class="muted small">{{ u.created_at }}</td>
                               </tr>
@@ -101,6 +103,19 @@
                   {% endif %}
                   <a class="linkish" href="/customer/register?lang={{ lang }}">{{ i18n.customer_register_link }}</a>
                 {% elif login_mode == "customer_register" %}
+                  <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <select name="title" aria-label="{{ i18n.title_label }}">
+                      <option value="">{{ i18n.title_label }}</option>
+                      <option value="mr">{{ i18n.title_mr }}</option>
+                      <option value="ms">{{ i18n.title_ms }}</option>
+                      <option value="mx">{{ i18n.title_mx }}</option>
+                    </select>
+                    <span></span>
+                  </div>
+                  <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <input name="first_name" placeholder="{{ i18n.ph_first_name }}" required>
+                    <input name="last_name" placeholder="{{ i18n.ph_last_name }}" required>
+                  </div>
                   <input name="user_id" placeholder="{{ i18n.ph_user_id }}" required>
                   <input name="phone" placeholder="{{ i18n.ph_phone_example }}" required>
                   <input name="pin" type="password" inputmode="numeric" placeholder="{{ i18n.ph_pin }}" maxlength="4" required>

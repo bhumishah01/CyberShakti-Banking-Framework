@@ -44,6 +44,9 @@ def create_user(
     user_id: str,
     phone_number: str,
     pin: str,
+    title: str = "",
+    first_name: str = "",
+    last_name: str = "",
     db_path: Path = DB_PATH,
     replace_existing: bool = False,
 ) -> None:
@@ -55,6 +58,11 @@ def create_user(
     pin_salt = token_bytes(16)
     phone_hash = _hash_phone(phone_number)
     pin_hash = _hash_pin(pin, pin_salt)
+    clean_title = str(title or "").strip().lower()
+    if clean_title not in {"mr", "ms", "mx", ""}:
+        clean_title = ""
+    clean_first = str(first_name or "").strip()
+    clean_last = str(last_name or "").strip()
 
     # Default auth config for step-up + panic freeze
     default_auth_config = {
@@ -85,12 +93,16 @@ def create_user(
             cursor.execute(
                 """
                 UPDATE users
-                SET phone_hash = ?, pin_salt = ?, pin_hash = ?,
+                SET title = ?, first_name = ?, last_name = ?,
+                    phone_hash = ?, pin_salt = ?, pin_hash = ?,
                     failed_attempts = 0, lockout_until = NULL, last_auth_at = NULL,
                     auth_config = ?, created_at = ?
                 WHERE user_id = ?
                 """,
                 (
+                    clean_title,
+                    clean_first,
+                    clean_last,
                     phone_hash,
                     pin_salt.hex(),
                     pin_hash.hex(),
@@ -119,12 +131,15 @@ def create_user(
             cursor.execute(
                 """
                 INSERT INTO users (
-                    user_id, phone_hash, pin_salt, pin_hash,
+                    user_id, title, first_name, last_name, phone_hash, pin_salt, pin_hash,
                     failed_attempts, lockout_until, last_auth_at, auth_config, created_at
-                ) VALUES (?, ?, ?, ?, 0, NULL, NULL, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, ?, ?)
                 """,
                 (
                     user_id,
+                    clean_title,
+                    clean_first,
+                    clean_last,
                     phone_hash,
                     pin_salt.hex(),
                     pin_hash.hex(),

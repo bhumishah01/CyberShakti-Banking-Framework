@@ -20,6 +20,9 @@ def init_db(db_path: Path = DB_PATH) -> None:
             """
             CREATE TABLE IF NOT EXISTS users (
                 user_id TEXT PRIMARY KEY,
+                title TEXT NOT NULL DEFAULT '',
+                first_name TEXT NOT NULL DEFAULT '',
+                last_name TEXT NOT NULL DEFAULT '',
                 phone_hash TEXT NOT NULL,
                 pin_salt TEXT NOT NULL,
                 pin_hash TEXT NOT NULL,
@@ -203,6 +206,7 @@ def init_db(db_path: Path = DB_PATH) -> None:
         )
 
         _ensure_users_auth_columns(cursor)
+        _ensure_users_identity_columns(cursor)
         _ensure_outbox_sync_columns(cursor)
         _ensure_transactions_columns(cursor)
         conn.commit()
@@ -221,6 +225,20 @@ def _ensure_users_auth_columns(cursor: sqlite3.Cursor) -> None:
         cursor.execute("ALTER TABLE users ADD COLUMN lockout_until TEXT")
     if "last_auth_at" not in columns:
         cursor.execute("ALTER TABLE users ADD COLUMN last_auth_at TEXT")
+
+
+def _ensure_users_identity_columns(cursor: sqlite3.Cursor) -> None:
+    """Backfill human-friendly identity fields for older local databases."""
+    cursor.execute("PRAGMA table_info(users)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    # SQLite allows adding NOT NULL columns only with a DEFAULT value.
+    if "title" not in columns:
+        cursor.execute("ALTER TABLE users ADD COLUMN title TEXT NOT NULL DEFAULT ''")
+    if "first_name" not in columns:
+        cursor.execute("ALTER TABLE users ADD COLUMN first_name TEXT NOT NULL DEFAULT ''")
+    if "last_name" not in columns:
+        cursor.execute("ALTER TABLE users ADD COLUMN last_name TEXT NOT NULL DEFAULT ''")
 
 
 def _ensure_outbox_sync_columns(cursor: sqlite3.Cursor) -> None:

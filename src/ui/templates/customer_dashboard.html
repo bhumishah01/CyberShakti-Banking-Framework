@@ -13,7 +13,13 @@
         <div>
           <div class="eyebrow">{{ i18n.customer_portal_eyebrow }}</div>
           <h1>{{ i18n.customer_portal_title }}</h1>
-          <p>{{ i18n.customer_welcome }} {{ active_user }}</p>
+          <p class="whoami">
+            {{ i18n.customer_welcome }}
+            <span class="whoami-name">{{ active_user_display }}</span>
+            {% if customer_id %}
+              <span class="whoami-id">({{ i18n.customer_id_label }} <code>{{ customer_id }}</code>)</span>
+            {% endif %}
+          </p>
         </div>
         <div class="header-actions">
           <div class="status-chip">{{ i18n.face_verified_label }}: {{ i18n.demo_yes if face_verified else i18n.demo_no }}</div>

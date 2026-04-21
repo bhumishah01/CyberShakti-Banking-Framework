@@ -607,6 +607,22 @@ tbody tr:nth-child(odd) {
 .pill-ok { background: #eaf8f1; color: #17674b; }
 .pill-warn { background: #fff4e6; color: #8a4b0f; }
 
+/* Customer identity line (bigger, demo-friendly) */
+.whoami {
+  margin-top: 6px;
+  font-size: 1.05rem;
+  color: #1f2937;
+}
+.whoami-name {
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+.whoami-id {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
 @media (max-width: 620px) {
   .container { padding: 12px; }
   .inline { grid-template-columns: 1fr; }

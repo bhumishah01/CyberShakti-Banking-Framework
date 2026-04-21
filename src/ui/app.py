@@ -523,9 +523,28 @@ def _login_context(request: Request, lang: str, mode: str, message: str = "", er
             init_db(DEFAULT_DB)
             with sqlite3.connect(DEFAULT_DB) as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT user_id, created_at FROM users ORDER BY created_at DESC LIMIT 10")
+                cursor.execute(
+                    "SELECT user_id, created_at, title, first_name, last_name FROM users ORDER BY created_at DESC LIMIT 10"
+                )
                 rows = cursor.fetchall()
-            context["known_users"] = [{"user_id": str(uid), "created_at": _friendly_time(ts)} for uid, ts in rows]
+            known = []
+            for uid, ts, title, first_name, last_name in rows:
+                parts = []
+                t = str(title or "").strip().lower()
+                if t:
+                    parts.append(t.upper())
+                if str(first_name or "").strip():
+                    parts.append(str(first_name).strip())
+                if str(last_name or "").strip():
+                    parts.append(str(last_name).strip())
+                known.append(
+                    {
+                        "user_id": str(uid),
+                        "created_at": _friendly_time(ts),
+                        "display_name": " ".join(parts).strip(),
+                    }
+                )
+            context["known_users"] = known
         except Exception:
             context["known_users"] = []
     else:
@@ -646,6 +665,35 @@ def _customer_dashboard_context(
         "synced": 0,
     }
     if session.get("active_user"):
+        # Human-friendly identity (stored locally). UX-only; core security uses user_id.
+        context["customer_id"] = session["active_user"]
+        context["active_user_display"] = session["active_user"]
+        try:
+            init_db(DEFAULT_DB)
+            with sqlite3.connect(DEFAULT_DB) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT title, first_name, last_name FROM users WHERE user_id = ?",
+                    (session["active_user"],),
+                )
+                row = cursor.fetchone()
+            if row:
+                title_code, first_name, last_name = row
+                title_code = str(title_code or "").strip().lower()
+                title_txt = ""
+                if title_code == "mr":
+                    title_txt = _t(lang, "title_mr")
+                elif title_code == "ms":
+                    title_txt = _t(lang, "title_ms")
+                elif title_code == "mx":
+                    title_txt = _t(lang, "title_mx")
+                parts = [p for p in [title_txt, str(first_name or "").strip(), str(last_name or "").strip()] if p]
+                display = " ".join(parts).strip()
+                if display:
+                    context["active_user_display"] = display
+        except Exception:
+            pass
+
         # Behavior profile (for explainability)
         try:
             prof = get_or_create_profile(session["active_user"], db_path=DEFAULT_DB)
@@ -695,6 +743,8 @@ def _customer_dashboard_context(
         context["freeze_until"] = "-"
         context["notifications"] = []
         context["profile"] = {"avg_amount": 0.0, "tx_count": 0, "user_risk_score": 0, "preferred_hours": []}
+        context["customer_id"] = ""
+        context["active_user_display"] = ""
     return context
 
 
@@ -1122,6 +1172,9 @@ def customer_register(
     user_id: str = Form(...),
     phone: str = Form(...),
     pin: str = Form(...),
+    title: str = Form(default=""),
+    first_name: str = Form(default=""),
+    last_name: str = Form(default=""),
     face_image: str = Form(default=""),
     device_id: str = Form(default=""),
     lang: str = Form(default="en"),
@@ -1144,6 +1197,9 @@ def customer_register(
             user_id=user_id.strip(),
             phone_number=phone.strip(),
             pin=pin.strip(),
+            title=title,
+            first_name=first_name,
+            last_name=last_name,
             db_path=DEFAULT_DB,
             replace_existing=False,
         )
@@ -3872,6 +3928,14 @@ def _bundle(lang: str) -> dict:
             "customer_register_title": "Customer Registration",
             "customer_register_subtitle": "Create your local account offline, then enroll face + device for safer banking.",
             "customer_welcome": "Logged in as",
+            "customer_id_label": "Customer ID",
+            "name": "Name",
+            "title_label": "Title",
+            "title_mr": "Mr",
+            "title_ms": "Ms",
+            "title_mx": "Mx",
+            "ph_first_name": "First name",
+            "ph_last_name": "Last name",
             "customer_tx_title": "Create Secure Transaction",
             "customer_safety_title": "Safety Controls",
             "customer_history_title": "Personal Transaction History",
@@ -4327,6 +4391,15 @@ def _bundle(lang: str) -> dict:
             "customer_portal_subtitle": "user ID, PIN और फेस वेरिफिकेशन से लॉगिन करें।",
             "customer_register_title": "ग्राहक रजिस्ट्रेशन",
             "customer_register_subtitle": "पहले लोकल (ऑफलाइन) अकाउंट बनाएं, फिर फेस + डिवाइस एनरोल करें।",
+            "customer_welcome": "लॉगिन:",
+            "customer_id_label": "ग्राहक आईडी",
+            "name": "नाम",
+            "title_label": "शीर्षक",
+            "title_mr": "श्री",
+            "title_ms": "सुश्री",
+            "title_mx": "Mx",
+            "ph_first_name": "पहला नाम",
+            "ph_last_name": "उपनाम",
             "customer_login_cta": "कस्टमर पोर्टल खोलें",
             "customer_register_cta": "अकाउंट बनाएं",
             "customer_register_link": "नए हैं? ऑफलाइन अकाउंट बनाएं",
@@ -4607,6 +4680,15 @@ def _bundle(lang: str) -> dict:
             "customer_portal_subtitle": "user ID, PIN ଏବଂ ଫେସ ଭେରିଫିକେସନ୍ ସହିତ ଲଗଇନ୍ କରନ୍ତୁ।",
             "customer_register_title": "ଗ୍ରାହକ ରେଜିଷ୍ଟ୍ରେସନ୍",
             "customer_register_subtitle": "ପ୍ରଥମେ ଲୋକାଲ୍ (ଅଫଲାଇନ) ଆକାଉଣ୍ଟ ସୃଷ୍ଟି, ପରେ ଫେସ + ଡିଭାଇସ୍ ଏନରୋଲ୍ କରନ୍ତୁ।",
+            "customer_welcome": "ଲଗଇନ୍:",
+            "customer_id_label": "ଗ୍ରାହକ ID",
+            "name": "ନାମ",
+            "title_label": "ଶୀର୍ଷକ",
+            "title_mr": "ଶ୍ରୀ",
+            "title_ms": "ଶ୍ରୀମତୀ",
+            "title_mx": "Mx",
+            "ph_first_name": "ପ୍ରଥମ ନାମ",
+            "ph_last_name": "ଉପନାମ",
             "customer_login_cta": "କଷ୍ଟମର୍ ପୋର୍ଟାଲ ଖୋଲନ୍ତୁ",
             "customer_register_cta": "ଆକାଉଣ୍ଟ ସୃଷ୍ଟି",
             "customer_register_link": "ନୂଆ? ଅଫଲାଇନ ଆକାଉଣ୍ଟ ସୃଷ୍ଟି କରନ୍ତୁ",
@@ -4887,6 +4969,15 @@ def _bundle(lang: str) -> dict:
             "customer_portal_subtitle": "user ID, PIN અને ફેસ વેરિફિકેશન સાથે લૉગિન કરો.",
             "customer_register_title": "કસ્ટમર રજીસ્ટ્રેશન",
             "customer_register_subtitle": "પહેલાં લોકલ (ઓફલાઇન) અકાઉન્ટ બનાવો, પછી ફેસ + ડિવાઇસ એનરોલ કરો.",
+            "customer_welcome": "લૉગિન:",
+            "customer_id_label": "ગ્રાહક ID",
+            "name": "નામ",
+            "title_label": "ઉપાધિ",
+            "title_mr": "શ્રી",
+            "title_ms": "શ્રીમતી",
+            "title_mx": "Mx",
+            "ph_first_name": "પ્રથમ નામ",
+            "ph_last_name": "અટક",
             "customer_login_cta": "કસ્ટમર પોર્ટલ ખોલો",
             "customer_register_cta": "અકાઉન્ટ બનાવો",
             "customer_register_link": "નવા છો? ઑફલાઇન અકાઉન્ટ બનાવો",
@@ -5167,6 +5258,15 @@ def _bundle(lang: str) -> dict:
             "customer_portal_subtitle": "Login mit user ID, PIN und Face-Verifikation.",
             "customer_register_title": "Kunden-Registrierung",
             "customer_register_subtitle": "Erstelle zuerst ein lokales Offline-Konto, dann Face + Geraet binden.",
+            "customer_welcome": "Angemeldet als",
+            "customer_id_label": "Kunden-ID",
+            "name": "Name",
+            "title_label": "Anrede",
+            "title_mr": "Herr",
+            "title_ms": "Frau",
+            "title_mx": "Mx",
+            "ph_first_name": "Vorname",
+            "ph_last_name": "Nachname",
             "customer_login_cta": "Kundenportal oeffnen",
             "customer_register_cta": "Konto erstellen",
             "customer_register_link": "Neu hier? Offline-Konto erstellen",
