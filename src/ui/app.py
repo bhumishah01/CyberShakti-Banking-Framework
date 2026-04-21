@@ -1261,6 +1261,40 @@ def bank_dashboard(request: Request):
     return render_template(request, "bank_dashboard.html", context)
 
 
+@app.get("/bank/analytics")
+def bank_analytics(request: Request):
+    """Dedicated analytics page (cleaner for demos / first-time viewers)."""
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
+    lang = _lang_from_request(request)
+    context = _admin_dashboard_context(request, lang=lang)
+
+    # Local analytics (offline-first)
+    context["local_admin"] = {
+        "overview": _local_admin_overview(DEFAULT_DB),
+        "risk_distribution": _risk_distribution(DEFAULT_DB),
+        "top_reasons": _top_fraud_reasons(DEFAULT_DB, limit=6),
+        "trends": _fraud_trends(DEFAULT_DB, days=14),
+        "high_risk_users": _high_risk_users(DEFAULT_DB, limit=20),
+        "alerts": list_recent_alerts(DEFAULT_DB, limit=50),
+        "devices": list_devices(DEFAULT_DB, limit=80),
+        "notifications": list_notifications(role="bank", user_id=None, db_path=DEFAULT_DB, limit=30),
+    }
+
+    # Optional server analytics (if JWT session exists)
+    token = _jwt_from_request(request)
+    context["server"] = {"connected": False, "error": "", "transactions": [], "fraud_logs": [], "sync_status": {}}
+    if token:
+        try:
+            data = _server_dashboard_bank_data(token)
+            context["server"] = {"connected": True, "error": "", **data}
+        except Exception as exc:
+            context["server"] = {"connected": False, "error": str(exc), "transactions": [], "fraud_logs": [], "sync_status": {}}
+
+    return render_template(request, "bank_analytics.html", context)
+
+
 @app.post("/bank/server/tx/review")
 def bank_review_server_tx(
     request: Request,
@@ -3213,6 +3247,7 @@ def _bundle(lang: str) -> dict:
             "page_title_agent": "Agent Mode - RuralShield",
             "page_title_audit": "Audit Events - RuralShield",
             "page_title_sync_queue": "Sync Queue - RuralShield",
+            "page_title_analytics": "Admin Analytics - RuralShield",
             "login_eyebrow": "Secure Entry",
             "login_title": "Choose Your Secure Portal",
             "login_subtitle": "Separate customer banking actions from bank-side fraud monitoring and controls.",
@@ -3394,6 +3429,10 @@ def _bundle(lang: str) -> dict:
             "help_note": "Tip: if data looks empty, use Utilities > Demo Utilities to seed demo data.",
             "help_open_full": "Open Full Guide",
             "help_close": "Close",
+            "analytics_button": "Analytics",
+            "analytics_title": "Analytics Dashboard",
+            "analytics_subtitle": "All monitoring signals in one place: risk scores, behavior profiling, alerts, devices, and trends.",
+            "analytics_hint": "Everything here is computed from offline-first SQLite (low-end device friendly). When the central server is available, it can be cross-checked via the Server API.",
             "users": "Users",
             "transactions": "Transactions",
             "pending_sync": "Pending Sync",

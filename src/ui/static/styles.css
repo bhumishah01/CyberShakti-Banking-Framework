@@ -557,6 +557,15 @@ tbody tr:nth-child(odd) {
   padding: 0;
 }
 
+.chart-wrap {
+  margin-top: 10px;
+}
+.mini-chart {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+
 @media (max-width: 620px) {
   .container { padding: 12px; }
   .inline { grid-template-columns: 1fr; }

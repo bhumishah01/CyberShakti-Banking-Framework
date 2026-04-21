@@ -25,6 +25,7 @@
             </select>
           </form>
           <button type="button" class="button secondary" id="openHelp">{{ i18n.help_button }}</button>
+          <a href="/bank/analytics?lang={{ lang }}" class="button secondary">{{ i18n.analytics_button }}</a>
           <a href="/guide?lang={{ lang }}" class="button secondary">{{ i18n.demo_guide }}</a>
           <a href="/logout?lang={{ lang }}" class="button secondary">{{ i18n.logout }}</a>
         </div>
@@ -75,6 +76,7 @@
       <a href="#devices">{{ i18n.nav_devices }}</a>
       <a href="#reports">{{ i18n.nav_reports }}</a>
       <a href="#utilities">{{ i18n.nav_utilities }}</a>
+      <a href="/bank/analytics?lang={{ lang }}">{{ i18n.analytics_button }}</a>
     </nav>
 
     <details class="card tools-panel" id="serverops">
