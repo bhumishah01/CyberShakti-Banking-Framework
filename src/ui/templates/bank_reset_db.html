@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ i18n.reset_offline_db_title }} - RuralShield</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="container">
+    <div class="top-row">
+      <header>
+        <span class="eyebrow">{{ i18n.admin_portal_eyebrow }}</span>
+        <h1>{{ i18n.reset_offline_db_title }}</h1>
+        <p>{{ i18n.reset_offline_db_subtitle }}</p>
+      </header>
+      <div class="header-actions">
+        <form class="lang-form" action="/bank/tools/reset-db" method="get">
+          <label for="lang">{{ i18n.lang_label }}</label>
+          <select id="lang" name="lang" onchange="this.form.submit()">
+            {% for item in langs %}
+              <option value="{{ item.code }}" {% if item.code == lang %}selected{% endif %}>{{ item.label }}</option>
+            {% endfor %}
+          </select>
+        </form>
+        <a class="button secondary" href="/bank/dashboard?lang={{ lang }}">{{ i18n.back_to_dashboard }}</a>
+      </div>
+    </div>
+
+    {% if error %}
+      <div class="alert error">{{ error }}</div>
+    {% endif %}
+
+    <section class="card">
+      <h2>{{ i18n.reset_offline_db_what }}</h2>
+      <ul class="list">
+        <li><strong>{{ i18n.reset_offline_db_point1 }}</strong></li>
+        <li><strong>{{ i18n.reset_offline_db_point2 }}</strong></li>
+        <li><strong>{{ i18n.reset_offline_db_point3 }}</strong></li>
+      </ul>
+      <p class="small muted" style="margin-top:10px;">
+        {{ i18n.reset_offline_db_path }} <span class="mono">{{ local_db_path }}</span>
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>{{ i18n.reset_offline_db_confirm }}</h2>
+      <form class="grid" action="/bank/tools/reset-db" method="post" style="margin-top:10px;">
+        <input type="hidden" name="lang" value="{{ lang }}">
+        <label class="checkbox">
+          <input type="checkbox" name="confirm" value="yes" required>
+          {{ i18n.reset_offline_db_checkbox }}
+        </label>
+        <button type="submit" class="button">{{ i18n.reset_offline_db_btn }}</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>
+

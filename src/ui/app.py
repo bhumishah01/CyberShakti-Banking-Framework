@@ -1865,6 +1865,59 @@ def bank_import_db_upload(
     return RedirectResponse(url=f"/bank/tools/import-db?lang={lang}&message={msg}", status_code=303)
 
 
+@app.get("/bank/tools/reset-db")
+def bank_reset_db_page(request: Request):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
+    lang = _lang_from_request(request)
+    context = _admin_dashboard_context(request, lang=lang)
+    context["local_db_path"] = str(DB_PATH)
+    context["error"] = (request.query_params.get("error") or "").strip()
+    return render_template(request, "bank_reset_db.html", context)
+
+
+@app.post("/bank/tools/reset-db")
+def bank_reset_db_post(
+    request: Request,
+    lang: str = Form(default="en"),
+    confirm: str = Form(default=""),
+):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
+    lang = _resolve_lang(lang)
+    if (confirm or "").strip().lower() != "yes":
+        return RedirectResponse(
+            url=f"/bank/tools/reset-db?lang={lang}&error={_t(lang, 'reset_offline_db_need_confirm')}",
+            status_code=303,
+        )
+
+    # Back up current DB before wiping.
+    try:
+        backup_dir = DB_PATH.parent / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        if DB_PATH.exists():
+            ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+            backup_path = backup_dir / f"ruralshield_reset_{ts}.db"
+            backup_path.write_bytes(DB_PATH.read_bytes())
+    except Exception:
+        pass
+
+    try:
+        if DB_PATH.exists():
+            DB_PATH.unlink()
+    except Exception as exc:
+        return RedirectResponse(
+            url=f"/bank/tools/reset-db?lang={lang}&error={_t(lang, 'reset_offline_db_failed')}: {str(exc)}",
+            status_code=303,
+        )
+
+    # Recreate blank schema.
+    init_db(DB_PATH)
+    return _flash_redirect(f"/bank/dashboard?lang={lang}", message=_t(lang, "reset_offline_db_done"))
+
+
 def _bank_user_analytics(db_path: Path, *, selected_user: str, lang: str) -> dict:
     """Compute user-wise analytics using local SQLite (offline-first).
 
@@ -4808,6 +4861,20 @@ def _bundle(lang: str) -> dict:
             "import_local_db_hint": "Current offline DB path on server:",
             "import_local_db_done": "Import complete. The offline database has been replaced.",
             "import_local_db_bad_file": "Please upload a valid .db file (SQLite database).",
+            "reset_offline_db": "Reset Offline Demo DB",
+            "reset_offline_db_title": "Reset Offline Demo Database",
+            "reset_offline_db_subtitle": "Wipe the uploaded offline SQLite database and start fresh (blank).",
+            "reset_offline_db_what": "What This Does",
+            "reset_offline_db_point1": "Creates a backup of the current offline DB in data/backups/",
+            "reset_offline_db_point2": "Deletes data/ruralshield.db and recreates a blank schema",
+            "reset_offline_db_point3": "After reset, you can Seed Demo Data or Import again",
+            "reset_offline_db_path": "Offline DB path:",
+            "reset_offline_db_confirm": "Confirm Reset",
+            "reset_offline_db_checkbox": "Yes, reset the offline database (this clears users/transactions).",
+            "reset_offline_db_btn": "Reset Now",
+            "reset_offline_db_need_confirm": "Please tick the confirmation checkbox first.",
+            "reset_offline_db_done": "Reset complete. Offline database is now blank.",
+            "reset_offline_db_failed": "Reset failed",
             "sync_queue_open": "Open Sync Queue",
             "more_tools": "More Tools",
             "replace_user": "Replace existing user",
@@ -5078,6 +5145,20 @@ def _bundle(lang: str) -> dict:
             "import_local_db_hint": "सर्वर पर वर्तमान offline DB पथ:",
             "import_local_db_done": "इम्पोर्ट पूरा हुआ। offline डेटाबेस बदल दिया गया है।",
             "import_local_db_bad_file": "कृपया वैध .db फाइल (SQLite डेटाबेस) अपलोड करें।",
+            "reset_offline_db": "ऑफलाइन डेमो DB रीसेट करें",
+            "reset_offline_db_title": "ऑफलाइन डेमो डेटाबेस रीसेट",
+            "reset_offline_db_subtitle": "अपलोड की गई offline SQLite DB हटाकर नया (खाली) डेमो शुरू करें।",
+            "reset_offline_db_what": "यह क्या करता है",
+            "reset_offline_db_point1": "वर्तमान offline DB का बैकअप data/backups/ में बनता है",
+            "reset_offline_db_point2": "data/ruralshield.db हटाकर खाली schema फिर से बनाता है",
+            "reset_offline_db_point3": "रीसेट के बाद Seed Demo Data या Import फिर से कर सकते हैं",
+            "reset_offline_db_path": "Offline DB पथ:",
+            "reset_offline_db_confirm": "रीसेट की पुष्टि",
+            "reset_offline_db_checkbox": "हाँ, offline डेटाबेस रीसेट करें (यूजर/ट्रांजैक्शन साफ होंगे)।",
+            "reset_offline_db_btn": "अभी रीसेट करें",
+            "reset_offline_db_need_confirm": "कृपया पहले पुष्टि चेकबॉक्स टिक करें।",
+            "reset_offline_db_done": "रीसेट पूरा। Offline डेटाबेस अब खाली है।",
+            "reset_offline_db_failed": "रीसेट असफल",
             "sync_queue_open": "सिंक कतार खोलें",
             "more_tools": "और टूल्स",
             "replace_user": "मौजूदा उपयोगकर्ता बदलें",
@@ -5398,6 +5479,20 @@ def _bundle(lang: str) -> dict:
             "import_local_db_hint": "ସର୍ଭରରେ ବର୍ତ୍ତମାନ offline DB ପଥ:",
             "import_local_db_done": "ଆମଦାନି ସମ୍ପୂର୍ଣ୍ଣ। offline ଡାଟାବେସ ପରିବର୍ତ୍ତନ ହୋଇଛି।",
             "import_local_db_bad_file": "ଦୟାକରି ଭାଲି .db ଫାଇଲ୍ (SQLite ଡାଟାବେସ) ଅପଲୋଡ୍ କରନ୍ତୁ।",
+            "reset_offline_db": "Offline ଡେମୋ DB ରିସେଟ୍",
+            "reset_offline_db_title": "Offline ଡେମୋ ଡାଟାବେସ ରିସେଟ୍",
+            "reset_offline_db_subtitle": "ଅପଲୋଡ୍ କରାଯାଇଥିବା offline SQLite DB କୁ ହଟାଇ ଖାଲି ଡେମୋ ଆରମ୍ଭ କରନ୍ତୁ।",
+            "reset_offline_db_what": "ଏହା କଣ କରେ",
+            "reset_offline_db_point1": "ବର୍ତ୍ତମାନ offline DB ର ବ୍ୟାକଅପ୍ data/backups/ ରେ ସେଭ୍ କରେ",
+            "reset_offline_db_point2": "data/ruralshield.db ହଟାଇ ଖାଲି schema ପୁଣି ସୃଷ୍ଟି କରେ",
+            "reset_offline_db_point3": "ରିସେଟ୍ ପରେ Seed Demo Data କିମ୍ବା ପୁଣି Import କରନ୍ତୁ",
+            "reset_offline_db_path": "Offline DB ପଥ:",
+            "reset_offline_db_confirm": "ରିସେଟ୍ ନିଶ୍ଚିତକରଣ",
+            "reset_offline_db_checkbox": "ହଁ, offline ଡାଟାବେସ ରିସେଟ୍ କରନ୍ତୁ (ୟୁଜର/ଟ୍ରାଞ୍ଜାକ୍ସନ ସଫା ହେବ)।",
+            "reset_offline_db_btn": "ଏବେ ରିସେଟ୍",
+            "reset_offline_db_need_confirm": "ଦୟାକରି ପ୍ରଥମେ ନିଶ୍ଚିତକରଣ ଚେକବକ୍ସ ଟିକ୍ କରନ୍ତୁ।",
+            "reset_offline_db_done": "ରିସେଟ୍ ସମ୍ପୂର୍ଣ୍ଣ। Offline ଡାଟାବେସ ଏବେ ଖାଲି।",
+            "reset_offline_db_failed": "ରିସେଟ୍ ବିଫଳ",
             "sync_queue_open": "ସିଙ୍କ କ୍ୟୁ ଖୋଲନ୍ତୁ",
             "more_tools": "ଅଧିକ ଟୁଲ୍ସ",
             "replace_user": "ପୂର୍ବରୁ ଥିବା ବ୍ୟବହାରକାରୀକୁ ବଦଳନ୍ତୁ",
@@ -5719,6 +5814,20 @@ def _bundle(lang: str) -> dict:
             "import_local_db_hint": "સર્વર પર વર્તમાન offline DB પાથ:",
             "import_local_db_done": "ઇમ્પોર્ટ પૂર્ણ. offline ડેટાબેસ બદલી દેવામાં આવ્યો છે.",
             "import_local_db_bad_file": "કૃપા કરીને માન્ય .db ફાઇલ (SQLite ડેટાબેસ) અપલોડ કરો.",
+            "reset_offline_db": "Offline ડેમો DB રીસેટ",
+            "reset_offline_db_title": "Offline ડેમો ડેટાબેસ રીસેટ",
+            "reset_offline_db_subtitle": "અપલોડ થયેલી offline SQLite DB કાઢી નવો (ખાલી) ડેમો શરૂ કરો.",
+            "reset_offline_db_what": "આ શું કરે છે",
+            "reset_offline_db_point1": "હાલની offline DB નું બેકઅપ data/backups/ માં બનાવે છે",
+            "reset_offline_db_point2": "data/ruralshield.db કાઢી ખાલી schema ફરી બનાવે છે",
+            "reset_offline_db_point3": "રીસેટ પછી Seed Demo Data અથવા Import ફરી કરી શકો છો",
+            "reset_offline_db_path": "Offline DB પાથ:",
+            "reset_offline_db_confirm": "રીસેટ પુષ્ટિ",
+            "reset_offline_db_checkbox": "હા, offline ડેટાબેસ રીસેટ કરો (યુઝર/ટ્રાન્ઝેક્શન સાફ થશે).",
+            "reset_offline_db_btn": "હમણાં રીસેટ કરો",
+            "reset_offline_db_need_confirm": "કૃપા કરીને પહેલા પુષ્ટિ ચેકબોક્સ ટિક કરો.",
+            "reset_offline_db_done": "રીસેટ પૂર્ણ. Offline ડેટાબેસ હવે ખાલી છે.",
+            "reset_offline_db_failed": "રીસેટ નિષ્ફળ",
             "sync_queue_open": "સિંક કતાર ખોલો",
             "more_tools": "વધુ ટૂલ્સ",
             "replace_user": "હાજર વપરાશકર્તા બદલો",
@@ -6039,6 +6148,20 @@ def _bundle(lang: str) -> dict:
             "import_local_db_hint": "Aktueller Offline-DB-Pfad auf dem Server:",
             "import_local_db_done": "Import abgeschlossen. Die Offline-Datenbank wurde ersetzt.",
             "import_local_db_bad_file": "Bitte eine gültige .db-Datei (SQLite-Datenbank) hochladen.",
+            "reset_offline_db": "Offline-Demo-DB zurücksetzen",
+            "reset_offline_db_title": "Offline-Demo-Datenbank zurücksetzen",
+            "reset_offline_db_subtitle": "Die hochgeladene Offline-SQLite-Datenbank löschen und neu (leer) starten.",
+            "reset_offline_db_what": "Was passiert dabei",
+            "reset_offline_db_point1": "Erstellt ein Backup der aktuellen Offline-DB in data/backups/",
+            "reset_offline_db_point2": "Löscht data/ruralshield.db und erstellt ein leeres Schema neu",
+            "reset_offline_db_point3": "Danach kannst du Demo-Daten seeden oder erneut importieren",
+            "reset_offline_db_path": "Offline-DB-Pfad:",
+            "reset_offline_db_confirm": "Reset bestätigen",
+            "reset_offline_db_checkbox": "Ja, Offline-Datenbank zurücksetzen (Benutzer/Transaktionen werden gelöscht).",
+            "reset_offline_db_btn": "Jetzt zurücksetzen",
+            "reset_offline_db_need_confirm": "Bitte zuerst die Bestätigung anhaken.",
+            "reset_offline_db_done": "Reset abgeschlossen. Offline-Datenbank ist jetzt leer.",
+            "reset_offline_db_failed": "Reset fehlgeschlagen",
             "sync_queue_open": "Sync-Warteschlange öffnen",
             "more_tools": "Weitere Tools",
             "replace_user": "Bestehenden Benutzer ersetzen",
