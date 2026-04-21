@@ -8,6 +8,10 @@ services:
     envVars:
       - key: PORT
         value: "8000"
+      - key: RURALSHIELD_COMBINED
+        value: "1"
+      - key: RURALSHIELD_API_MOUNT_PATH
+        value: "/api"
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET

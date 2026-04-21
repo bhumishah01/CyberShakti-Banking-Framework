@@ -16,6 +16,9 @@ RUN pip install --upgrade pip && pip install -r /app/requirements.txt
 COPY src /app/src
 COPY data /app/data
 
-# Render/Railway/Fly set PORT; default to 8000 for server API.
-EXPOSE 8000 8502
-CMD ["sh", "-c", "uvicorn src.server.app:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Render/Railway/Fly set PORT; default to 8000.
+# In production we run a single web service that serves UI + API together:
+# - UI at `/`
+# - API at `/api/*`
+EXPOSE 8000
+CMD ["sh", "-c", "uvicorn src.deploy.app:app --host 0.0.0.0 --port ${PORT:-8000}"]

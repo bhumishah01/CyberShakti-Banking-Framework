@@ -61,7 +61,26 @@ from src.sync.manager import sync_outbox, sync_outbox_one
 # === App configuration ===
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_DB = DB_PATH  # absolute, stable path (prevents “user not found” due to different cwd)
-DEFAULT_SERVER_URL = os.environ.get("RURALSHIELD_SERVER_URL", "http://localhost:8000")
+def _default_server_url() -> str:
+    # If explicitly set, always trust it.
+    explicit = os.environ.get("RURALSHIELD_SERVER_URL", "").strip()
+    if explicit:
+        return explicit
+
+    # Render deployment runs UI + API in one process (see src/deploy/app.py):
+    # UI is `/`, API is mounted at `/api`.
+    if (os.environ.get("RURALSHIELD_COMBINED", "") or "").strip() == "1":
+        port = (os.environ.get("PORT", "") or "8000").strip()
+        mount = (os.environ.get("RURALSHIELD_API_MOUNT_PATH", "") or "/api").strip()
+        if not mount.startswith("/"):
+            mount = f"/{mount}"
+        return f"http://127.0.0.1:{port}{mount}"
+
+    # Local dev default (API separate at :8000).
+    return "http://localhost:8000"
+
+
+DEFAULT_SERVER_URL = _default_server_url()
 SUPPORTED_LANGS = {"en", "hi", "or", "gu", "de"}
 DEFAULT_BANK_USERNAME = "bank_admin"
 DEFAULT_BANK_PASSWORD = "admin123"
