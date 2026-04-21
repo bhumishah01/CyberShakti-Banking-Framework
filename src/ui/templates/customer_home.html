@@ -173,6 +173,11 @@
 	          | <strong>{{ i18n.risk_label }}</strong> {{ last_tx.risk_level }} ({{ last_tx.risk_score }}/100)
 	          | <strong>{{ i18n.status_label }}</strong> {{ last_tx.status }}
 	        </p>
+	        {% if last_tx.voice_text %}
+	          <div class="actions" style="margin-top:10px;">
+	            <button type="button" class="button secondary voice-btn" data-voice-text="{{ last_tx.voice_text|e }}">{{ i18n.cust_voice_feedback_play }}</button>
+	          </div>
+	        {% endif %}
 	        <p class="muted small">{{ i18n.cust_why_title }}:</p>
 	        <ul class="list compact">
 	          {% for r in last_tx.reasons %}
@@ -186,11 +191,6 @@
 	              <li>{{ g }}</li>
 	            {% endfor %}
 	          </ul>
-	          {% if last_tx.voice_text %}
-	            <div class="actions">
-	              <button type="button" class="button secondary voice-btn" data-voice-text="{{ last_tx.voice_text|e }}">{{ i18n.cust_read_guidance }}</button>
-	            </div>
-	          {% endif %}
 	        {% endif %}
 	        <div class="actions">
 	          <a class="button secondary" href="/customer/tx/{{ last_tx.tx_id }}?lang={{ lang }}">{{ i18n.cust_view }}</a>
@@ -372,13 +372,30 @@
           const j = await r.json();
           if (j.status !== 'success') throw new Error(j.message || 'error');
           // redirect to show the last tx panel (no sensitive fields)
-          window.location.href = `/dashboard/customer?lang=${encodeURIComponent(lang)}&tx=${encodeURIComponent(j.data.tx_id)}#send`;
+          window.location.href = `/dashboard/customer?lang=${encodeURIComponent(lang)}&tx=${encodeURIComponent(j.data.tx_id)}&autoplay=1#send`;
         } catch (e) {
           alert(String(e && e.message ? e.message : e));
         } finally {
           btn.disabled = false;
         }
       });
+    })();
+
+    (() => {
+      // Voice feedback autoplay (optional): after creating a transaction, we redirect with autoplay=1.
+      const params = new URLSearchParams(window.location.search || "");
+      const autoplay = params.get("autoplay") === "1";
+      if (!autoplay) return;
+      const btn = document.querySelector("#rs-last-tx .voice-btn");
+      if (!btn || !window.speechSynthesis) return;
+      const text = btn.getAttribute("data-voice-text") || "";
+      if (!text) return;
+      try {
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+      } catch (e) {
+        // ignore
+      }
     })();
 
     (() => {

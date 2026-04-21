@@ -1533,10 +1533,12 @@ def customer_home(request: Request):
             codes = pub.get("reason_codes", []) or []
             guidance = [str(x) for x in (pub.get("guidance", []) or [])]
             try:
-                last_voice = _build_voice_prompt(
+                last_voice = _build_customer_voice_feedback(
                     lang=lang,
-                    risk_level=str(pub.get("risk_level", "LOW") or "LOW"),
-                    action=str(pub.get("action_decision", "ALLOW") or "ALLOW"),
+                    decision=str(pub.get("action_decision", "ALLOW") or "ALLOW"),
+                    status=str(pub.get("status", "") or ""),
+                    risk_score=int(pub.get("risk_score", 0) or 0),
+                    reasons=[_friendly_reason(str(c), lang=lang) for c in codes] or [],
                     guidance=guidance,
                 )
             except Exception:
@@ -3751,6 +3753,42 @@ def _build_voice_prompt(lang: str, risk_level: str, action: str, guidance: list[
     return " ".join([headline, *guidance]).strip()
 
 
+def _build_customer_voice_feedback(
+    *,
+    lang: str,
+    decision: str,
+    status: str,
+    risk_score: int,
+    reasons: list[str],
+    guidance: list[str],
+) -> str:
+    """Voice feedback for low-literacy UX (customer side).
+
+    This intentionally uses short, non-technical sentences.
+    """
+    decision = (decision or "").strip().upper()
+    status = (status or "").strip().upper()
+
+    if decision == "BLOCK" or status.startswith("BLOCKED"):
+        headline = _t(lang, "cust_voice_blocked").format(risk=risk_score)
+    elif decision == "HOLD" or status in {"HOLD_FOR_REVIEW", "AWAITING_TRUSTED_APPROVAL"}:
+        headline = _t(lang, "cust_voice_held").format(risk=risk_score)
+    else:
+        headline = _t(lang, "cust_voice_success").format(risk=risk_score)
+
+    why = ""
+    if reasons:
+        why = _t(lang, "cust_voice_why").format(reasons=", ".join(reasons[:4]))
+
+    extra = " ".join([str(x) for x in (guidance or [])][:3]).strip()
+    parts = [headline]
+    if why:
+        parts.append(why)
+    if extra:
+        parts.append(extra)
+    return " ".join(parts).strip()
+
+
 def _transaction_list_filter(kind: str) -> tuple[str, str, list]:
     normalized = (kind or "all").lower()
     if normalized in {"pending", "pending-sync"}:
@@ -4364,6 +4402,11 @@ def _bundle(lang: str) -> dict:
             "cust_why_title": "Why this status",
             "cust_safety_guidance_title": "Safety guidance",
             "cust_read_guidance": "Read Safety Guidance",
+            "cust_voice_feedback_play": "Voice Feedback",
+            "cust_voice_success": "Your transaction was saved successfully. It will sync when internet is available. Risk score {risk} out of 100.",
+            "cust_voice_held": "Your transaction is under review for safety. Risk score {risk} out of 100.",
+            "cust_voice_blocked": "Your transaction was blocked to protect you. Risk score {risk} out of 100.",
+            "cust_voice_why": "Reason: {reasons}.",
             "cust_last_activity_label": "Last Activity",
             "cust_notif_blocked_title": "Transaction blocked",
             "cust_notif_blocked_body": "Your transfer was blocked for safety (risk {risk}).",
@@ -6148,6 +6191,11 @@ def _t(lang: str, key: str) -> str:
             "cust_why_title": "स्थिति का कारण",
             "cust_safety_guidance_title": "सुरक्षा मार्गदर्शन",
             "cust_read_guidance": "सुरक्षा मार्गदर्शन सुनें",
+            "cust_voice_feedback_play": "वॉइस फीडबैक",
+            "cust_voice_success": "आपका लेनदेन सफलतापूर्वक सेव हो गया। इंटरनेट उपलब्ध होने पर यह सिंक हो जाएगा। जोखिम स्कोर 100 में से {risk}।",
+            "cust_voice_held": "सुरक्षा के लिए आपका लेनदेन समीक्षा में है। जोखिम स्कोर 100 में से {risk}।",
+            "cust_voice_blocked": "आपकी सुरक्षा के लिए लेनदेन ब्लॉक किया गया। जोखिम स्कोर 100 में से {risk}।",
+            "cust_voice_why": "कारण: {reasons}।",
             "cust_user_risk_score": "यूज़र जोखिम",
             "cust_avg_amount": "औसत राशि",
             "cust_preferred_hours": "पसंदीदा समय",
@@ -6246,6 +6294,11 @@ def _t(lang: str, key: str) -> str:
             "cust_why_title": "ଏହି ସ୍ଥିତି କାହିଁକି",
             "cust_safety_guidance_title": "ସୁରକ୍ଷା ମାର୍ଗଦର୍ଶନ",
             "cust_read_guidance": "ସୁରକ୍ଷା ମାର୍ଗଦର୍ଶନ ସୁଣନ୍ତୁ",
+            "cust_voice_feedback_play": "ଭଏସ୍ ଫିଡବ୍ୟାକ୍",
+            "cust_voice_success": "ଆପଣଙ୍କ ଟ୍ରାନ୍ଜାକ୍ସନ ସଫଳଭାବେ ସେଭ୍ ହେଲା। ଇଣ୍ଟରନେଟ୍ ମିଳିଲେ ସିଙ୍କ ହେବ। ଝୁମ୍ପ ସ୍କୋର୍ 100 ମଧ୍ୟରୁ {risk}।",
+            "cust_voice_held": "ସୁରକ୍ଷା ପାଇଁ ଟ୍ରାନ୍ଜାକ୍ସନ ସମୀକ୍ଷାରେ ଅଛି। ଝୁମ୍ପ ସ୍କୋର୍ 100 ମଧ୍ୟରୁ {risk}।",
+            "cust_voice_blocked": "ଆପଣଙ୍କୁ ସୁରକ୍ଷା କରିବା ପାଇଁ ଟ୍ରାନ୍ଜାକ୍ସନ ବ୍ଲକ୍ ହେଲା। ଝୁମ୍ପ ସ୍କୋର୍ 100 ମଧ୍ୟରୁ {risk}।",
+            "cust_voice_why": "କାରଣ: {reasons}।",
             "cust_user_risk_score": "ବ୍ୟବହାରକାରୀ ଝୁମ୍ପ",
             "cust_avg_amount": "ସାଧାରଣ ରାଶି",
             "cust_preferred_hours": "ପସନ୍ଦ ସମୟ",
@@ -6344,6 +6397,11 @@ def _t(lang: str, key: str) -> str:
             "cust_why_title": "આ સ્થિતિ કેમ",
             "cust_safety_guidance_title": "સુરક્ષા માર્ગદર્શન",
             "cust_read_guidance": "સુરક્ષા માર્ગદર્શન સાંભળો",
+            "cust_voice_feedback_play": "વોઇસ ફીડબેક",
+            "cust_voice_success": "તમારો ટ્રાન્ઝેક્શન સફળતાપૂર્વક સેવ થયો છે. ઇન્ટરનેટ ઉપલબ્ધ થાય ત્યારે સિંક થશે. જોખમ સ્કોર 100 માંથી {risk}.",
+            "cust_voice_held": "સુરક્ષા માટે તમારો ટ્રાન્ઝેક્શન સમીક્ષામાં છે. જોખમ સ્કોર 100 માંથી {risk}.",
+            "cust_voice_blocked": "તમારી સુરક્ષા માટે ટ્રાન્ઝેક્શન બ્લોક કરવામાં આવ્યો. જોખમ સ્કોર 100 માંથી {risk}.",
+            "cust_voice_why": "કારણ: {reasons}.",
             "cust_user_risk_score": "યુઝર જોખમ",
             "cust_avg_amount": "સરેરાશ રકમ",
             "cust_preferred_hours": "પસંદ સમય",
@@ -6442,6 +6500,11 @@ def _t(lang: str, key: str) -> str:
             "cust_why_title": "Warum dieser Status",
             "cust_safety_guidance_title": "Sicherheits-Hinweise",
             "cust_read_guidance": "Sicherheits-Hinweise vorlesen",
+            "cust_voice_feedback_play": "Sprach-Feedback",
+            "cust_voice_success": "Deine Transaktion wurde gespeichert. Sie wird synchronisiert, wenn Internet verfügbar ist. Risiko-Score {risk} von 100.",
+            "cust_voice_held": "Deine Transaktion wird zur Sicherheit geprüft. Risiko-Score {risk} von 100.",
+            "cust_voice_blocked": "Deine Transaktion wurde zu deinem Schutz blockiert. Risiko-Score {risk} von 100.",
+            "cust_voice_why": "Grund: {reasons}.",
             "cust_user_risk_score": "Benutzer-Risiko",
             "cust_avg_amount": "Durchschnittsbetrag",
             "cust_preferred_hours": "Bevorzugte Zeiten",
