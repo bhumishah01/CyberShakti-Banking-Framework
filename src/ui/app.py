@@ -1327,6 +1327,101 @@ def bank_offline_toggle(request: Request, mode: str = "off"):
     return resp
 
 
+@app.post("/bank/demo/run")
+def bank_demo_run(request: Request, lang: str = Form(default="en")):
+    """One-click demo pack to populate Analytics with realistic data."""
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
+    lang = _resolve_lang(lang)
+    try:
+        # Users
+        users = [
+            ("u1", "+919900000001", "1234"),
+            ("u2", "+919900000002", "1234"),
+            ("u3", "+919900000003", "1234"),
+        ]
+        for user_id, phone, pin in users:
+            create_user(
+                user_id=user_id,
+                phone_number=phone,
+                pin=pin,
+                db_path=DEFAULT_DB,
+                replace_existing=True,
+            )
+            # Device trust tracking (one trusted, one untrusted device)
+            enroll_or_verify_device_id(user_id=user_id, pin=pin, device_id=f"dev-{user_id}-trusted", db_path=DEFAULT_DB)
+            enroll_or_verify_device_id(user_id=user_id, pin=pin, device_id=f"dev-{user_id}-new", db_path=DEFAULT_DB)
+
+        # Failed login suspicious alert (u2)
+        for _ in range(3):
+            authenticate_user(user_id="u2", pin="0000", db_path=DEFAULT_DB)
+
+        now = datetime.now(UTC)
+        created = 0
+
+        # u1 baseline + high amount + rapid burst (triggers RAPID_TRANSACTIONS)
+        baseline = [
+            (120.0, "Milk Shop", now - timedelta(minutes=40)),
+            (240.0, "Bus Ticket", now - timedelta(minutes=30)),
+            (180.0, "Local Merchant", now - timedelta(minutes=22)),
+        ]
+        for amt, rcp, ts in baseline:
+            create_secure_transaction(user_id="u1", pin="1234", amount=amt, recipient=rcp, db_path=DEFAULT_DB, timestamp=ts)
+            created += 1
+
+        create_secure_transaction(
+            user_id="u1",
+            pin="1234",
+            amount=5200.0,
+            recipient="New Receiver",
+            db_path=DEFAULT_DB,
+            timestamp=now - timedelta(minutes=12),
+        )
+        created += 1
+
+        burst_start = now - timedelta(minutes=2)
+        for i in range(5):
+            create_secure_transaction(
+                user_id="u1",
+                pin="1234",
+                amount=90.0 + i,
+                recipient="Quick Transfers",
+                db_path=DEFAULT_DB,
+                timestamp=burst_start + timedelta(seconds=20 * i),
+            )
+            created += 1
+
+        # u2: mix of normal + risky (odd hour)
+        odd = (now - timedelta(hours=7)).replace(minute=10, second=0, microsecond=0)  # usually "odd" time
+        create_secure_transaction(user_id="u2", pin="1234", amount=650.0, recipient="Phone Recharge", db_path=DEFAULT_DB, timestamp=now - timedelta(minutes=18))
+        created += 1
+        create_secure_transaction(user_id="u2", pin="1234", amount=9800.0, recipient="Unknown Receiver", db_path=DEFAULT_DB, timestamp=odd)
+        created += 1
+
+        # u3: repeated high-risk pattern (triggers REPEATED_HIGH_RISK)
+        for k in range(3):
+            create_secure_transaction(
+                user_id="u3",
+                pin="1234",
+                amount=7500.0 + (k * 500),
+                recipient=f"New Recipient {k+1}",
+                db_path=DEFAULT_DB,
+                timestamp=now - timedelta(minutes=10 - k),
+            )
+            created += 1
+
+        msg = _tf(lang, "demo_run_done", users=len(users), tx=created)
+        # Go straight to Analytics so the professor immediately sees all panels populated.
+        return _flash_redirect(
+            f"/bank/analytics?lang={lang}",
+            message=msg,
+            voice_text=_t(lang, "demo_run_voice"),
+        )
+    except Exception as exc:
+        return _flash_redirect(f"/bank/dashboard?lang={lang}", error=str(exc))
+
+
 @app.get("/bank/analytics")
 def bank_analytics(request: Request):
     """Dedicated analytics page (cleaner for demos / first-time viewers)."""
@@ -3559,6 +3654,9 @@ def _bundle(lang: str) -> dict:
             "offline_sim_hint": "When ON, sync behaves like there is no internet (offline-first demo).",
             "turn_on": "Turn ON",
             "turn_off": "Turn OFF",
+            "demo_run_button": "1-Click Demo Run",
+            "demo_run_done": "Demo ready: created {users} users and {tx} transactions. Opening Analytics.",
+            "demo_run_voice": "Demo data created. Opening analytics dashboard now.",
             "users": "Users",
             "transactions": "Transactions",
             "pending_sync": "Pending Sync",

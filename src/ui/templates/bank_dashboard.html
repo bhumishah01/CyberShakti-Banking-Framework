@@ -114,6 +114,10 @@
       </div>
       <div class="actions">
         <a href="/bank/analytics?lang={{ lang }}" class="button">{{ i18n.analytics_button }}</a>
+        <form action="/bank/demo/run" method="post" style="display:inline;">
+          <input type="hidden" name="lang" value="{{ lang }}">
+          <button type="submit" class="button secondary">{{ i18n.demo_run_button }}</button>
+        </form>
         <a href="/guide?lang={{ lang }}" class="button secondary">{{ i18n.demo_guide }}</a>
       </div>
     </section>
