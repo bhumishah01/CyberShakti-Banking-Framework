@@ -24,7 +24,7 @@ from zoneinfo import ZoneInfo
 import logging
 import traceback
 
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -1784,7 +1784,7 @@ def bank_analytics(request: Request):
         "notifications": list_notifications(role="bank", user_id=None, db_path=DEFAULT_DB, limit=30),
     }
 
-    # User-wise analytics (requested): compare all users + deep dive for one user.
+    # User-wise analytics: compare all users + deep dive for one user.
     context["user_analytics"] = _bank_user_analytics(DEFAULT_DB, selected_user=selected_user, lang=lang)
 
     # Optional server analytics (if JWT session exists)
@@ -1798,6 +1798,71 @@ def bank_analytics(request: Request):
             context["server"] = {"connected": False, "error": str(exc), "transactions": [], "fraud_logs": [], "sync_status": {}}
 
     return render_template(request, "bank_analytics.html", context)
+
+
+@app.get("/bank/tools/import-db")
+def bank_import_db_page(request: Request):
+    """Upload a local SQLite DB (from laptop) to make the deployed demo match localhost data."""
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
+    lang = _lang_from_request(request)
+    context = _admin_dashboard_context(request, lang=lang)
+    context["local_db_path"] = str(DB_PATH)
+    context["message"] = (request.query_params.get("message") or "").strip()
+    context["error"] = (request.query_params.get("error") or "").strip()
+    return render_template(request, "bank_import_db.html", context)
+
+
+@app.post("/bank/tools/import-db")
+def bank_import_db_upload(
+    request: Request,
+    lang: str = Form(default="en"),
+    db_file: UploadFile = File(...),
+):
+    guard = _require_role(request, "bank")
+    if guard:
+        return guard
+    lang = _resolve_lang(lang)
+
+    filename = (db_file.filename or "").lower()
+    if not filename.endswith(".db"):
+        return RedirectResponse(
+            url=f"/bank/tools/import-db?lang={lang}&error={_t(lang, 'import_local_db_bad_file')}",
+            status_code=303,
+        )
+
+    blob = db_file.file.read()
+    if not blob or len(blob) < 64:
+        return RedirectResponse(
+            url=f"/bank/tools/import-db?lang={lang}&error={_t(lang, 'import_local_db_bad_file')}",
+            status_code=303,
+        )
+
+    # Back up the current DB (so the demo can be rolled back quickly).
+    try:
+        backup_dir = DB_PATH.parent / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        if DB_PATH.exists():
+            ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+            backup_path = backup_dir / f"ruralshield_{ts}.db"
+            backup_path.write_bytes(DB_PATH.read_bytes())
+    except Exception:
+        pass
+
+    # Atomic-ish replace: write temp, then rename.
+    tmp_path = DB_PATH.parent / f".upload_{uuid.uuid4().hex}.db"
+    tmp_path.write_bytes(blob)
+    tmp_path.replace(DB_PATH)
+
+    # Ensure schema exists (no-op if DB already has tables).
+    try:
+        init_db(DB_PATH)
+    except Exception:
+        pass
+
+    msg = _t(lang, "import_local_db_done")
+    return RedirectResponse(url=f"/bank/tools/import-db?lang={lang}&message={msg}", status_code=303)
 
 
 def _bank_user_analytics(db_path: Path, *, selected_user: str, lang: str) -> dict:
@@ -4730,6 +4795,19 @@ def _bundle(lang: str) -> dict:
             "demo_walkthrough": "Run Professor Demo Walkthrough",
             "demo_guide": "Demo Guide",
             "clear_messages": "Clear Messages",
+            "import_local_db": "Import Local Demo Data",
+            "import_local_db_title": "Import Local Demo Database",
+            "import_local_db_subtitle": "Upload your existing ruralshield.db from localhost so the deployed demo shows the same users and transactions.",
+            "import_local_db_how": "How It Works",
+            "import_local_db_note": "This replaces the deployed instance's offline SQLite database. For demo use; you can re-import anytime.",
+            "import_local_db_step1": "On your laptop, locate the file: data/ruralshield.db",
+            "import_local_db_step2": "Upload it here as a .db file",
+            "import_local_db_step3": "Refresh dashboards to see the imported users/transactions",
+            "import_local_db_upload": "Upload Database File",
+            "import_local_db_btn": "Upload and Replace",
+            "import_local_db_hint": "Current offline DB path on server:",
+            "import_local_db_done": "Import complete. The offline database has been replaced.",
+            "import_local_db_bad_file": "Please upload a valid .db file (SQLite database).",
             "sync_queue_open": "Open Sync Queue",
             "more_tools": "More Tools",
             "replace_user": "Replace existing user",
@@ -4987,6 +5065,19 @@ def _bundle(lang: str) -> dict:
             "demo_walkthrough": "प्रोफेसर डेमो वॉकथ्रू चलाएं",
             "demo_guide": "डेमो गाइड",
             "clear_messages": "संदेश साफ करें",
+            "import_local_db": "लोकल डेमो डेटा इम्पोर्ट करें",
+            "import_local_db_title": "लोकल डेमो डेटाबेस इम्पोर्ट",
+            "import_local_db_subtitle": "localhost से अपना ruralshield.db अपलोड करें ताकि deployed डेमो में वही यूजर और ट्रांजैक्शन दिखें।",
+            "import_local_db_how": "कैसे काम करता है",
+            "import_local_db_note": "यह deployed instance की offline SQLite DB को replace करता है। डेमो के लिए; आप कभी भी फिर से इम्पोर्ट कर सकते हैं।",
+            "import_local_db_step1": "अपने लैपटॉप पर फाइल खोजें: data/ruralshield.db",
+            "import_local_db_step2": "इसे यहां .db फाइल के रूप में अपलोड करें",
+            "import_local_db_step3": "डैशबोर्ड रिफ्रेश करें ताकि इम्पोर्ट किया हुआ डेटा दिखे",
+            "import_local_db_upload": "डेटाबेस फाइल अपलोड",
+            "import_local_db_btn": "अपलोड करें और बदलें",
+            "import_local_db_hint": "सर्वर पर वर्तमान offline DB पथ:",
+            "import_local_db_done": "इम्पोर्ट पूरा हुआ। offline डेटाबेस बदल दिया गया है।",
+            "import_local_db_bad_file": "कृपया वैध .db फाइल (SQLite डेटाबेस) अपलोड करें।",
             "sync_queue_open": "सिंक कतार खोलें",
             "more_tools": "और टूल्स",
             "replace_user": "मौजूदा उपयोगकर्ता बदलें",
@@ -5294,6 +5385,19 @@ def _bundle(lang: str) -> dict:
             "demo_walkthrough": "ପ୍ରୋଫେସର ଡେମୋ ଚଲାନ୍ତୁ",
             "demo_guide": "ଡେମୋ ଗାଇଡ୍",
             "clear_messages": "ସନ୍ଦେଶ ସଫା କରନ୍ତୁ",
+            "import_local_db": "ଲୋକାଲ ଡେମୋ ଡାଟା ଆମଦାନି",
+            "import_local_db_title": "ଲୋକାଲ ଡେମୋ ଡାଟାବେସ ଆମଦାନି",
+            "import_local_db_subtitle": "localhost ରୁ ruralshield.db ଅପଲୋଡ୍ କରନ୍ତୁ ଯାହାଦ୍ୱାରା deployed ଡେମୋରେ ସେହି ଡାଟା ଦେଖାଯିବ।",
+            "import_local_db_how": "କିପରି କାମ କରେ",
+            "import_local_db_note": "ଏହା deployed instance ର offline SQLite DB କୁ replace କରିଦିଏ। ଡେମୋ ପାଇଁ; ଆପଣ ପୁନର୍ବାର ଆମଦାନି କରିପାରିବେ।",
+            "import_local_db_step1": "ଲ୍ୟାପଟପ୍ ରେ ଫାଇଲ୍ ଖୋଜନ୍ତୁ: data/ruralshield.db",
+            "import_local_db_step2": "ଏଠାରେ .db ଫାଇଲ୍ ଭାବେ ଅପଲୋଡ୍ କରନ୍ତୁ",
+            "import_local_db_step3": "ଡ୍ୟାଶବୋର୍ଡ ରିଫ୍ରେସ୍ କରନ୍ତୁ",
+            "import_local_db_upload": "ଡାଟାବେସ ଫାଇଲ୍ ଅପଲୋଡ୍",
+            "import_local_db_btn": "ଅପଲୋଡ୍ ଏବଂ ପରିବର୍ତ୍ତନ",
+            "import_local_db_hint": "ସର୍ଭରରେ ବର୍ତ୍ତମାନ offline DB ପଥ:",
+            "import_local_db_done": "ଆମଦାନି ସମ୍ପୂର୍ଣ୍ଣ। offline ଡାଟାବେସ ପରିବର୍ତ୍ତନ ହୋଇଛି।",
+            "import_local_db_bad_file": "ଦୟାକରି ଭାଲି .db ଫାଇଲ୍ (SQLite ଡାଟାବେସ) ଅପଲୋଡ୍ କରନ୍ତୁ।",
             "sync_queue_open": "ସିଙ୍କ କ୍ୟୁ ଖୋଲନ୍ତୁ",
             "more_tools": "ଅଧିକ ଟୁଲ୍ସ",
             "replace_user": "ପୂର୍ବରୁ ଥିବା ବ୍ୟବହାରକାରୀକୁ ବଦଳନ୍ତୁ",
@@ -5602,6 +5706,19 @@ def _bundle(lang: str) -> dict:
             "demo_walkthrough": "પ્રોફેસર ડેમો વોકથ્રૂ ચલાવો",
             "demo_guide": "ડેમો ગાઇડ",
             "clear_messages": "સંદેશો સાફ કરો",
+            "import_local_db": "લોકલ ડેમો ડેટા ઇમ્પોર્ટ કરો",
+            "import_local_db_title": "લોકલ ડેમો ડેટાબેસ ઇમ્પોર્ટ",
+            "import_local_db_subtitle": "localhostમાંથી ruralshield.db અપલોડ કરો જેથી deployed ડેમોમાં એજ યુઝર્સ અને ટ્રાન્ઝેક્શન દેખાય.",
+            "import_local_db_how": "કેવી રીતે કામ કરે છે",
+            "import_local_db_note": "આ deployed instance ની offline SQLite DB ને replace કરે છે. ડેમો માટે; તમે ફરીથી ઇમ્પોર્ટ કરી શકો છો.",
+            "import_local_db_step1": "તમારા લૅપટોપમાં ફાઇલ શોધો: data/ruralshield.db",
+            "import_local_db_step2": "આને અહીં .db ફાઇલ તરીકે અપલોડ કરો",
+            "import_local_db_step3": "ડેશબોર્ડ રિફ્રેશ કરો",
+            "import_local_db_upload": "ડેટાબેસ ફાઇલ અપલોડ",
+            "import_local_db_btn": "અપલોડ અને બદલો",
+            "import_local_db_hint": "સર્વર પર વર્તમાન offline DB પાથ:",
+            "import_local_db_done": "ઇમ્પોર્ટ પૂર્ણ. offline ડેટાબેસ બદલી દેવામાં આવ્યો છે.",
+            "import_local_db_bad_file": "કૃપા કરીને માન્ય .db ફાઇલ (SQLite ડેટાબેસ) અપલોડ કરો.",
             "sync_queue_open": "સિંક કતાર ખોલો",
             "more_tools": "વધુ ટૂલ્સ",
             "replace_user": "હાજર વપરાશકર્તા બદલો",
@@ -5909,6 +6026,19 @@ def _bundle(lang: str) -> dict:
             "demo_walkthrough": "Professor-Demo-Walkthrough starten",
             "demo_guide": "Demo-Leitfaden",
             "clear_messages": "Nachrichten löschen",
+            "import_local_db": "Lokale Demo-Daten importieren",
+            "import_local_db_title": "Lokale Demo-Datenbank importieren",
+            "import_local_db_subtitle": "Lade deine ruralshield.db von localhost hoch, damit die Live-Demo die gleichen Benutzer und Transaktionen zeigt.",
+            "import_local_db_how": "So funktioniert es",
+            "import_local_db_note": "Dies ersetzt die Offline-SQLite-Datenbank der laufenden Instanz. Nur für Demo; du kannst jederzeit erneut importieren.",
+            "import_local_db_step1": "Auf deinem Laptop Datei finden: data/ruralshield.db",
+            "import_local_db_step2": "Hier als .db-Datei hochladen",
+            "import_local_db_step3": "Dashboards aktualisieren",
+            "import_local_db_upload": "Datenbankdatei hochladen",
+            "import_local_db_btn": "Hochladen und ersetzen",
+            "import_local_db_hint": "Aktueller Offline-DB-Pfad auf dem Server:",
+            "import_local_db_done": "Import abgeschlossen. Die Offline-Datenbank wurde ersetzt.",
+            "import_local_db_bad_file": "Bitte eine gültige .db-Datei (SQLite-Datenbank) hochladen.",
             "sync_queue_open": "Sync-Warteschlange öffnen",
             "more_tools": "Weitere Tools",
             "replace_user": "Bestehenden Benutzer ersetzen",

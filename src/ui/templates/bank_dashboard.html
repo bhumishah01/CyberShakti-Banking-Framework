@@ -217,6 +217,7 @@
             <input type="hidden" name="lang" value="{{ lang }}">
             <button type="submit" class="button secondary">{{ i18n.export_change_log }}</button>
           </form>
+          <a href="/bank/tools/import-db?lang={{ lang }}" class="button secondary">{{ i18n.import_local_db }}</a>
           <a href="/reset?lang={{ lang }}" class="button secondary">{{ i18n.clear_messages }}</a>
         </div>
       </details>
