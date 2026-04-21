@@ -7,3 +7,4 @@ __pycache__/
 data/exports/*.csv
 data/face_captures/*.png
 data/bank_face_hash.json
+data/ui_errors.log
