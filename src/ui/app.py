@@ -2516,7 +2516,8 @@ def add_customer_transaction(
         )
         return _customer_redirect_with_tx(lang, stored.tx_id, message=msg, voice_text=voice_text)
     except Exception as exc:
-        return _customer_redirect(lang, error=str(exc))
+        # Never leak internal crypto/auth errors into the UI during demo.
+        return _customer_redirect(lang, error=_friendly_customer_error(exc, lang))
 
 
 def _parse_voice_command(text: str) -> tuple[float | None, str]:
@@ -4617,6 +4618,7 @@ def _bundle(lang: str) -> dict:
             "cust_voice_success": "Your transaction was saved successfully. It will sync when internet is available. Risk score {risk} out of 100.",
             "cust_voice_held": "Your transaction is under review for safety. Risk score {risk} out of 100.",
             "cust_voice_blocked": "Your transaction was blocked to protect you. Risk score {risk} out of 100.",
+            "cust_network_slow": "Network is slow or the server is busy. Please try again.",
             "cust_voice_why": "Reason: {reasons}.",
             "cust_last_activity_label": "Last Activity",
             "cust_notif_blocked_title": "Transaction blocked",
@@ -6541,6 +6543,7 @@ def _t(lang: str, key: str) -> str:
             "cust_voice_success": "आपका लेनदेन सफलतापूर्वक सेव हो गया। इंटरनेट उपलब्ध होने पर यह सिंक हो जाएगा। जोखिम स्कोर 100 में से {risk}।",
             "cust_voice_held": "सुरक्षा के लिए आपका लेनदेन समीक्षा में है। जोखिम स्कोर 100 में से {risk}।",
             "cust_voice_blocked": "आपकी सुरक्षा के लिए लेनदेन ब्लॉक किया गया। जोखिम स्कोर 100 में से {risk}।",
+            "cust_network_slow": "नेटवर्क धीमा है या सर्वर व्यस्त है। कृपया फिर से कोशिश करें।",
             "cust_voice_why": "कारण: {reasons}।",
             "cust_user_risk_score": "यूज़र जोखिम",
             "cust_avg_amount": "औसत राशि",
@@ -6644,6 +6647,7 @@ def _t(lang: str, key: str) -> str:
             "cust_voice_success": "ଆପଣଙ୍କ ଟ୍ରାନ୍ଜାକ୍ସନ ସଫଳଭାବେ ସେଭ୍ ହେଲା। ଇଣ୍ଟରନେଟ୍ ମିଳିଲେ ସିଙ୍କ ହେବ। ଝୁମ୍ପ ସ୍କୋର୍ 100 ମଧ୍ୟରୁ {risk}।",
             "cust_voice_held": "ସୁରକ୍ଷା ପାଇଁ ଟ୍ରାନ୍ଜାକ୍ସନ ସମୀକ୍ଷାରେ ଅଛି। ଝୁମ୍ପ ସ୍କୋର୍ 100 ମଧ୍ୟରୁ {risk}।",
             "cust_voice_blocked": "ଆପଣଙ୍କୁ ସୁରକ୍ଷା କରିବା ପାଇଁ ଟ୍ରାନ୍ଜାକ୍ସନ ବ୍ଲକ୍ ହେଲା। ଝୁମ୍ପ ସ୍କୋର୍ 100 ମଧ୍ୟରୁ {risk}।",
+            "cust_network_slow": "ନେଟୱର୍କ ଧୀର ଅଛି କିମ୍ବା ସର୍ଭର ବ୍ୟସ୍ତ। ଦୟାକରି ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ।",
             "cust_voice_why": "କାରଣ: {reasons}।",
             "cust_user_risk_score": "ବ୍ୟବହାରକାରୀ ଝୁମ୍ପ",
             "cust_avg_amount": "ସାଧାରଣ ରାଶି",
@@ -6747,6 +6751,7 @@ def _t(lang: str, key: str) -> str:
             "cust_voice_success": "તમારો ટ્રાન્ઝેક્શન સફળતાપૂર્વક સેવ થયો છે. ઇન્ટરનેટ ઉપલબ્ધ થાય ત્યારે સિંક થશે. જોખમ સ્કોર 100 માંથી {risk}.",
             "cust_voice_held": "સુરક્ષા માટે તમારો ટ્રાન્ઝેક્શન સમીક્ષામાં છે. જોખમ સ્કોર 100 માંથી {risk}.",
             "cust_voice_blocked": "તમારી સુરક્ષા માટે ટ્રાન્ઝેક્શન બ્લોક કરવામાં આવ્યો. જોખમ સ્કોર 100 માંથી {risk}.",
+            "cust_network_slow": "નેટવર્ક ધીમું છે અથવા સર્વર વ્યસ્ત છે. કૃપા કરીને ફરી પ્રયાસ કરો.",
             "cust_voice_why": "કારણ: {reasons}.",
             "cust_user_risk_score": "યુઝર જોખમ",
             "cust_avg_amount": "સરેરાશ રકમ",
@@ -6850,6 +6855,7 @@ def _t(lang: str, key: str) -> str:
             "cust_voice_success": "Deine Transaktion wurde gespeichert. Sie wird synchronisiert, wenn Internet verfügbar ist. Risiko-Score {risk} von 100.",
             "cust_voice_held": "Deine Transaktion wird zur Sicherheit geprüft. Risiko-Score {risk} von 100.",
             "cust_voice_blocked": "Deine Transaktion wurde zu deinem Schutz blockiert. Risiko-Score {risk} von 100.",
+            "cust_network_slow": "Netzwerk ist langsam oder der Server ist ausgelastet. Bitte erneut versuchen.",
             "cust_voice_why": "Grund: {reasons}.",
             "cust_user_risk_score": "Benutzer-Risiko",
             "cust_avg_amount": "Durchschnittsbetrag",

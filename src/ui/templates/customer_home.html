@@ -272,6 +272,69 @@
   </main>
 
   <script>
+    // Shared helpers used across multiple widgets on this page.
+    const rsSpeak = (() => {
+      // Robust text-to-speech wrapper (Chrome can get "stuck" without a cancel/resume + delay).
+      if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) {
+        return (text) => false;
+      }
+      const synth = window.speechSynthesis;
+
+      const speakNow = (text) => {
+        const clean = String(text || '').trim();
+        if (!clean) return false;
+        const utter = new SpeechSynthesisUtterance(clean.slice(0, 500));
+        utter.rate = 1;
+        utter.pitch = 1;
+        try {
+          synth.cancel();
+          synth.resume();
+        } catch (e) {}
+        setTimeout(() => {
+          try { synth.speak(utter); } catch (e) {}
+        }, 120);
+        return true;
+      };
+
+      return (text) => {
+        try {
+          // Ensure voices are initialized (some browsers lazily populate voices list).
+          const voices = synth.getVoices ? synth.getVoices() : [];
+          if (voices && voices.length > 0) return speakNow(text);
+
+          let done = false;
+          const handler = () => {
+            if (done) return;
+            done = true;
+            try { synth.removeEventListener('voiceschanged', handler); } catch (e) {}
+            speakNow(text);
+          };
+          try { synth.addEventListener('voiceschanged', handler); } catch (e) {}
+          // Fallback timer if voiceschanged never fires.
+          setTimeout(handler, 350);
+          return true;
+        } catch (e) {
+          return false;
+        }
+      };
+    })();
+
+    const rsFetchJson = async (url, options = {}, timeoutMs = 12000) => {
+      const controller = (window.AbortController) ? new AbortController() : null;
+      const timer = setTimeout(() => {
+        try { if (controller) controller.abort(); } catch (e) {}
+      }, Math.max(1000, Number(timeoutMs || 12000)));
+      try {
+        const opts = Object.assign({}, options || {});
+        if (controller) opts.signal = controller.signal;
+        const r = await fetch(url, opts);
+        const j = await r.json();
+        return { ok: r.ok, status: r.status, json: j };
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
     (() => {
       // Quick action scrolling for low-literacy UX.
       document.querySelectorAll('[data-scroll]').forEach((btn) => {
@@ -299,14 +362,17 @@
     (() => {
       // Lightweight live updates (offline-first): refresh summary panels without manual reload.
       const lang = "{{ lang }}";
+      let inflight = false;
       const setText = (id, v) => {
         const el = document.getElementById(id);
         if (el) el.textContent = String(v);
       };
       const refresh = async () => {
+        if (inflight) return;
+        inflight = true;
         try {
-          const r = await fetch(`/customer/api/summary?lang=${encodeURIComponent(lang)}`, { credentials: 'same-origin' });
-          const j = await r.json();
+          const out = await rsFetchJson(`/customer/api/summary?lang=${encodeURIComponent(lang)}`, { credentials: 'same-origin' }, 8000);
+          const j = out.json;
           if (!j || j.status !== 'success') return;
           const d = j.data || {};
           setText('rs-balance', (Number(d.local_balance || 0)).toFixed(2));
@@ -353,6 +419,8 @@
           }
         } catch (e) {
           // ignore (offline / server down)
+        } finally {
+          inflight = false;
         }
       };
       refresh();
@@ -376,38 +444,24 @@
         msg.innerHTML = `<section class="${cls}">${String(text || '')}</section>`;
       };
 
-      const speakText = (text) => {
-        if (!text || !window.speechSynthesis) return;
-        try {
-          window.speechSynthesis.cancel();
-          window.speechSynthesis.resume();
-          const utter = new SpeechSynthesisUtterance(text);
-          utter.rate = 1;
-          utter.pitch = 1;
-          setTimeout(() => window.speechSynthesis.speak(utter), 120);
-        } catch (e) {
-          // ignore
-        }
-      };
-
       form.addEventListener('submit', async (ev) => {
         ev.preventDefault();
         btn.disabled = true;
         try {
           const payload = { pin: pin.value, amount: amt.value, recipient: rec.value };
-          const r = await fetch(`/customer/api/transactions?lang=${encodeURIComponent(lang)}`, {
+          const out = await rsFetchJson(`/customer/api/transactions?lang=${encodeURIComponent(lang)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
             body: JSON.stringify(payload),
-          });
-          const j = await r.json();
+          }, 12000);
+          const j = out.json;
           if (j.status !== 'success') throw new Error(j.message || 'error');
           const data = j.data || {};
           const decision = String(data.decision || '').toUpperCase();
           const summary = data.summary || j.message || "{{ i18n.tx_saved }}";
           showMsg(decision === 'HOLD' || decision === 'BLOCK' ? 'warn' : 'ok', summary);
-          speakText(data.voice_text || '');
+          rsSpeak(data.voice_text || '');
           try {
             sessionStorage.setItem('rs_pending_voice', String(data.voice_text || ''));
           } catch (e) {
@@ -417,7 +471,8 @@
             window.location.href = `/dashboard/customer?lang=${encodeURIComponent(lang)}&tx=${encodeURIComponent(data.tx_id)}&autoplay=1#send`;
           }, data.voice_text ? 1800 : 900);
         } catch (e) {
-          showMsg('error', String(e && e.message ? e.message : e));
+          const msgTxt = String(e && e.name === 'AbortError' ? "{{ i18n.cust_network_slow }}" : (e && e.message ? e.message : e));
+          showMsg('error', msgTxt);
         } finally {
           btn.disabled = false;
         }
@@ -436,20 +491,10 @@
       }
       if (!autoplay && !pending) return;
       const btn = document.querySelector("#rs-last-tx .voice-btn");
-      if (!window.speechSynthesis) return;
       const text = pending || (btn ? (btn.getAttribute("data-voice-text") || "") : "");
       if (!text) return;
-      try {
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.resume();
-        const utter = new SpeechSynthesisUtterance(text);
-        utter.rate = 1;
-        utter.pitch = 1;
-        setTimeout(() => window.speechSynthesis.speak(utter), 150);
-        sessionStorage.removeItem('rs_pending_voice');
-      } catch (e) {
-        // ignore
-      }
+      rsSpeak(text);
+      try { sessionStorage.removeItem('rs_pending_voice'); } catch (e) {}
     })();
 
     (() => {
@@ -600,35 +645,25 @@
 
           // Create tx using the same working pipeline endpoint.
           const payload = { pin: pin.value, amount: parsed.amount, recipient: parsed.recipient };
-          const r = await fetch(`/customer/api/transactions?lang=${encodeURIComponent(lang)}`, {
+          const out = await rsFetchJson(`/customer/api/transactions?lang=${encodeURIComponent(lang)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
             body: JSON.stringify(payload),
-          });
-          const j = await r.json();
+          }, 12000);
+          const j = out.json;
           if (j.status !== 'success') throw new Error(j.message || 'error');
           const data = j.data || {};
           const decision = String(data.decision || '').toUpperCase();
           showMsg(decision === 'HOLD' || decision === 'BLOCK' ? 'warn' : 'ok', data.summary || j.message || "{{ i18n.tx_saved }}");
-          if (data.voice_text && window.speechSynthesis) {
-            window.speechSynthesis.cancel();
-            window.speechSynthesis.resume();
-            const utter = new SpeechSynthesisUtterance(data.voice_text);
-            utter.rate = 1;
-            utter.pitch = 1;
-            setTimeout(() => window.speechSynthesis.speak(utter), 120);
-            try {
-              sessionStorage.setItem('rs_pending_voice', String(data.voice_text || ''));
-            } catch (e) {
-              // ignore
-            }
-          }
+          if (data.voice_text) rsSpeak(data.voice_text);
+          try { sessionStorage.setItem('rs_pending_voice', String(data.voice_text || '')); } catch (e) {}
           setTimeout(() => {
             window.location.href = `/dashboard/customer?lang=${encodeURIComponent(lang)}&tx=${encodeURIComponent(data.tx_id)}&autoplay=1#send`;
           }, data.voice_text ? 1800 : 900);
         } catch (e) {
-          showMsg('error', String(e && e.message ? e.message : e));
+          const msgTxt = String(e && e.name === 'AbortError' ? "{{ i18n.cust_network_slow }}" : (e && e.message ? e.message : e));
+          showMsg('error', msgTxt);
         } finally {
           btn.disabled = false;
         }
@@ -637,17 +672,12 @@
 
     (() => {
       const btns = document.querySelectorAll(".voice-btn");
-      if (!btns.length || !window.speechSynthesis) return;
+      if (!btns.length) return;
       btns.forEach((btn) => {
         btn.addEventListener("click", () => {
           const text = btn.getAttribute("data-voice-text") || "";
           if (!text) return;
-          window.speechSynthesis.cancel();
-          window.speechSynthesis.resume();
-          const utter = new SpeechSynthesisUtterance(text);
-          utter.rate = 1;
-          utter.pitch = 1;
-          setTimeout(() => window.speechSynthesis.speak(utter), 120);
+          rsSpeak(text);
         });
       });
     })();
