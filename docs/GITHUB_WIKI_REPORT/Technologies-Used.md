@@ -1,5 +1,12 @@
 # Technologies Used
 
+## Quick Revision Summary
+- **Frontend:** FastAPI + Jinja templates + HTML/CSS + JavaScript for the customer and admin web portals.
+- **Backend:** Python + FastAPI for routing, business logic, fraud checks, sync handling, and APIs.
+- **Local Database:** SQLite for offline-first local storage.
+- **Central Database:** PostgreSQL for deployed server-side storage.
+- **Other Tech Stack:** SQLAlchemy, Pydantic, JWT, RBAC, AES-GCM, HMAC, SHA-256, Docker, Docker Compose, Render, GitHub Wiki.
+
 This page explains each important technology, acronym, or technical term in two ways:
 
 - **What it means in general**
