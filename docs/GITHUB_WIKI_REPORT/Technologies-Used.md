@@ -24,6 +24,17 @@
 - **Central deployed database:** PostgreSQL.
 - **Version control / deployment source:** GitHub.
 
+## AI and Media Features
+No LLM; rule-based fraud logic + browser speech features.
+
+You used built-in browser Web APIs, not an external model/API.
+
+Camera (face capture): `navigator.mediaDevices.getUserMedia({ video: true })` to access the webcam, then draw a frame to a `<canvas>` and send it as a `data:image/png;base64,...` string to the backend.
+
+Audio input (speech-to-text): `window.SpeechRecognition` / `window.webkitSpeechRecognition` (browser speech recognition).
+
+Audio output (voice feedback): `window.speechSynthesis` + `SpeechSynthesisUtterance` (text-to-speech).
+
 This page explains each important technology, acronym, or technical term in two ways:
 
 - **What it means in general**
