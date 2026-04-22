@@ -1,50 +1,70 @@
 # Implementation
 
+## Implementation Overview
+The implementation of RuralShield moved through multiple stages: foundation setup, encrypted transaction handling, fraud scoring, audit/sync logic, UI creation, admin portal expansion, customer UX polish, and live deployment. The final system is therefore not a single monolithic script but a layered project with backend, frontend, database, deployment, and documentation components.
+
 ## Project Setup Steps
-### Local development
+### Local Development Setup
 1. Clone the repository.
 2. Create and activate a Python virtual environment.
 3. Install dependencies from `requirements.txt`.
-4. Run the FastAPI application locally or use Docker.
+4. Configure environment values if needed.
+5. Run the application locally using either direct FastAPI commands or Docker.
 
-### Docker-based local setup
-The project supports `docker compose up --build`, which starts the local stack and reflects the same deployment structure used on Render.
+### Docker-Based Setup
+The project supports Docker-based builds for consistency between local development and deployment.
 
-### Live deployment
-The final application is deployed on Render using Docker, with PostgreSQL as the central server-side database.
+### Live Setup
+The final deployed version is hosted on Render and uses PostgreSQL as the central database.
 
-## Code Structure (Folder Explanation)
-- `src/ui/`
-  Contains the customer portal, bank/admin portal, templates, and static files.
-- `src/server/`
-  Contains the server-side application logic, database access, authentication handling, and APIs.
-- `src/deploy/`
-  Contains the combined deployment entrypoint used for live hosting.
-- `data/`
-  Holds local/demo storage and exported artifacts.
-- `docs/`
-  Contains architecture, deployment, stepwise progress, and report support documentation.
-- `tests/`
-  Contains unit and integration-level checks for major modules.
+## Code Structure
+### `src/ui/`
+Contains the customer and bank/admin interfaces, route bindings for template pages, Jinja templates, and static styling assets.
 
-## Key Code Areas
-### UI Layer
-The UI was built using FastAPI + Jinja templates so that both presentation and routing remain in one understandable stack. This also helped keep deployment simple.
+### `src/server/`
+Contains the structured server-side application logic, database models, session handling, authentication, and API routes.
 
-### Fraud Logic
-The fraud engine integrates rule-based detection with behavior-aware scoring. Instead of just returning a number, it stores reasons so that downstream pages can explain the decision.
+### `src/deploy/`
+Contains the combined deployment entrypoint used to mount the live UI and API together for public hosting.
 
-### Sync Engine
-The sync logic was implemented with explicit statuses and queue semantics. This made it possible to build pages like Sync Queue, selective sync, and held/release workflows in the bank portal.
+### `data/`
+Used for local data storage, imports, demo state, and offline persistence artifacts.
 
-### Admin Analytics
-Analytics are generated from locally available and synchronized data to produce trend views, reason summaries, and user-wise risk breakdowns.
+### `docs/`
+Contains the blueprint, architecture notes, threat model, deployment instructions, stepwise progress history, and Wiki report pack.
+
+### `tests/`
+Contains project test files used to verify critical system behavior.
+
+## Key Implementation Areas
+### Authentication and Session Handling
+The system uses role-aware authentication flows and JWT-based handling for deployed server-side behavior.
+
+### Fraud Engine Implementation
+The fraud engine was implemented with an explainability-first mindset. Instead of hiding logic behind a black box, it stores decisions and reasons in a structured way.
+
+### Offline-First Persistence
+SQLite-backed local persistence was implemented to preserve customer actions even without server connectivity.
+
+### Synchronization Engine
+The synchronization engine manages the transition from local state to central state. It includes retry logic, selected sync behavior, and state visibility.
+
+### Admin Analytics and Controls
+The admin portal is not limited to data listing. It includes analytics summaries, graphs, device monitoring, release controls, and user-level actions.
+
+### Multilingual and UX Enhancements
+Language switching, clearer messaging, clickable cards, and product-style pages were implemented to make the system more demo-ready and more user-friendly.
 
 ## Integration Details
-The project was implemented as a full-stack application where UI and backend are closely integrated:
-- the customer and admin pages call backend routes and APIs,
-- authentication state is reused across flows,
-- data moves from local SQLite to central PostgreSQL through a controlled sync process.
+The project integrates multiple concerns into one working system:
+- frontend pages communicate with backend routes,
+- auth state influences role-based routing,
+- customer transactions feed into admin review,
+- local and central storage work together through the sync queue,
+- deployment mounts the UI and API under a single live domain.
 
 ## Repository Link
 Repository Link: https://github.com/bhumishah01/CyberShakti-Banking-Framework
+
+## Implementation Maturity
+While still a student project, the implementation goes meaningfully beyond a typical classroom prototype. It reflects product thinking, operational workflows, and deployment reality in addition to core coding logic.

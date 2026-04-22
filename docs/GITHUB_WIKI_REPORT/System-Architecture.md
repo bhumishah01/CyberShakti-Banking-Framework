@@ -1,59 +1,80 @@
 # System Architecture
 
 ## Architecture Overview
-RuralShield is designed as a layered, offline-capable web system with both device-side and server-side responsibility. The architecture intentionally separates local operations from central authority so that the system remains usable under poor connectivity while still allowing the bank to maintain a final record of synchronized activity.
+RuralShield uses a layered full-stack architecture that separates customer interaction, local persistence, fraud analysis, synchronization, and central monitoring. This separation is intentional. It allows the system to remain functional when offline, while also preserving the bank’s role as the final central authority once synchronization occurs.
 
 ## High-Level Architecture Diagram
 ```mermaid
 flowchart TB
-  subgraph CustomerSide[Customer Device / Browser]
+  subgraph CustomerSide[Customer Device / Browser Layer]
     UI[Customer Portal UI]
     LocalDB[Local SQLite Storage]
-    Fraud[Fraud Engine\nRisk Score + Reasons]
+    Fraud[Fraud Engine\nRisk Score + Explainable Reasons]
     Outbox[Sync Queue / Outbox]
+    Safety[Safety Controls\nTrusted Contacts / Panic Freeze]
   end
 
-  subgraph BankSide[Bank / Admin]
-    AdminUI[Admin Dashboard + Analytics]
+  subgraph AdminSide[Bank / Admin Layer]
+    AdminUI[Bank Dashboard]
+    Analytics[Analytics + Monitoring]
+    Controls[Approve / Reject / Freeze / Sync Actions]
   end
 
   subgraph Server[Central Server on Render]
-    API[FastAPI Combined App]
+    Combined[Combined FastAPI App]
+    Auth[JWT + Role Handling]
+    API[API Layer]
     PG[PostgreSQL]
   end
 
   UI --> Fraud
   UI --> LocalDB
+  UI --> Safety
   Fraud --> LocalDB
   LocalDB --> Outbox
   Outbox --> API
-  AdminUI --> API
+  Combined --> Auth
   API --> PG
+  AdminUI --> API
+  Analytics --> API
+  Controls --> API
 ```
 
-## Explanation of Architecture
-### Customer-side layer
-The customer-side layer is responsible for collecting transaction input, applying local validation, computing fraud risk, and writing data to local storage. This keeps the experience functional even if the server is unreachable.
+## Explanation of the Architecture
+### 1. Customer Interaction Layer
+This layer provides the visible interface to the user. It includes account overview, transaction creation, alerts, transaction history, safety settings, and voice-assisted interaction. The goal is to keep the UI understandable, low-friction, and responsive even when the backend is not immediately reachable.
 
-### Fraud layer
-The fraud engine sits close to the transaction flow. It evaluates transaction amount, device context, timing, and behavioral deviation. This is necessary because waiting for a server response would defeat the offline-first objective.
+### 2. Local Storage Layer
+The project uses SQLite locally to preserve important user and transaction data. This is central to the offline-first design. Instead of losing user intent when the internet is unavailable, the system records transaction state locally and allows later synchronization.
 
-### Synchronization layer
-The outbox queue stores local records that are waiting to be uploaded. It tracks sync state, retry state, timestamps, and errors. This gives the system resilience under poor connectivity.
+### 3. Fraud Engine Layer
+The fraud engine runs close to the transaction creation flow. It evaluates risk using static rules and behavior-aware comparisons. Its output is not just a numerical score; it also includes reason codes and decision state, making it suitable for both automation and review.
 
-### Server-side layer
-The central FastAPI application exposes APIs for authentication, transaction handling, fraud-related data retrieval, and admin operations. PostgreSQL acts as the authoritative central store once records are synced.
+### 4. Safety Controls Layer
+Customer-side safety features such as panic freeze, trusted contacts, and risk transparency sit alongside transaction creation. These are important because rural security is not only about detecting fraud but also about giving the user confidence and recovery options.
 
-### Bank/Admin layer
-The admin portal provides operational oversight. Instead of being only a display layer, it enables active control: approving held transactions, releasing selected sync records, freezing risky users, and reviewing alert patterns.
+### 5. Synchronization Layer
+The synchronization layer is responsible for turning local-first operation into central consistency. The outbox queue preserves pending records, tracks retries, and supports selective sync and recovery workflows.
 
-## Modules / Components Description
-- **Authentication module**: PIN/JWT flow, role handling, and demo face-capture support.
-- **Fraud engine**: rule scoring, behavioral deviation detection, explainable outputs.
-- **Local database module**: stores users, transactions, sync queue, and safety state.
-- **Sync engine**: handles pending, retrying, synced, and held transitions.
-- **Admin analytics module**: aggregates fraud trends, top reasons, high-risk users, and device monitoring.
-- **UI layer**: customer and admin experiences, with multilingual support.
+### 6. Server and API Layer
+The deployed server is implemented using a combined FastAPI application. It exposes backend APIs, role-aware logic, and mounted routes for deployed access. This gives the system a single public deployment while preserving modular separation in the codebase.
 
-## Why This Architecture Works for Rural Banking
-This architecture minimizes network dependence while preserving central oversight. That is exactly the balance needed in rural banking: the user must not be blocked by poor connectivity, but the bank must still remain the final authority for synchronized data and risk review.
+### 7. Central Database Layer
+PostgreSQL serves as the server-side persistent store. It is used for the central representation of users, transactions, fraud logs, devices, and administrative operations.
+
+### 8. Admin and Analytics Layer
+The bank/admin layer is where the project becomes operational rather than merely transactional. It includes monitoring dashboards, analytics pages, fraud trends, high-risk user lists, device monitoring, sync control, and release workflows.
+
+## Core Components
+- **Authentication module**: session, JWT, role-aware behavior
+- **Fraud module**: scoring, reasons, behavior profiling
+- **Storage module**: SQLite + Postgres coordination
+- **Sync module**: pending, retrying, synced, held, blocked transitions
+- **Analytics module**: charts, summaries, risk groupings, alerts
+- **UI module**: multilingual templates, navigation, action buttons, feedback states
+
+## Architectural Strengths
+- Handles unreliable internet without losing the workflow
+- Keeps fraud explainable and reviewable
+- Gives both customer and admin sides meaningful capabilities
+- Scales conceptually from prototype to stronger production architecture

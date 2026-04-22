@@ -1,59 +1,122 @@
 # Technologies Used
 
 ## Overview
-RuralShield uses a practical full-stack web architecture chosen for three reasons:
-- low setup overhead for rapid prototyping,
-- clear explainability for academic reporting,
-- enough modularity to resemble a real deployable system.
+The technology stack for RuralShield was selected to support four project needs simultaneously:
+- rapid prototyping,
+- structured backend logic,
+- full-stack integration,
+- and deployment on a live public URL.
+
+The stack also needed to support offline-first behavior, local database handling, server-side database migration, and relatively lightweight deployment. As a result, the final tech stack combines Python-based backend tooling, template-driven frontend rendering, Docker deployment, and both local and server-side databases.
 
 ## Programming Languages
-- **Python 3.11**
-  Used for backend logic, UI routing, fraud scoring, synchronization logic, and deployment entrypoints.
-- **HTML/CSS**
-  Used for the UI templates, admin dashboards, customer portal layout, and visual styling.
-- **JavaScript**
-  Used selectively for interactivity such as language switching, voice interaction handling, and front-end actions.
+### Python 3.11
+Python is the primary language used across the system. It powers:
+- backend route handling,
+- authentication logic,
+- fraud scoring,
+- synchronization behavior,
+- deployment entrypoints,
+- analytics preparation,
+- and data validation.
+
+### HTML
+HTML is used for customer and admin templates. It provides the structural layout for dashboards, forms, analytics sections, and multi-page flows.
+
+### CSS
+CSS is used to create the actual product experience: layout spacing, cards, status tags, typography, tables, alerts, and responsive sections.
+
+### JavaScript
+JavaScript is used selectively for interactivity such as:
+- language switching,
+- speech interaction support,
+- button handling,
+- front-end UX enhancements,
+- dynamic navigation behavior.
 
 ## Frameworks and Libraries
-- **FastAPI**
-  Primary web framework for APIs and server-rendered route handling.
-- **Jinja2**
-  Templating engine used to render dynamic customer and admin pages.
-- **SQLAlchemy**
-  ORM used for structured database interaction in the server-side layer.
-- **Pydantic**
-  Used for validation and structured request/response handling.
-- **python-jose**
-  Used for JWT-based authentication.
-- **passlib[bcrypt]**
-  Used for password/PIN hashing and secure credential handling.
-- **cryptography**
-  Used for encryption and sensitive field protection.
-- **Pillow**
-  Used in the prototype for image handling in face-capture-related flows.
+### FastAPI
+FastAPI is the central web framework used to build both backend endpoints and route-connected functionality. It was chosen because it provides:
+- clean routing,
+- strong integration with Pydantic,
+- automatic API docs,
+- and good structure for modular development.
+
+### Jinja2
+Jinja2 is used for server-rendered templates. It makes the customer and admin portals easy to deploy within the same application while keeping the UI fully dynamic.
+
+### SQLAlchemy
+SQLAlchemy is used for structured interaction with the server-side PostgreSQL database. It provides model definitions, sessions, and central data access patterns.
+
+### Pydantic
+Pydantic is used for input validation and typed data structures. This improves API reliability and reduces silent failures.
+
+### python-jose
+Used for JWT token generation and decoding in authenticated server flows.
+
+### passlib[bcrypt]
+Used for hashing credentials securely.
+
+### cryptography
+Used for sensitive field protection and encryption-related logic.
+
+### Pillow
+Used in the prototype for image-related handling in face-capture flows.
 
 ## Databases
-- **SQLite**
-  Used for local offline-first storage, transaction queueing, and demo persistence.
-- **PostgreSQL**
-  Used as the central server-side database in deployment.
+### SQLite
+SQLite is used as the offline-first local database. It was chosen because it is lightweight, file-based, simple to ship, and well suited for constrained environments.
+
+Uses in the project:
+- local transaction persistence
+- pending sync queue
+- cached user/session context
+- demo continuity and local-first state
+
+### PostgreSQL
+PostgreSQL is used as the central deployed database. It supports stronger relational design, indexing, and multi-user server-side persistence.
+
+Uses in the project:
+- users
+- transactions
+- fraud logs
+- devices
+- sync queue state
+- admin analytics source data
 
 ## Tools and Platforms
-- **Docker**
-  Used to containerize the application for reproducible deployment.
-- **docker-compose**
-  Used in local development to run the application stack with database services.
-- **Git & GitHub**
-  Used for version control, structured commits, and collaborative documentation.
-- **Render**
-  Used to deploy the application live with a public URL.
+### Docker
+Docker is used to containerize the project and make deployment portable and reproducible.
 
-## Frontend / UX Features Built on Top of This Stack
-- multilingual language switching
-- clickable dashboard cards
-- voice command input and spoken feedback support
-- graph-based analytics in SVG
-- structured admin subpages and export flows
+### docker-compose
+Used in local development to run the application stack together and simulate a more realistic environment.
+
+### Git and GitHub
+Used for source control, structured commit history, collaboration support, documentation hosting, and Wiki/report preparation.
+
+### GitHub Wiki
+Used to publish the final project report in the required academic structure.
+
+### Render
+Used to deploy the application publicly. Render was chosen because it supports full-stack Docker deployments and integrates cleanly with GitHub.
+
+## Tech Stack Summary Table
+| Layer | Technology |
+|---|---|
+| Language | Python 3.11 |
+| UI Rendering | Jinja2 + HTML + CSS + JS |
+| Web Framework | FastAPI |
+| Local Database | SQLite |
+| Server Database | PostgreSQL |
+| ORM | SQLAlchemy |
+| Validation | Pydantic |
+| Auth | JWT + python-jose + passlib |
+| Encryption | cryptography |
+| Image Handling | Pillow |
+| Local Containerization | Docker / docker-compose |
+| Live Hosting | Render |
+| Version Control | Git + GitHub |
+| Report Hosting | GitHub Wiki |
 
 ## Why This Tech Stack Was Chosen
-This stack balances simplicity, deployability, and technical credibility. FastAPI and Jinja2 make it possible to build both API and UI in one coherent codebase. SQLite supports the offline-first model efficiently. PostgreSQL gives the deployed system a more production-style persistence layer. Docker and Render satisfy the live deployment and portability requirement.
+This stack balances clarity, capability, and deployability. It is strong enough to demonstrate real system architecture, yet simple enough to remain understandable and maintainable for an academic project. It also helped ensure that the final output was not only functional locally, but actually available as a live deployed system.

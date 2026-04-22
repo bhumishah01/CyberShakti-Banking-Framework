@@ -1,22 +1,26 @@
 # Future Scope
 
 ## Possible Improvements
-- Integrate real biometric verification and liveness detection.
-- Add SMS or IVR-based fallback notifications for low-literacy rural users.
-- Add stronger anomaly detection models once enough behavior data is available.
-- Build more advanced role-specific workflows for bank clerks, officers, and agents.
-- Improve conflict resolution strategies for multi-device or delayed-sync scenarios.
+- Integrate real biometric verification with liveness checks.
+- Add OTP or SMS-based fallback verification flows.
+- Expand agent workflows for assisted onboarding and account recovery.
+- Improve analytics with richer time-series and cohort-level summaries.
+- Add conflict-resolution logic for multi-device delayed-sync scenarios.
 
-## Extensions
-- Integration with real or simulated payment rails
-- richer audit and compliance reporting
-- multilingual voice output across more languages
-- advanced admin drill-down dashboards
-- agent-side onboarding and recovery workflows
+## Product Extensions
+- multilingual voice guidance beyond the current simulation layer
+- IVR or voice-call safety alerts for low-literacy users
+- bank-grade audit export and compliance-oriented reporting
+- richer fraud simulation and benchmarking tools
+- configurable rule packs for different bank contexts
 
 ## Research Opportunities
-The project opens up multiple directions for further academic or practical exploration:
-- explainable fraud scoring for low-data environments
-- offline-first security architectures for financial systems
-- low-literacy UX for cybersecurity-critical applications
-- trust modeling for shared-device banking environments
+The project creates strong scope for future academic work in:
+- explainable fraud detection in low-data environments
+- rural-first cybersecurity UX design
+- offline-first trust systems for financial applications
+- safe synchronization under inconsistent connectivity
+- role-aware fraud intervention systems for assisted banking ecosystems
+
+## Long-Term Vision
+A mature version of RuralShield could evolve into a modular rural banking protection platform that supports not only customers and bank officers but also agents, field staff, regional branches, and compliance reviewers through one integrated system.

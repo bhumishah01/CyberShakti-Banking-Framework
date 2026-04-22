@@ -1,72 +1,84 @@
 # Methodology / Working
 
 ## Methodology Overview
-The methodology for RuralShield was not only feature-driven, but constraint-driven. The system was built by starting from the realities of rural banking: weak internet, low-end devices, fraud vulnerability, and the need for simple but secure workflows. The working model therefore follows a local-first approach with centralized oversight.
+The development methodology for RuralShield was driven by system constraints rather than by a generic feature list. Instead of beginning with a standard web application model and then adding security, the project began with the realities of rural banking and built upward from them. This led to a methodology centered on offline-first storage, localized fraud decisions, clear UI feedback, and controlled synchronization.
+
+## Core Working Principle
+The key idea behind RuralShield is:
+
+> capture safely first, decide locally, preserve state, and sync centrally later.
+
+This principle is what distinguishes the system from a normal online-only banking demo.
 
 ## Step-by-Step Working of the System
 
-### 1. User enters the system
-A customer accesses the portal and logs in using the supported authentication flow. The system checks identity context and device-related trust signals. For bank/admin users, the system routes to the monitoring interface.
+### Step 1: User enters the portal
+The customer opens the portal and authenticates through the supported login flow. The bank/admin user enters through a separate role-based entry point.
 
-### 2. Transaction input is captured
-The customer enters recipient and amount, or uses voice-assisted input where supported. The UI validates obvious input issues before processing begins.
+### Step 2: Customer initiates a transaction
+The customer provides transaction details manually or through voice-assisted input.
 
-### 3. Local fraud analysis runs
-Before synchronization or central confirmation, the fraud engine evaluates the transaction. The following types of checks are used:
-- amount vs expected behavior
-- device trust state
-- time-based anomaly checks
-- rapid repeat transaction patterns
-- prior failed attempts or suspicious context
+### Step 3: Local validation is performed
+Before any deeper action, the system checks that the input is valid and complete.
 
-The engine returns:
+### Step 4: Fraud engine evaluates the transaction
+The system computes:
 - `risk_score`
 - `decision`
 - `reasons`
 
-### 4. Transaction is stored locally
-The transaction is saved in the local database so that it is not lost if the connection fails. This ensures continuity and aligns with the offline-first design.
+The decision can be:
+- `ALLOWED`
+- `HELD`
+- `BLOCKED`
 
-### 5. Sync queue is updated
-The transaction enters the outbox/sync queue. Depending on connectivity and decision state, it may be:
-- pending sync
-- retrying
-- held for review
-- blocked
-- already synced
+### Step 5: Transaction is stored locally
+The transaction is written to the local store so that a network outage does not destroy the operation flow.
 
-### 6. Bank-side visibility is enabled
-When data reaches the central layer, bank/admin users can review it in multiple ways:
-- transaction monitoring
-- high-risk user view
-- suspicious alert view
-- fraud trends analytics
-- device monitoring
+### Step 6: Sync queue is updated
+The outbox records the transaction state and prepares it for future synchronization.
 
-### 7. Decision follow-up happens
-Held transactions can be approved or rejected. Risky users can be frozen or unfrozen. Sync queues can be processed selectively or fully.
+### Step 7: Customer receives understandable feedback
+Instead of ambiguous backend errors, the system explains the result in understandable product language.
+
+### Step 8: Admin side receives visibility
+When synchronized or locally processed for monitoring, the bank/admin portal can show:
+- transaction status
+- fraud reasons
+- suspicious patterns
+- sync state
+- user/device risk information
+
+### Step 9: Admin actions are applied
+The admin can:
+- approve/reject held transactions
+- freeze/unfreeze users
+- release specific records
+- monitor trends and device state
 
 ## Algorithms / Logic Used
-The project uses a hybrid logic-driven methodology rather than a heavy machine learning approach.
-
-### Rule-based scoring
-Certain clearly interpretable conditions immediately affect risk:
-- new device
-- high amount
-- odd transaction hour
-- repeated high-risk behavior
-- rapid transaction burst
+### Rule-based risk scoring
+Rules include:
+- new device detection
+- high amount threshold
+- odd transaction time
+- rapid repeated activity
+- suspicious behavioral deviation
 
 ### Behavior profiling
-The system compares the current transaction to user behavior indicators such as:
-- average amount
+The system compares a current transaction with:
+- average transaction amount
 - transaction count/frequency
-- peak usage time
+- usage time patterns
 
-### Sync management strategy
-The synchronization logic follows a local-first outbox model with retry tracking. This helps maintain state consistency under rural connectivity conditions.
+### Suspicious pattern detection
+The system aggregates event patterns such as:
+- repeated failed logins
+- high-risk bursts
+- 5 transactions in 2 minutes
 
 ## Data Flow Explanation
-Customer input -> local validation -> fraud analysis -> local save -> sync queue -> central API -> PostgreSQL -> admin monitoring and analytics.
+Customer Input -> Local Validation -> Fraud Engine -> SQLite Save -> Sync Queue -> Central API -> PostgreSQL -> Admin Analytics and Review
 
-That flow is central to the project because it is what makes the system both resilient and explainable.
+## Why This Methodology Fits the Problem
+This methodology directly addresses the challenge of rural banking security. It avoids dependence on ideal internet conditions, preserves explainability, and ensures that both users and bank staff remain part of the security process.

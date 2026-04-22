@@ -1,23 +1,31 @@
 # Challenges & Limitations
 
 ## Problems Faced During Development
-### 1. Maintaining offline-first consistency
-A major challenge was ensuring that local state, sync state, and admin-visible state all remained understandable and consistent.
+### 1. Aligning offline-first behavior with a clean demo UX
+Offline-first logic is technically useful, but it can easily become confusing for users if states such as pending, held, retrying, and synced are not explained clearly. A major challenge was making these states visible and understandable.
 
-### 2. UI reliability across many pages
-As the project grew into a real demo product, the number of screens increased significantly. Ensuring language switching, clickable actions, export behavior, and subpage consistency required repeated polishing.
+### 2. Growing from prototype to product-style demo
+As the project evolved, the requirement shifted from “make the features work” to “make the system feel real.” This required a large amount of work in layout refinement, navigation consistency, analytics clarity, and workflow polish.
 
-### 3. Balancing realism with demo practicality
-The system needed to look and behave like a real rural banking product while still being feasible as a student project. This affected choices around biometrics, analytics complexity, and deployment architecture.
+### 3. Keeping explainability intact
+As more fraud logic, alerts, and analytics were added, there was a risk of the system becoming harder to interpret. Maintaining explainability across customer and admin views remained an ongoing design priority.
 
-### 4. Deployment configuration
-Moving from local setup to Render introduced issues involving database URL formats, drivers, environment variables, and keeping the deployed system aligned with the local demo.
+### 4. Deployment and configuration issues
+Moving the system from local development to Render involved challenges related to:
+- database drivers,
+- environment variables,
+- database URL formats,
+- service health checks,
+- and consistency between local and deployed data states.
+
+### 5. Documentation and academic packaging
+Another challenge was presenting the system in a form that satisfies both technical and academic evaluation. This required a proper Wiki structure, polished report writing, and clearer mapping between features and project goals.
 
 ## Limitations of the System
-- Face verification in the current demo is not production-grade biometric matching.
-- The project uses simulated/demo financial logic rather than actual banking integrations.
-- Notification logic is UI/demo oriented and not yet connected to real messaging infrastructure.
-- The fraud engine is intentionally explainable and light-weight, so it does not include heavy ML models.
+- Face verification is prototype-level and not a production biometric solution.
+- Banking logic is simulated and not connected to live financial rails.
+- Notification systems are demo-oriented and not integrated with SMS or official messaging infrastructure.
+- The fraud engine is intentionally lightweight and explainable rather than ML-heavy.
 
-## Why These Limitations Are Acceptable in This Stage
-The current goal is a deployment-ready academic and prototype system, not a bank-certified production platform. The present implementation is strong enough to demonstrate architecture, security logic, workflow depth, and product thinking.
+## Why These Limitations Are Acceptable
+The current system is best understood as a serious prototype. It demonstrates architecture, reasoning, controls, and deployment without pretending to be a production banking platform. That level is appropriate for the current project scope and evaluation context.

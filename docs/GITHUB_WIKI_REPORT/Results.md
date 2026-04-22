@@ -1,40 +1,57 @@
 # Results & Output
 
 ## Overview
-RuralShield evolved from a functional prototype into a much more realistic and presentable demo system. The final result is not just a backend with some APIs, but a complete experience with customer-side actions, bank/admin visibility, analytics, synchronization controls, and live deployment.
+The final output of RuralShield is a complete, live, multi-role digital banking security demo. It demonstrates not only secure transaction logic but also end-to-end workflow continuity, explainable fraud handling, analytics visibility, and deployment readiness.
 
-## Screenshots of Output
-Recommended screenshots to insert in the Wiki:
-- home page / role selection page
-- customer dashboard
-- send money result view with fraud explanation
-- transaction history screen
-- bank dashboard
-- analytics page
+## Functional Results
+### Customer-side results
+The customer portal supports:
+- account overview and transaction visibility
+- send money flow with fraud-aware decisions
+- pending sync awareness
+- safety controls such as trusted contacts and panic freeze
+- voice-assisted interaction support
+- multilingual UI handling
+
+### Bank/Admin-side results
+The bank/admin portal supports:
+- dashboard overview cards
+- fraud analytics
+- fraud trends graphs
+- high-risk users listing
+- suspicious alert monitoring
+- device monitoring
+- held transaction review and release actions
+- sync queue management
+- security report export
+
+## Deployment Results
+The project is not limited to localhost. It is accessible through a public Render deployment.
+
+### Main live page
+- https://ruralshield.onrender.com/?lang=en
+
+### Validation and inspection links
+- API documentation: https://ruralshield.onrender.com/api/docs
+- Health endpoint: https://ruralshield.onrender.com/health
+
+These links strengthen the evaluation because they show that the system is both deployed and inspectable.
+
+## Observations
+- Offline-first behavior significantly improves continuity of the transaction flow.
+- Explainable reason codes make fraud decisions more understandable and demo-friendly.
+- Admin workflows turn the project into an operational security system rather than a passive dashboard.
+- Deployment adds credibility by showing that the architecture is not only theoretical.
+
+## Recommended Screenshots to Include in the Wiki
+- landing page / role selection page
+- customer portal main dashboard
+- send money result with allowed/held/blocked state
+- transaction history page
+- admin dashboard
+- admin analytics page
 - sync queue page
 - export/report page
 
-## Sample Outputs
-### Customer-side outputs
-- transaction allowed
-- transaction held for review
-- transaction blocked due to high risk
-- pending sync state
-- voice-assisted command recognition feedback
-
-### Admin-side outputs
-- held transactions list
-- suspicious alerts
-- fraud trends graph
-- high-risk users table
-- top fraud reasons
-- device monitoring view
-
-## Observations
-- The system remains usable even when synchronization has not yet occurred.
-- Fraud signals are visible and understandable rather than hidden.
-- Admin workflows make the demo feel operational rather than cosmetic.
-- The deployment on Render demonstrates that the system is not limited to localhost.
-
-## Qualitative Results
-The strongest result is that the project successfully reflects rural banking constraints in both system design and user experience. The offline-first logic, safety features, and admin review workflows together make the solution much more credible than a generic banking demo.
+## Qualitative Outcome
+The most important result is that RuralShield feels like a system with a clear point of view. It is not just a banking app with “security features added on top”; it is a security framework designed around the realities of rural digital banking.
