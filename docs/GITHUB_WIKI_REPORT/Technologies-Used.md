@@ -1,11 +1,18 @@
 # Technologies Used
 
-## Quick Revision Summary
+## Technology Stack Summary
 - **Frontend:** FastAPI + Jinja templates + HTML/CSS + JavaScript for the customer and admin web portals.
-- **Backend:** Python + FastAPI for routing, business logic, fraud checks, sync handling, and APIs.
-- **Local Database:** SQLite for offline-first local storage.
-- **Central Database:** PostgreSQL for deployed server-side storage.
-- **Other Tech Stack:** SQLAlchemy, Pydantic, JWT, RBAC, AES-GCM, HMAC, SHA-256, Docker, Docker Compose, Render, GitHub Wiki.
+- **Backend:** Python + FastAPI for routing, business logic, auth, fraud checks, sync handling, and APIs.
+- **Local database:** SQLite for offline-first storage on the device/local system.
+- **Central database:** PostgreSQL for the deployed server-side data.
+- **ORM:** SQLAlchemy for PostgreSQL models and database interaction.
+- **Validation:** Pydantic for request/response schema validation.
+- **Authentication:** JWT + RBAC for secure role-based server access.
+- **Password/PIN security:** scrypt, bcrypt, passlib, python-jose.
+- **Encryption/Security:** AES-GCM, HMAC, SHA-256, cryptography.
+- **Biometric prototype:** Pillow + perceptual image hash for face-capture based demo verification.
+- **Deployment:** Docker + Docker Compose + Render.
+- **Version control/docs:** Git + GitHub + GitHub Wiki.
 
 This page explains each important technology, acronym, or technical term in two ways:
 
