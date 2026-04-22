@@ -211,17 +211,34 @@
             {% if row.alerts > maxv %}{% set maxv = row.alerts %}{% endif %}
             {% if row.high_risk_txs > maxv %}{% set maxv = row.high_risk_txs %}{% endif %}
           {% endfor %}
+          {% set point_count = pts|length %}
 
           <!-- Axes -->
           <line x1="44" y1="20" x2="44" y2="150" stroke="var(--border)"></line>
           <line x1="44" y1="150" x2="620" y2="150" stroke="var(--border)"></line>
+          <line x1="44" y1="85" x2="620" y2="85" stroke="var(--border)" stroke-dasharray="4 4"></line>
+
+          {% for row in pts %}
+            {% set i = loop.index0 %}
+            {% if point_count > 1 %}
+              {% set x = 44 + ( (576 / (point_count - 1)) * i ) %}
+            {% else %}
+              {% set x = 332 %}
+            {% endif %}
+            <line x1="{{ x|round(1) }}" y1="150" x2="{{ x|round(1) }}" y2="154" stroke="var(--border)"></line>
+            <text x="{{ x|round(1) }}" y="170" font-size="11" text-anchor="middle" fill="#57637a">{{ row.day[5:] if row.day else "-" }}</text>
+          {% endfor %}
 
           <!-- Alerts series (blue) -->
           <polyline fill="none" stroke="#224c9a" stroke-width="2"
             points="
             {% for row in pts %}
               {% set i = loop.index0 %}
-              {% set x = 44 + ( (576 / ((pts|length-1) if (pts|length>1) else 1)) * i ) %}
+              {% if point_count > 1 %}
+                {% set x = 44 + ( (576 / (point_count - 1)) * i ) %}
+              {% else %}
+                {% set x = 332 %}
+              {% endif %}
               {% set y = 150 - ( (120 / maxv) * row.alerts ) %}
               {{ x|round(1) }},{{ y|round(1) }}
             {% endfor %}
@@ -232,11 +249,30 @@
             points="
             {% for row in pts %}
               {% set i = loop.index0 %}
-              {% set x = 44 + ( (576 / ((pts|length-1) if (pts|length>1) else 1)) * i ) %}
+              {% if point_count > 1 %}
+                {% set x = 44 + ( (576 / (point_count - 1)) * i ) %}
+              {% else %}
+                {% set x = 332 %}
+              {% endif %}
               {% set y = 150 - ( (120 / maxv) * row.high_risk_txs ) %}
               {{ x|round(1) }},{{ y|round(1) }}
             {% endfor %}
             " />
+
+          {% for row in pts %}
+            {% set i = loop.index0 %}
+            {% if point_count > 1 %}
+              {% set x = 44 + ( (576 / (point_count - 1)) * i ) %}
+            {% else %}
+              {% set x = 332 %}
+            {% endif %}
+            {% set alert_y = 150 - ( (120 / maxv) * row.alerts ) %}
+            {% set risk_y = 150 - ( (120 / maxv) * row.high_risk_txs ) %}
+            <circle cx="{{ x|round(1) }}" cy="{{ alert_y|round(1) }}" r="5" fill="#224c9a"></circle>
+            <circle cx="{{ x|round(1) }}" cy="{{ risk_y|round(1) }}" r="5" fill="#f39c12"></circle>
+            <text x="{{ (x - 10)|round(1) }}" y="{{ (alert_y - 10)|round(1) }}" font-size="11" fill="#224c9a">{{ row.alerts }}</text>
+            <text x="{{ (x + 10)|round(1) }}" y="{{ (risk_y - 10)|round(1) }}" font-size="11" fill="#f39c12">{{ row.high_risk_txs }}</text>
+          {% endfor %}
 
           <!-- Legend -->
           <rect x="52" y="26" width="10" height="10" fill="#224c9a"></rect>
