@@ -62,7 +62,7 @@ The project is deployed publicly and documented through repository docs and GitH
 
 ## Supporting Technical Links
 - API documentation: https://ruralshield.onrender.com/api/docs
-- Health endpoint: https://ruralshield.onrender.com/health
+- Health endpoint: https://ruralshield.onrender.com/api/health
 - Customer portal: https://ruralshield.onrender.com/customer
 - Bank/Admin portal: https://ruralshield.onrender.com/bank
 

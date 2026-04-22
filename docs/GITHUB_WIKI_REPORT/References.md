@@ -27,7 +27,7 @@
 - Repository: https://github.com/bhumishah01/CyberShakti-Banking-Framework
 - Main page: https://ruralshield.onrender.com/?lang=en
 - API docs: https://ruralshield.onrender.com/api/docs
-- Health endpoint: https://ruralshield.onrender.com/health
+- Health endpoint: https://ruralshield.onrender.com/api/health
 
 ## Navigation
 - Previous: [[Conclusion]]

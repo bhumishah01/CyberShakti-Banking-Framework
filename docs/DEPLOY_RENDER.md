@@ -5,7 +5,7 @@ This project can be deployed on **Render** as a single Docker web service that s
 - **Server API** at `/api/*`
 
 Render health check:
-- `/health`
+- `/api/health`
 
 ## Preconditions
 
@@ -47,7 +47,6 @@ After deploy, your live URL will serve:
 
 - [ ] `docker build .` succeeds
 - [ ] `docker run -p 8000:8000 ...` serves UI at `http://localhost:8000/`
-- [ ] `http://localhost:8000/health` returns ok
 - [ ] `http://localhost:8000/api/health` returns ok
 
 ## Notes
