@@ -1,36 +1,48 @@
 # Literature Survey / Related Work
 
-## 1. NIST Cybersecurity Framework (CSF)
-The NIST Cybersecurity Framework organizes security work into Identify, Protect, Detect, Respond, and Recover. RuralShield reflects this pattern by identifying trust signals, protecting transactions with encryption and authentication, detecting suspicious behavior, responding through hold/block/review workflows, and recovering via logging and sync traceability.
+## Summary of Research Papers / Standards / Articles
 
-## 2. OWASP Application and Mobile Security Guidance
-OWASP guidance influenced secure local handling, input validation, and defensive request processing. For a banking-style workflow, these controls matter because data cannot be trusted simply because it comes from the frontend.
+### 1. Pascoe, Quinn, and Scarfone (2024) — NIST Cybersecurity Framework (CSF) 2.0
+**Source:** NIST CSWP 29, National Institute of Standards and Technology.  
+**What it contributes:** CSF 2.0 provides a practical cybersecurity structure built around risk management functions such as Identify, Protect, Detect, Respond, Recover, and the newer Govern function.  
+**How it influenced RuralShield:** RuralShield aligns strongly with this model by combining authentication, device trust, fraud detection, auditability, response actions such as hold/block/review, and recovery-oriented sync traceability.
 
-## 3. Offline-First System Design Patterns
-Offline-first patterns are widely used in logistics, health, field-data, and remote operations systems. RuralShield applies similar ideas through local storage, an outbox queue, delayed synchronization, and retry tracking.
+### 2. OWASP Application Security Verification Standard (ASVS)
+**Source:** OWASP Foundation.  
+**What it contributes:** ASVS provides a structured security baseline for web application controls including authentication, validation, session handling, cryptographic practices, and secure development review.  
+**How it influenced RuralShield:** It informed secure input handling, local and server-side validation, safer auth workflows, and the project’s defensive approach to route and request design.
 
-## 4. Explainable Fraud Detection Concepts
-Many fraud systems generate scores but hide their reasoning. RuralShield instead stores explicit reason codes such as `NEW_DEVICE`, `HIGH_AMOUNT`, and `RAPID_BURST`, making decisions easier to justify and present.
+### 3. OWASP Mobile Application Security (MASVS / MASTG)
+**Source:** OWASP Foundation.  
+**What it contributes:** The OWASP mobile security initiative defines best practices for authentication, local data storage, cryptography, and secure testing in mobile-like environments.  
+**How it influenced RuralShield:** Although RuralShield is browser-based, its rural-device and low-resource design closely matches mobile security concerns such as safe local storage, low-trust device handling, and offline-capable operation.
 
-## 5. Device Trust and Behavioral Risk Models
-Shared devices, new devices, and unusual usage timing are common fraud signals. RuralShield incorporates device trust tracking and behavioral profiling to make its scoring more realistic.
+### 4. Kleppmann, Wiggins, van Hardenberg, and McGranaghan (2019) — Local-first software: You own your data, in spite of the cloud
+**Source:** ACM Onward! 2019.  
+**What it contributes:** This work formalizes the local-first software idea: applications should keep working even when network access is absent, while still supporting synchronization and data ownership.  
+**How it influenced RuralShield:** RuralShield applies this idea directly through local SQLite persistence, outbox-based delayed sync, and operational continuity under weak connectivity.
 
-## Existing Tools / Technologies Referenced
-- SQLite for local persistence
-- PostgreSQL for central persistence
-- FastAPI for API and mounted UI runtime
-- JWT for token-based auth
-- Docker and Render for deployment
+### 5. den Hengst, Acar, and Visbeek (2023) — Explainable Fraud Detection with Deep Symbolic Classification
+**Source:** arXiv:2312.00586.  
+**What it contributes:** The paper argues that fraud systems need not only strong detection capability, but also transparent reasoning that can be explained to operators, regulators, and affected users.  
+**How it influenced RuralShield:** RuralShield adopts explainability as a design goal by storing explicit reason codes and presenting fraud outcomes as understandable decisions rather than black-box predictions.
+
+## Existing Tools / Technologies Considered
+- SQLite for local offline persistence
+- PostgreSQL for centralized deployed storage
+- FastAPI for the web and API backend
+- Docker and Render for portable deployment
+- GitHub Wiki for project documentation and presentation
 
 ## Comparison Table
-| Area | Conventional Online Banking Demo | RuralShield |
+| Area | Conventional Banking Demo | RuralShield |
 |---|---|---|
-| Offline operation | Weak | Strong |
-| Explainable fraud | Usually limited | Explicit reason codes |
-| Sync queue visibility | Rare | Built in |
-| Device trust | Often hidden | Visible and scored |
-| Admin monitoring | Basic | Operational + analytical |
-| Rural-first design | Often absent | Central design goal |
+| Internet dependency | High | Reduced through local-first flow |
+| Fraud explanation | Usually limited | Explicit reason codes and decision labels |
+| Sync visibility | Hidden | Exposed through sync queue UI |
+| Device trust awareness | Often minimal | Built into login and fraud scoring |
+| Rural suitability | Weak | Core project focus |
+| Admin operations | Basic | Monitoring, analytics, review, export |
 
 ## Navigation
 - Previous: [[Objectives-and-Scope]]

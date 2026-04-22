@@ -1,6 +1,9 @@
 # System Architecture
 
 ## Architecture Diagram
+![RuralShield Architecture](Architecture-Diagram.svg)
+
+## Architecture Diagram (Mermaid Version)
 ```mermaid
 flowchart TB
   subgraph Customer["Customer / Device Layer"]

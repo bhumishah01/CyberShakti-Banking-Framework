@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="860" viewBox="0 0 1400 860">
+  <defs>
+    <style>
+      .title { font: 700 34px Arial, sans-serif; fill: #10223a; }
+      .subtitle { font: 600 18px Arial, sans-serif; fill: #35506b; }
+      .box { rx: 18; ry: 18; stroke-width: 3; }
+      .label { font: 700 22px Arial, sans-serif; fill: #10223a; }
+      .text { font: 500 17px Arial, sans-serif; fill: #24384f; }
+      .small { font: 500 15px Arial, sans-serif; fill: #35506b; }
+      .arrow { stroke: #3c5a77; stroke-width: 4; fill: none; marker-end: url(#arrow); }
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#3c5a77" />
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1400" height="860" fill="#f4f7fb"/>
+  <text x="60" y="70" class="title">RuralShield System Architecture</text>
+  <text x="60" y="105" class="subtitle">Offline-first customer workflow, local security/runtime layer, and central API-driven bank monitoring</text>
+
+  <rect x="60" y="160" width="300" height="250" class="box" fill="#dceeff" stroke="#5a9bd5"/>
+  <text x="90" y="205" class="label">Customer Portal</text>
+  <text x="90" y="245" class="text">• Registration and Login</text>
+  <text x="90" y="278" class="text">• Send Money</text>
+  <text x="90" y="311" class="text">• Transaction History</text>
+  <text x="90" y="344" class="text">• Safety Controls</text>
+  <text x="90" y="377" class="text">• Voice Assistance</text>
+
+  <rect x="420" y="140" width="420" height="590" class="box" fill="#e6f7e8" stroke="#58a66a"/>
+  <text x="455" y="190" class="label">Local Runtime / Device Layer</text>
+  <rect x="460" y="230" width="340" height="90" class="box" fill="#ffffff" stroke="#8ecf98"/>
+  <text x="485" y="270" class="text">SQLite Local Database</text>
+  <text x="485" y="300" class="small">Users, transactions, devices, alerts, notifications, outbox</text>
+
+  <rect x="460" y="345" width="340" height="90" class="box" fill="#ffffff" stroke="#8ecf98"/>
+  <text x="485" y="385" class="text">Fraud Engine + Behavior Profiling</text>
+  <text x="485" y="415" class="small">Risk score, reason codes, hold/block decisions</text>
+
+  <rect x="460" y="460" width="340" height="90" class="box" fill="#ffffff" stroke="#8ecf98"/>
+  <text x="485" y="500" class="text">Security Layer</text>
+  <text x="485" y="530" class="small">PIN hashing, AES-GCM, HMAC, device trust, face hash</text>
+
+  <rect x="460" y="575" width="340" height="90" class="box" fill="#ffffff" stroke="#8ecf98"/>
+  <text x="485" y="615" class="text">Outbox / Sync Queue</text>
+  <text x="485" y="645" class="small">Pending, retrying, synced, blocked, duplicate-ack</text>
+
+  <rect x="900" y="160" width="430" height="250" class="box" fill="#fff0d9" stroke="#e3a23a"/>
+  <text x="935" y="205" class="label">Central Server Layer</text>
+  <text x="935" y="245" class="text">• FastAPI Combined Runtime</text>
+  <text x="935" y="278" class="text">• JWT Authentication + RBAC</text>
+  <text x="935" y="311" class="text">• Sync and Transaction APIs</text>
+  <text x="935" y="344" class="text">• PostgreSQL Central Database</text>
+  <text x="935" y="377" class="text">• Fraud Logs and Server Analytics</text>
+
+  <rect x="900" y="500" width="430" height="190" class="box" fill="#fce2e2" stroke="#d66b6b"/>
+  <text x="935" y="545" class="label">Bank / Admin Portal</text>
+  <text x="935" y="585" class="text">• Dashboard and Monitoring</text>
+  <text x="935" y="618" class="text">• Fraud Analytics</text>
+  <text x="935" y="651" class="text">• Sync Queue Control</text>
+  <text x="935" y="684" class="text">• Freeze / Review / Export Tools</text>
+
+  <path d="M360 285 C390 285, 390 285, 420 285" class="arrow"/>
+  <path d="M800 620 C850 620, 850 620, 900 620" class="arrow"/>
+  <path d="M800 300 C850 300, 850 300, 900 300" class="arrow"/>
+  <path d="M1115 410 C1115 450, 1115 450, 1115 500" class="arrow"/>
+
+  <text x="570" y="780" class="small">Customer actions start locally, are secured and evaluated locally, and are synchronized to the central server when network access is available.</text>
+</svg>
