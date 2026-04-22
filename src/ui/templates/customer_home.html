@@ -366,8 +366,30 @@
       const pin = document.getElementById('rs-pin');
       const amt = document.getElementById('rs-amount');
       const rec = document.getElementById('rs-recipient');
+      const msg = document.getElementById('rs-action-msg');
       if (!form || !btn || !pin || !amt || !rec) return;
       const lang = "{{ lang }}";
+
+      const showMsg = (kind, text) => {
+        if (!msg) return;
+        const cls = kind === 'error' ? 'alert error' : (kind === 'ok' ? 'alert success' : 'alert warn');
+        msg.innerHTML = `<section class="${cls}">${String(text || '')}</section>`;
+      };
+
+      const speakText = (text) => {
+        if (!text || !window.speechSynthesis) return;
+        try {
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.resume();
+          const utter = new SpeechSynthesisUtterance(text);
+          utter.rate = 1;
+          utter.pitch = 1;
+          setTimeout(() => window.speechSynthesis.speak(utter), 120);
+        } catch (e) {
+          // ignore
+        }
+      };
+
       form.addEventListener('submit', async (ev) => {
         ev.preventDefault();
         btn.disabled = true;
@@ -381,10 +403,21 @@
           });
           const j = await r.json();
           if (j.status !== 'success') throw new Error(j.message || 'error');
-          // redirect to show the last tx panel (no sensitive fields)
-          window.location.href = `/dashboard/customer?lang=${encodeURIComponent(lang)}&tx=${encodeURIComponent(j.data.tx_id)}&autoplay=1#send`;
+          const data = j.data || {};
+          const decision = String(data.decision || '').toUpperCase();
+          const summary = data.summary || j.message || "{{ i18n.tx_saved }}";
+          showMsg(decision === 'HOLD' || decision === 'BLOCK' ? 'warn' : 'ok', summary);
+          speakText(data.voice_text || '');
+          try {
+            sessionStorage.setItem('rs_pending_voice', String(data.voice_text || ''));
+          } catch (e) {
+            // ignore
+          }
+          setTimeout(() => {
+            window.location.href = `/dashboard/customer?lang=${encodeURIComponent(lang)}&tx=${encodeURIComponent(data.tx_id)}&autoplay=1#send`;
+          }, data.voice_text ? 1800 : 900);
         } catch (e) {
-          alert(String(e && e.message ? e.message : e));
+          showMsg('error', String(e && e.message ? e.message : e));
         } finally {
           btn.disabled = false;
         }
@@ -395,14 +428,25 @@
       // Voice feedback autoplay (optional): after creating a transaction, we redirect with autoplay=1.
       const params = new URLSearchParams(window.location.search || "");
       const autoplay = params.get("autoplay") === "1";
-      if (!autoplay) return;
+      let pending = "";
+      try {
+        pending = sessionStorage.getItem('rs_pending_voice') || "";
+      } catch (e) {
+        pending = "";
+      }
+      if (!autoplay && !pending) return;
       const btn = document.querySelector("#rs-last-tx .voice-btn");
-      if (!btn || !window.speechSynthesis) return;
-      const text = btn.getAttribute("data-voice-text") || "";
+      if (!window.speechSynthesis) return;
+      const text = pending || (btn ? (btn.getAttribute("data-voice-text") || "") : "");
       if (!text) return;
       try {
         window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+        window.speechSynthesis.resume();
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.rate = 1;
+        utter.pitch = 1;
+        setTimeout(() => window.speechSynthesis.speak(utter), 150);
+        sessionStorage.removeItem('rs_pending_voice');
       } catch (e) {
         // ignore
       }
@@ -435,15 +479,16 @@
         t = t.replace(/\s+/g, ' ').trim();
 
         const patterns = [
-          /^(?:send|pay|transfer)\s+(?:money\s+)?(\d+(?:\.\d+)?)\s+(?:to\s+)?(.+)$/i,
-          /^(?:send|pay|transfer)\s+(?:money\s+)?(?:to\s+)?(.+?)\s+(\d+(?:\.\d+)?)$/i,
-          /^(\d+(?:\.\d+)?)\s+(?:to\s+)?(.+)$/i,
+          /^(?:send|pay|transfer)\s+(?:money\s+)?(?<amount>\d+(?:\.\d+)?)\s+(?:to\s+)?(?<recipient>.+)$/i,
+          /^(?:send|pay|transfer)\s+(?:money\s+)?(?:to\s+)?(?<recipient>.+?)\s+(?<amount>\d+(?:\.\d+)?)$/i,
+          /^(?<amount>\d+(?:\.\d+)?)\s+(?:to\s+)?(?<recipient>.+)$/i,
         ];
         for (const p of patterns) {
           const m = t.match(p);
           if (!m) continue;
-          const a = parseFloat(m[1]);
-          const r = String(m[2] || '').trim();
+          const groups = m.groups || {};
+          const a = parseFloat(String(groups.amount || ''));
+          const r = String(groups.recipient || '').trim();
           if (!Number.isFinite(a) || a <= 0 || !r) continue;
           return { amount: a, recipient: r };
         }
@@ -563,7 +608,25 @@
           });
           const j = await r.json();
           if (j.status !== 'success') throw new Error(j.message || 'error');
-          window.location.href = `/dashboard/customer?lang=${encodeURIComponent(lang)}&tx=${encodeURIComponent(j.data.tx_id)}#send`;
+          const data = j.data || {};
+          const decision = String(data.decision || '').toUpperCase();
+          showMsg(decision === 'HOLD' || decision === 'BLOCK' ? 'warn' : 'ok', data.summary || j.message || "{{ i18n.tx_saved }}");
+          if (data.voice_text && window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+            window.speechSynthesis.resume();
+            const utter = new SpeechSynthesisUtterance(data.voice_text);
+            utter.rate = 1;
+            utter.pitch = 1;
+            setTimeout(() => window.speechSynthesis.speak(utter), 120);
+            try {
+              sessionStorage.setItem('rs_pending_voice', String(data.voice_text || ''));
+            } catch (e) {
+              // ignore
+            }
+          }
+          setTimeout(() => {
+            window.location.href = `/dashboard/customer?lang=${encodeURIComponent(lang)}&tx=${encodeURIComponent(data.tx_id)}&autoplay=1#send`;
+          }, data.voice_text ? 1800 : 900);
         } catch (e) {
           showMsg('error', String(e && e.message ? e.message : e));
         } finally {
@@ -580,7 +643,11 @@
           const text = btn.getAttribute("data-voice-text") || "";
           if (!text) return;
           window.speechSynthesis.cancel();
-          window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+          window.speechSynthesis.resume();
+          const utter = new SpeechSynthesisUtterance(text);
+          utter.rate = 1;
+          utter.pitch = 1;
+          setTimeout(() => window.speechSynthesis.speak(utter), 120);
         });
       });
     })();

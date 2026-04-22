@@ -221,6 +221,13 @@ def _json_err(message: str, *, status_code: int = 400, data: Any | None = None) 
     return JSONResponse(payload, status_code=int(status_code))
 
 
+def _friendly_customer_error(exc: Exception, lang: str) -> str:
+    raw = str(exc or "").strip()
+    if "invalid_pin" in raw:
+        return _t(lang, "cust_login_wrong_pin")
+    return raw or _t(lang, "customer_login_failed")
+
+
 def _server_api_url() -> str:
     return DEFAULT_SERVER_URL.rstrip("/")
 
@@ -2634,6 +2641,20 @@ async def customer_api_create_transaction(request: Request):
         )
         reasons = [str(x) for x in (stored.reason_codes or [])]
         decision = str(stored.action_decision or "ALLOW")
+        guidance = [str(x) for x in (stored.intervention_guidance or [])]
+        voice_text = _build_customer_voice_feedback(
+            lang=lang,
+            decision=decision,
+            status=str(stored.status),
+            risk_score=int(stored.risk_score),
+            reasons=[_friendly_reason(r, lang=lang) for r in reasons],
+            guidance=guidance,
+        )
+        summary = (
+            f"{_t(lang, 'tx_saved')} "
+            f"{_t(lang, 'decision_label')} {_friendly_action(decision, lang=lang)}. "
+            f"{_t(lang, 'risk_label')} {_friendly_risk(str(stored.risk_level), lang=lang)} ({int(stored.risk_score)}/100)."
+        )
         return _json_ok(
             {
                 "tx_id": stored.tx_id,
@@ -2643,12 +2664,15 @@ async def customer_api_create_transaction(request: Request):
                 "status": str(stored.status),
                 "reasons": reasons,
                 "reasons_text": [_friendly_reason(r, lang=lang) for r in reasons] or [_t(lang, "no_alert")],
+                "guidance": guidance,
+                "voice_text": voice_text,
+                "summary": summary,
                 "details_url": f"/customer/tx/{stored.tx_id}?lang={lang}",
             },
-            message=_t(lang, "tx_saved"),
+            message=summary,
         )
     except Exception as exc:
-        return _json_err(str(exc), status_code=400)
+        return _json_err(_friendly_customer_error(exc, lang), status_code=400)
 
 
 @app.get("/customer/api/summary")
@@ -2719,6 +2743,20 @@ async def customer_api_voice(request: Request):
         )
         reasons = [str(x) for x in (stored.reason_codes or [])]
         decision = str(stored.action_decision or "ALLOW")
+        guidance = [str(x) for x in (stored.intervention_guidance or [])]
+        voice_text = _build_customer_voice_feedback(
+            lang=lang,
+            decision=decision,
+            status=str(stored.status),
+            risk_score=int(stored.risk_score),
+            reasons=[_friendly_reason(r, lang=lang) for r in reasons],
+            guidance=guidance,
+        )
+        summary = (
+            f"{_t(lang, 'tx_saved')} "
+            f"{_t(lang, 'decision_label')} {_friendly_action(decision, lang=lang)}. "
+            f"{_t(lang, 'risk_label')} {_friendly_risk(str(stored.risk_level), lang=lang)} ({int(stored.risk_score)}/100)."
+        )
         return _json_ok(
             {
                 "parsed": {"amount": float(amt), "recipient": str(rec)},
@@ -2729,12 +2767,15 @@ async def customer_api_voice(request: Request):
                 "status": str(stored.status),
                 "reasons": reasons,
                 "reasons_text": [_friendly_reason(r, lang=lang) for r in reasons] or [_t(lang, "no_alert")],
+                "guidance": guidance,
+                "voice_text": voice_text,
+                "summary": summary,
                 "details_url": f"/customer/tx/{stored.tx_id}?lang={lang}",
             },
-            message=_t(lang, "tx_saved"),
+            message=summary,
         )
     except Exception as exc:
-        return _json_err(str(exc), status_code=400)
+        return _json_err(_friendly_customer_error(exc, lang), status_code=400)
 
 
 @app.post("/customer/trusted-contact")
