@@ -3472,7 +3472,13 @@ def export_report_json(request: Request):
             "error": audit.error,
         },
     }
-    return JSONResponse(payload)
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    return JSONResponse(
+        payload,
+        headers={
+            "Content-Disposition": f'attachment; filename="ruralshield_security_report_{timestamp}.json"'
+        },
+    )
 
 
 @app.post("/export/change-log")
