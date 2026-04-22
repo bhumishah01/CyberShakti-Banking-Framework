@@ -54,3 +54,7 @@ Rural users often face unstable networks, shared or low-resource devices, and li
 
 ## Navigation
 - Next: [[Introduction]]
+
+## Technical System Reference
+
+For a deeper implementation-level explanation beyond the formal report, see `docs/GITHUB_WIKI_SYSTEM_REFERENCE/` and the Wiki page `System-Reference`.
