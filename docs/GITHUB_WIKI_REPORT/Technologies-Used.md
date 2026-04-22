@@ -14,6 +14,16 @@
 - **Deployment:** Docker + Docker Compose + Render.
 - **Version control/docs:** Git + GitHub + GitHub Wiki.
 
+## Deployment Summary
+- **Frontend deployment:** served through the same FastAPI combined app on Render.
+- **Backend deployment:** FastAPI API deployed on Render.
+- **Deployment packaging:** Docker.
+- **Multi-service local/deployment setup:** Docker Compose.
+- **Cloud hosting platform:** Render.
+- **Frontend + backend live structure:** UI mounted at `/` and API mounted at `/api`.
+- **Central deployed database:** PostgreSQL.
+- **Version control / deployment source:** GitHub.
+
 This page explains each important technology, acronym, or technical term in two ways:
 
 - **What it means in general**
