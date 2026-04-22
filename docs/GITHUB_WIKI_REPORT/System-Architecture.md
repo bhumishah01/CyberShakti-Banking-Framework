@@ -1,80 +1,112 @@
 # System Architecture
 
 ## Architecture Overview
-RuralShield uses a layered full-stack architecture that separates customer interaction, local persistence, fraud analysis, synchronization, and central monitoring. This separation is intentional. It allows the system to remain functional when offline, while also preserving the bank’s role as the final central authority once synchronization occurs.
+RuralShield uses a layered architecture that separates customer interaction, local state management, fraud evaluation, synchronization, central persistence, and bank/admin visibility. This structure was chosen so that the system can continue working even when the network is unavailable, while still preserving a strong central review model once synchronization occurs.
 
-## High-Level Architecture Diagram
+## Architecture Diagram
 ```mermaid
 flowchart TB
-  subgraph CustomerSide[Customer Device / Browser Layer]
+  subgraph CustomerLayer[Customer Layer]
     UI[Customer Portal UI]
-    LocalDB[Local SQLite Storage]
-    Fraud[Fraud Engine\nRisk Score + Explainable Reasons]
+    Safety[Safety Controls]
+    Voice[Voice Input / Feedback]
+  end
+
+  subgraph LocalLayer[Local Device Layer]
+    SQLite[SQLite Local Store]
+    Fraud[Fraud Engine]
     Outbox[Sync Queue / Outbox]
-    Safety[Safety Controls\nTrusted Contacts / Panic Freeze]
+    DeviceTrust[Device Trust State]
   end
 
-  subgraph AdminSide[Bank / Admin Layer]
-    AdminUI[Bank Dashboard]
-    Analytics[Analytics + Monitoring]
-    Controls[Approve / Reject / Freeze / Sync Actions]
+  subgraph ServerLayer[Central Server Layer]
+    FastAPI[FastAPI Combined App]
+    Auth[JWT + Role Access]
+    API[API Routes]
+    PG[(PostgreSQL)]
   end
 
-  subgraph Server[Central Server on Render]
-    Combined[Combined FastAPI App]
-    Auth[JWT + Role Handling]
-    API[API Layer]
-    PG[PostgreSQL]
+  subgraph AdminLayer[Bank/Admin Layer]
+    Dashboard[Monitoring Dashboard]
+    Analytics[Fraud Analytics]
+    Controls[Approve / Reject / Freeze / Sync]
   end
 
+  UI --> SQLite
   UI --> Fraud
-  UI --> LocalDB
   UI --> Safety
-  Fraud --> LocalDB
-  LocalDB --> Outbox
+  UI --> Voice
+  Fraud --> SQLite
+  SQLite --> Outbox
+  DeviceTrust --> Fraud
   Outbox --> API
-  Combined --> Auth
+  FastAPI --> Auth
   API --> PG
-  AdminUI --> API
+  Dashboard --> API
   Analytics --> API
   Controls --> API
 ```
 
 ## Explanation of the Architecture
-### 1. Customer Interaction Layer
-This layer provides the visible interface to the user. It includes account overview, transaction creation, alerts, transaction history, safety settings, and voice-assisted interaction. The goal is to keep the UI understandable, low-friction, and responsive even when the backend is not immediately reachable.
+### Customer Layer
+This is the visible product layer. It includes the customer dashboard, send money flow, history, alerts, and safety features. Its goal is to keep the experience simple and confidence-building.
 
-### 2. Local Storage Layer
-The project uses SQLite locally to preserve important user and transaction data. This is central to the offline-first design. Instead of losing user intent when the internet is unavailable, the system records transaction state locally and allows later synchronization.
+### Local Device Layer
+This layer is central to the project’s rural-first design.
+- **SQLite** stores local-first data.
+- **Fraud Engine** computes risk before sync.
+- **Outbox Queue** tracks pending synchronization.
+- **Device Trust State** adds contextual signals into risk evaluation.
 
-### 3. Fraud Engine Layer
-The fraud engine runs close to the transaction creation flow. It evaluates risk using static rules and behavior-aware comparisons. Its output is not just a numerical score; it also includes reason codes and decision state, making it suitable for both automation and review.
+### Server Layer
+The server is the authoritative central backend. It is built as a combined FastAPI deployment and exposes authenticated APIs for transactions, review actions, analytics, and data retrieval.
 
-### 4. Safety Controls Layer
-Customer-side safety features such as panic freeze, trusted contacts, and risk transparency sit alongside transaction creation. These are important because rural security is not only about detecting fraud but also about giving the user confidence and recovery options.
+### Admin Layer
+The admin side provides monitoring, analytics, release controls, freeze/unfreeze operations, device visibility, and suspicious pattern handling.
 
-### 5. Synchronization Layer
-The synchronization layer is responsible for turning local-first operation into central consistency. The outbox queue preserves pending records, tracks retries, and supports selective sync and recovery workflows.
+## Modules / Components Description
+- **Authentication module**: session management, JWT, role-based routing
+- **Fraud module**: scoring logic, behavioral comparison, reason generation
+- **Storage module**: local and central persistence handling
+- **Sync module**: pending, retrying, synced, held, blocked states
+- **Safety module**: trusted contacts, panic freeze, device trust
+- **Analytics module**: charts, summaries, fraud trends, risk distribution
+- **UI module**: customer and admin templates with multilingual controls
 
-### 6. Server and API Layer
-The deployed server is implemented using a combined FastAPI application. It exposes backend APIs, role-aware logic, and mounted routes for deployed access. This gives the system a single public deployment while preserving modular separation in the codebase.
+## Data Flow Deep Dive
+### Customer transaction path
+1. User initiates a transaction.
+2. Input is validated.
+3. Fraud engine computes score, decision, and reasons.
+4. Record is stored locally.
+5. Sync queue receives the item.
+6. When conditions allow, the record is pushed to the server.
+7. Server stores it in PostgreSQL.
+8. Admin dashboards and analytics reflect the synchronized state.
 
-### 7. Central Database Layer
-PostgreSQL serves as the server-side persistent store. It is used for the central representation of users, transactions, fraud logs, devices, and administrative operations.
+### Admin review path
+1. Admin opens dashboard or analytics.
+2. Data is fetched from server or prepared from available state.
+3. Held transactions are reviewed.
+4. Admin action updates transaction/user state.
+5. Result is reflected across the monitoring views.
 
-### 8. Admin and Analytics Layer
-The bank/admin layer is where the project becomes operational rather than merely transactional. It includes monitoring dashboards, analytics pages, fraud trends, high-risk user lists, device monitoring, sync control, and release workflows.
+## Security Layers
+- authentication layer
+- local persistence layer
+- fraud analysis layer
+- synchronization integrity layer
+- admin review and control layer
 
-## Core Components
-- **Authentication module**: session, JWT, role-aware behavior
-- **Fraud module**: scoring, reasons, behavior profiling
-- **Storage module**: SQLite + Postgres coordination
-- **Sync module**: pending, retrying, synced, held, blocked transitions
-- **Analytics module**: charts, summaries, risk groupings, alerts
-- **UI module**: multilingual templates, navigation, action buttons, feedback states
+## Failure Handling Strategy
+- local save prevents data loss on weak networks
+- queue state prevents disappearing transactions
+- retry tracking provides controlled recovery
+- admin release/review flow prevents irreversible mistakes
 
-## Architectural Strengths
-- Handles unreliable internet without losing the workflow
-- Keeps fraud explainable and reviewable
-- Gives both customer and admin sides meaningful capabilities
-- Scales conceptually from prototype to stronger production architecture
+## Comparison with Real Banking Systems
+Real banking systems often centralize nearly all decision-making at the backend. RuralShield differs by pushing some trust-preserving logic closer to the user while still maintaining bank-side authority. This makes it more suitable for connectivity-constrained environments.
+
+## Navigation
+- Previous: [[Literature-Survey]]
+- Next: [[Technologies-Used]]

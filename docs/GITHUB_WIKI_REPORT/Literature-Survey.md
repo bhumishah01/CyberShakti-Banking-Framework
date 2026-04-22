@@ -1,59 +1,82 @@
 # Literature Survey / Related Work
 
 ## Overview
-The design of RuralShield is informed by practical cybersecurity frameworks, secure mobile application guidance, offline-first synchronization patterns, and explainable fraud analysis principles. Instead of reproducing a single research paper, the project synthesizes several relevant ideas into a coherent banking security system suitable for rural deployment scenarios.
+RuralShield was not built in isolation. Its design is informed by multiple streams of related work: cybersecurity frameworks, secure application guidance, offline-first system design, explainable decision systems, and fraud-aware banking workflows. This section summarizes representative references and how they shaped the project.
 
-## 1. Cybersecurity Framework Thinking
-A useful conceptual reference for this project is the NIST Cybersecurity Framework. The structure of Identify, Protect, Detect, Respond, and Recover maps naturally onto the system:
-- **Identify**: user profiles, device trust, behavior baselines, risk patterns
-- **Protect**: PIN-based access, encryption, token handling, field-level data security
-- **Detect**: fraud scoring, suspicious pattern alerts, high-risk transaction detection
-- **Respond**: hold/block decisions, release workflows, freeze/unfreeze actions
-- **Recover**: sync recovery, audit logs, queue handling, retry states
+## 1. NIST Cybersecurity Framework
+The NIST Cybersecurity Framework is not a banking-specific paper, but it provides a strong structure for thinking about security systems. Its Identify-Protect-Detect-Respond-Recover model maps naturally to RuralShield.
 
-This project therefore does not treat fraud detection as an isolated feature. It fits fraud analysis into a broader security lifecycle.
+### Relevance to this project
+- **Identify**: user profile, device trust, transaction behavior
+- **Protect**: encryption, PIN handling, JWT-based access
+- **Detect**: fraud score, suspicious pattern alerts
+- **Respond**: hold/block/release/freeze actions
+- **Recover**: sync recovery, auditability, retry handling
 
-## 2. Mobile and Application Security Guidance
-OWASP-inspired secure development practices influenced several project decisions:
-- secure local storage
-- authenticated session management
-- safe routing between pages and actions
-- controlled exposure of sensitive data
-- validation of user actions before processing
+### Contribution to RuralShield
+The framework helped shape the system as a full security lifecycle rather than a single fraud classifier.
 
-Even though the project is deployed as a web application, many of its concerns are mobile-like in nature because the system is designed around low-end, field-like, constrained usage.
+## 2. OWASP Application and Mobile Security Guidance
+OWASP guidance emphasizes secure storage, safe authentication, validation, and defense against tampering. Even though RuralShield is not a mobile APK, it shares many mobile-like constraints because it is designed for low-resource, field-like conditions.
 
-## 3. Offline-First Application Design
-Offline-first design patterns are widely used in healthcare, logistics, field audits, and retail POS systems. The outbox model used in RuralShield is an adaptation of these resilience-oriented patterns. The key ideas are:
-- write locally first,
-- preserve intent safely,
-- retry synchronization later,
-- avoid data loss when the connection fails.
+### Contribution to RuralShield
+- local storage is treated as sensitive
+- user actions are validated before processing
+- deployment is separated from local data handling
+- authentication and session behavior are structured rather than ad hoc
 
-These ideas are especially relevant in rural finance because a failed or vanished transaction can produce both user mistrust and operational confusion.
+## 3. Offline-First Data Architecture Articles and Patterns
+Offline-first system design is common in field applications such as logistics, healthcare, and retail POS systems. The main idea is to record user intent locally first and sync later instead of failing hard when the network is unavailable.
 
-## 4. Explainable Fraud Detection
-Banking systems often use risk scoring, but many student prototypes stop at a number or a binary outcome. In real operations, however, staff need to know why something is suspicious. RuralShield therefore uses reason codes and simple explanations rather than opaque outputs. This makes the system more reviewable and more aligned with real financial workflows.
+### Contribution to RuralShield
+This directly influenced:
+- local SQLite usage
+- sync queue design
+- retry and pending states
+- selective sync and release workflows
 
-## 5. Device Trust and Shared-Device Risk
-In rural banking contexts, device trust is particularly relevant because device sharing and device change are more common. A system that ignores device context misses a major risk signal. RuralShield explicitly includes device trust tracking and uses it in both scoring and monitoring.
+## 4. Explainable Fraud Detection Research
+Fraud detection systems often focus on prediction strength but provide little explanation. In financial operations, this is a limitation because staff need interpretable reasons to review transactions and users need understandable outcomes.
 
-## Existing Tools and Technologies Studied
-The system also reflects the strengths and limitations of common tools:
-- **SQLite** for local portability and low overhead
-- **PostgreSQL** for central reliability and structured relationships
-- **FastAPI** for rapid but structured full-stack web/API delivery
-- **Docker** for repeatable local and cloud deployment
+### Contribution to RuralShield
+The project uses reason codes such as:
+- `NEW_DEVICE`
+- `HIGH_AMOUNT`
+- `ODD_TIME`
+- `RAPID_BURST`
+- `HIGH_AMOUNT_VS_AVG`
 
-## Comparative Perspective
-| Aspect | Typical Online Banking Demo | RuralShield |
+These codes make the fraud engine reviewable, not just functional.
+
+## 5. Device Trust and Shared-Device Risk Work
+A significant fraud signal in low-resource environments is device context. New devices, shared phones, or unfamiliar activity patterns often increase account misuse risk.
+
+### Contribution to RuralShield
+This motivated:
+- trusted vs untrusted device tracking
+- device monitoring in admin analytics
+- additional risk contribution from new-device scenarios
+
+## Existing Tools / Technologies Considered
+- SQLite for local-first persistence
+- PostgreSQL for central server persistence
+- FastAPI for API + routed application structure
+- Docker for portable deployment
+- GitHub Wiki for structured documentation delivery
+
+## Comparison Table
+| Area | Traditional Online Banking Demo | RuralShield |
 |---|---|---|
-| Offline-first operation | Often absent | Core design principle |
-| Explainable fraud reasons | Minimal | Built-in |
+| Offline support | Minimal | Core design principle |
+| Explainable fraud output | Weak | Strong |
+| Sync queue visibility | Rare | Explicit |
 | Device trust visibility | Rare | Included |
-| Selective sync/recovery | Rare | Implemented |
-| Admin analytics depth | Often basic | Extended |
-| Rural usability orientation | Usually low | Central design focus |
+| Admin controls | Usually basic | Operational |
+| Rural constraints focus | Often absent | Central |
 
 ## Summary
-The main contribution of RuralShield is not a single novel algorithm. Its contribution lies in how it integrates offline-first reliability, explainable security controls, customer-side usability, and bank/admin oversight into one realistic system.
+The strongest insight from related work is that security, fraud detection, offline storage, and usability cannot be treated as separate concerns in rural banking. RuralShield integrates them into one practical system design.
+
+## Navigation
+- Previous: [[Objectives-and-Scope]]
+- Next: [[System-Architecture]]

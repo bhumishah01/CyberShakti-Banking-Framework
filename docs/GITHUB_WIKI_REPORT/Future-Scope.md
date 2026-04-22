@@ -1,26 +1,29 @@
 # Future Scope
 
 ## Possible Improvements
-- Integrate real biometric verification with liveness checks.
-- Add OTP or SMS-based fallback verification flows.
-- Expand agent workflows for assisted onboarding and account recovery.
-- Improve analytics with richer time-series and cohort-level summaries.
-- Add conflict-resolution logic for multi-device delayed-sync scenarios.
+- add real biometric verification and liveness detection
+- add stronger OTP/SMS fallback mechanisms
+- improve analytics depth with longer-term trend comparisons
+- enhance agent and assisted banking workflows
+- improve synchronization conflict handling across multiple devices
 
-## Product Extensions
-- multilingual voice guidance beyond the current simulation layer
-- IVR or voice-call safety alerts for low-literacy users
-- bank-grade audit export and compliance-oriented reporting
-- richer fraud simulation and benchmarking tools
-- configurable rule packs for different bank contexts
+## Extensions
+- IVR/voice safety support for low-literacy users
+- configurable fraud rule packs for different banking contexts
+- richer compliance and audit reporting
+- multilingual voice output expansion
+- more advanced risk dashboards for branch-level review
 
 ## Research Opportunities
-The project creates strong scope for future academic work in:
-- explainable fraud detection in low-data environments
-- rural-first cybersecurity UX design
-- offline-first trust systems for financial applications
-- safe synchronization under inconsistent connectivity
-- role-aware fraud intervention systems for assisted banking ecosystems
+- explainable fraud detection in low-resource environments
+- rural-first cybersecurity user experience design
+- synchronization safety under unreliable networks
+- trust modeling for shared-device banking
+- role-aware intervention systems in financial security
 
 ## Long-Term Vision
-A mature version of RuralShield could evolve into a modular rural banking protection platform that supports not only customers and bank officers but also agents, field staff, regional branches, and compliance reviewers through one integrated system.
+In a more advanced version, RuralShield could evolve into a modular rural banking protection layer that supports customers, agents, branch staff, and compliance users through a unified framework.
+
+## Navigation
+- Previous: [[Challenges]]
+- Next: [[Conclusion]]

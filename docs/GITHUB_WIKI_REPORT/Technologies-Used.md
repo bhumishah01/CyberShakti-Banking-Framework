@@ -1,122 +1,138 @@
 # Technologies Used
 
 ## Overview
-The technology stack for RuralShield was selected to support four project needs simultaneously:
-- rapid prototyping,
-- structured backend logic,
-- full-stack integration,
-- and deployment on a live public URL.
-
-The stack also needed to support offline-first behavior, local database handling, server-side database migration, and relatively lightweight deployment. As a result, the final tech stack combines Python-based backend tooling, template-driven frontend rendering, Docker deployment, and both local and server-side databases.
+The RuralShield tech stack was chosen to support a project that is simultaneously a working product demo, a cybersecurity system, and an evaluation-ready academic submission. The stack needed to support local-first storage, server deployment, user-facing portals, authentication, fraud scoring, analytics, and documentation. For that reason, the final stack combines Python-based backend development, template-driven frontend rendering, dual-database strategy, Docker deployment, and GitHub-based documentation.
 
 ## Programming Languages
 ### Python 3.11
-Python is the primary language used across the system. It powers:
-- backend route handling,
-- authentication logic,
-- fraud scoring,
+Python is the core language used across the project. It powers:
+- backend APIs,
+- route handling,
+- fraud scoring logic,
 - synchronization behavior,
 - deployment entrypoints,
-- analytics preparation,
-- and data validation.
+- data processing,
+- and state validation.
 
 ### HTML
-HTML is used for customer and admin templates. It provides the structural layout for dashboards, forms, analytics sections, and multi-page flows.
+HTML is used for the customer and admin templates. It structures the dashboards, forms, tables, monitoring views, analytics sections, and report-friendly layouts.
 
 ### CSS
-CSS is used to create the actual product experience: layout spacing, cards, status tags, typography, tables, alerts, and responsive sections.
+CSS is used to turn the project into a presentable product. It controls card layouts, tables, tags, spacing, headings, alerts, graph containers, and responsive design.
 
 ### JavaScript
-JavaScript is used selectively for interactivity such as:
+JavaScript is used where interactivity is required, including:
 - language switching,
-- speech interaction support,
-- button handling,
-- front-end UX enhancements,
-- dynamic navigation behavior.
+- voice interaction handling,
+- event-based button behavior,
+- page-level refresh/control logic,
+- and lightweight frontend UX improvements.
 
-## Frameworks and Libraries
+## Frameworks / Libraries
 ### FastAPI
-FastAPI is the central web framework used to build both backend endpoints and route-connected functionality. It was chosen because it provides:
+FastAPI is the central web framework. It was chosen because it supports:
 - clean routing,
-- strong integration with Pydantic,
-- automatic API docs,
-- and good structure for modular development.
+- strong API structure,
+- mounted deployment paths,
+- automatic Swagger docs,
+- and a Python-first development model.
 
 ### Jinja2
-Jinja2 is used for server-rendered templates. It makes the customer and admin portals easy to deploy within the same application while keeping the UI fully dynamic.
+Jinja2 is used for server-rendered pages. It allows the customer and admin portals to remain tightly integrated with backend state while still giving strong UI control.
 
 ### SQLAlchemy
-SQLAlchemy is used for structured interaction with the server-side PostgreSQL database. It provides model definitions, sessions, and central data access patterns.
+SQLAlchemy is used for structured interaction with PostgreSQL. It supports model definitions, database sessions, and central persistence handling.
 
 ### Pydantic
-Pydantic is used for input validation and typed data structures. This improves API reliability and reduces silent failures.
+Pydantic is used for typed request and response validation, improving API safety and consistency.
 
 ### python-jose
-Used for JWT token generation and decoding in authenticated server flows.
+Used for JWT token generation and validation.
 
 ### passlib[bcrypt]
-Used for hashing credentials securely.
+Used for hashing authentication-related values securely.
 
 ### cryptography
-Used for sensitive field protection and encryption-related logic.
+Used for encryption-related operations and sensitive field protection.
 
 ### Pillow
-Used in the prototype for image-related handling in face-capture flows.
+Used in the project’s face-capture/image-handling flow.
 
 ## Databases
 ### SQLite
-SQLite is used as the offline-first local database. It was chosen because it is lightweight, file-based, simple to ship, and well suited for constrained environments.
+SQLite is used as the local offline-first database.
 
-Uses in the project:
-- local transaction persistence
-- pending sync queue
-- cached user/session context
-- demo continuity and local-first state
+**Why used:**
+- lightweight
+- file-based
+- simple to ship and reset
+- ideal for offline-first persistence
+
+**Used for:**
+- local transaction storage
+- pending sync queue state
+- demo continuity
+- local-first user/session state
 
 ### PostgreSQL
-PostgreSQL is used as the central deployed database. It supports stronger relational design, indexing, and multi-user server-side persistence.
+PostgreSQL is used as the central deployed database.
 
-Uses in the project:
+**Why used:**
+- stronger central persistence
+- better relational structure
+- realistic server-side storage for a deployed banking backend
+
+**Used for:**
 - users
 - transactions
 - fraud logs
-- devices
-- sync queue state
-- admin analytics source data
+- device state
+- sync and admin-side monitoring data
 
-## Tools and Platforms
+## Tools
 ### Docker
-Docker is used to containerize the project and make deployment portable and reproducible.
+Docker is used for containerization and consistent deployment.
 
 ### docker-compose
-Used in local development to run the application stack together and simulate a more realistic environment.
+Used for local orchestration of the application stack during development.
 
-### Git and GitHub
-Used for source control, structured commit history, collaboration support, documentation hosting, and Wiki/report preparation.
+### Git
+Used for source control and structured commit history.
+
+### GitHub
+Used for repository hosting, progress tracking, collaboration, and report support.
 
 ### GitHub Wiki
-Used to publish the final project report in the required academic structure.
+Used for the final project report in the required academic structure.
 
 ### Render
-Used to deploy the application publicly. Render was chosen because it supports full-stack Docker deployments and integrates cleanly with GitHub.
+Used for live full-stack deployment on a public URL.
+
+## Hardware (Applicable Context)
+While the project is web-based, the design assumes interaction on low-end smartphones or constrained computing devices. In addition:
+- a webcam-capable device was used for face capture simulation
+- a regular laptop environment was used for development, testing, and deployment
 
 ## Tech Stack Summary Table
 | Layer | Technology |
 |---|---|
-| Language | Python 3.11 |
-| UI Rendering | Jinja2 + HTML + CSS + JS |
+| Backend Language | Python 3.11 |
+| Frontend Rendering | HTML + CSS + JavaScript + Jinja2 |
 | Web Framework | FastAPI |
 | Local Database | SQLite |
-| Server Database | PostgreSQL |
+| Central Database | PostgreSQL |
 | ORM | SQLAlchemy |
 | Validation | Pydantic |
-| Auth | JWT + python-jose + passlib |
-| Encryption | cryptography |
+| Authentication | JWT, python-jose, passlib |
+| Encryption Support | cryptography |
 | Image Handling | Pillow |
-| Local Containerization | Docker / docker-compose |
-| Live Hosting | Render |
-| Version Control | Git + GitHub |
-| Report Hosting | GitHub Wiki |
+| Deployment | Docker, docker-compose, Render |
+| Version Control | Git, GitHub |
+| Documentation Hosting | GitHub Wiki |
 
-## Why This Tech Stack Was Chosen
-This stack balances clarity, capability, and deployability. It is strong enough to demonstrate real system architecture, yet simple enough to remain understandable and maintainable for an academic project. It also helped ensure that the final output was not only functional locally, but actually available as a live deployed system.
+## Why This Tech Stack Fits the Project
+This stack is well suited to the project because it balances clarity, speed, deployability, and realism. It is strong enough to demonstrate a real product workflow, but still understandable enough to document in an academic report.
+
+## Navigation
+- Previous: [[System-Architecture]]
+- Next: [[Methodology]]

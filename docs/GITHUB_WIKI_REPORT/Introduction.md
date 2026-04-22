@@ -1,52 +1,53 @@
 # Introduction
 
 ## Background of the Project
-Digital banking systems are expanding rapidly across India, but the security models behind many such systems are often designed for ideal conditions. These conditions usually include stable internet, reliable smartphones, quick access to backend services, and users who are comfortable with digital interfaces. Rural banking environments do not always match these assumptions. Connectivity may disappear for hours, devices may be shared among family members, and users may depend on simplified or assisted workflows to complete financial actions.
+Digital banking adoption is growing quickly, but the architecture of many systems still assumes conditions that are not consistently available in rural environments. Banking applications are often designed with the expectation of modern phones, persistent internet, immediate backend verification, and users who already understand digital workflows. In many rural contexts, those assumptions break down.
 
-In these conditions, a secure system cannot depend entirely on real-time server verification. A rural banking framework must preserve transaction intent locally, protect sensitive information on-device, and maintain enough security logic to make meaningful decisions even before data reaches a central server. This is the gap RuralShield was built to address.
+A rural banking user may use a budget phone, rely on patchy connectivity, share a device with family members, and need reassurance at every critical step. A system that depends entirely on live backend validation becomes fragile in such situations. If a transaction disappears due to connectivity loss, or if the system blocks a transfer without explanation, trust drops immediately. This is especially serious in financial systems where trust is central.
 
 ## Motivation
-The project was motivated by three linked concerns.
+The motivation behind RuralShield came from the need to rethink digital banking security for real field conditions instead of ideal lab conditions.
 
-### 1. Connectivity should not decide whether security exists
-If a system becomes unusable when the network fails, then security becomes inconsistent. RuralShield treats connectivity as unreliable by default and builds a secure transaction path around that reality.
+### Practical motivation
+- Internet cannot be assumed to be stable.
+- Device quality cannot be assumed to be high.
+- Fraud awareness cannot be assumed to be strong.
+- Recovery options must exist when things go wrong.
 
-### 2. Fraud decisions must be understandable
-A banking system that silently blocks a transaction without reason reduces trust. For a bank officer, such opacity makes review harder; for a customer, it increases confusion and fear. The project therefore emphasizes explainable fraud outcomes.
+### Product motivation
+The system needed to feel like a real product, not just a backend assignment. That meant creating customer and admin interfaces, clear user states, monitoring controls, and a public deployment.
 
-### 3. Banking is an ecosystem, not a single screen
-A real banking flow includes the customer, the bank, the device, the local record, the central record, and the recovery path when something goes wrong. This project was built to reflect that complete flow rather than focusing only on one side.
+### Academic motivation
+The project also needed to map cleanly to report sections such as architecture, methodology, implementation, results, and future scope, making it suitable for formal evaluation.
 
 ## Existing System (if any)
-In a typical online-first banking architecture:
-- the user submits a transaction,
-- the server performs verification,
-- fraud checks run centrally,
-- and the response is returned immediately.
+A typical online-first banking architecture works like this:
+1. User submits a transaction.
+2. Backend validates the session and request.
+3. Fraud rules are checked centrally.
+4. The transaction is either approved or rejected immediately.
 
-This model is efficient in stable environments, but fragile in rural settings where continuous network access cannot be assumed.
+This model is efficient under stable internet and centralized control, but it does not adapt well when the network is unreliable or when users need local continuity.
 
 ## Limitations of Existing Systems
-- They often fail or degrade sharply under weak internet.
-- They provide limited transparency into risk decisions.
-- They may not preserve incomplete actions safely if the network drops.
-- They are rarely optimized for low-end devices and simple UX.
-- They often ignore assisted banking realities and shared-device risk.
+- High dependence on continuous internet connectivity.
+- Limited transparency into fraud decisions.
+- Poor preservation of user intent if the transaction flow is interrupted.
+- Weak adaptation to low-end devices and low-literacy user experience.
+- Minimal support for delayed synchronization and staged recovery.
 
 ## Proposed Solution
-RuralShield proposes an offline-first, security-aware model in which:
-- transactions are stored locally first in SQLite,
-- the fraud engine performs local risk scoring,
-- local state is preserved safely until sync is possible,
-- a central FastAPI server backed by PostgreSQL acts as the authoritative backend,
-- and a bank/admin portal monitors risk, sync state, devices, and approvals.
+RuralShield proposes an offline-first security architecture for rural digital banking. Instead of assuming live connectivity, it allows transactions to be captured locally, evaluated for risk locally, and synchronized to a central backend later. The system uses:
+- **SQLite** for local-first storage,
+- **PostgreSQL** for central persistence,
+- **FastAPI** for backend and deployed routing,
+- **JWT-based authentication** for role-aware access,
+- **adaptive fraud scoring** for local decisions,
+- **bank/admin analytics and controls** for review and oversight.
 
-This approach offers a better balance between resilience, transparency, and operational control.
+## Real-World Design Intention
+The project is designed to answer a practical question: how should a banking platform behave when connectivity is weak, security still matters, and both customers and bank officers need a system they can trust? RuralShield is the project’s answer to that question.
 
-## Research and Design Intent
-The project is not intended to be a minimal proof-of-concept only. It was designed to serve three simultaneous purposes:
-- a technically structured cybersecurity project,
-- a realistic fintech demo product,
-- and a documentation-ready academic submission.
-
-That is why the final system includes deployment, analytics, multilingual UI handling, safety controls, synchronization logic, and structured reporting in addition to the core transaction engine.
+## Navigation
+- Previous: [[Home]]
+- Next: [[Objectives-and-Scope]]

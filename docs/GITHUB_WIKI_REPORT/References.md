@@ -1,12 +1,13 @@
 # References
 
-## Standards and Conceptual References
+## Research Papers / Conceptual References
 - NIST Cybersecurity Framework (CSF)
 - OWASP Security Guidance for Application and Mobile Systems
-- Offline-first application design patterns
-- Explainable fraud detection concepts in fintech systems
+- Offline-first application design concepts used in resilient field systems
+- Explainable fraud detection concepts in financial systems
+- Device trust and suspicious activity modeling approaches
 
-## Technical Documentation
+## Websites
 - FastAPI Documentation: https://fastapi.tiangolo.com/
 - SQLAlchemy Documentation: https://docs.sqlalchemy.org/
 - PostgreSQL Documentation: https://www.postgresql.org/docs/
@@ -14,7 +15,7 @@
 - Docker Documentation: https://docs.docker.com/
 - Render Documentation: https://render.com/docs
 
-## Repository Documentation
+## Documentation Links
 - `docs/ARCHITECTURE.md`
 - `docs/PROJECT_BLUEPRINT.md`
 - `docs/THREAT_MODEL.md`
@@ -24,6 +25,10 @@
 
 ## Project Links
 - Repository: https://github.com/bhumishah01/CyberShakti-Banking-Framework
-- Main deployed page: https://ruralshield.onrender.com/?lang=en
-- API Docs: https://ruralshield.onrender.com/api/docs
-- Health Endpoint: https://ruralshield.onrender.com/health
+- Main page: https://ruralshield.onrender.com/?lang=en
+- API docs: https://ruralshield.onrender.com/api/docs
+- Health endpoint: https://ruralshield.onrender.com/health
+
+## Navigation
+- Previous: [[Conclusion]]
+- Next: [[Demo]]

@@ -1,70 +1,85 @@
 # Implementation
 
-## Implementation Overview
-The implementation of RuralShield moved through multiple stages: foundation setup, encrypted transaction handling, fraud scoring, audit/sync logic, UI creation, admin portal expansion, customer UX polish, and live deployment. The final system is therefore not a single monolithic script but a layered project with backend, frontend, database, deployment, and documentation components.
-
 ## Project Setup Steps
-### Local Development Setup
+### Local setup
 1. Clone the repository.
 2. Create and activate a Python virtual environment.
-3. Install dependencies from `requirements.txt`.
-4. Configure environment values if needed.
-5. Run the application locally using either direct FastAPI commands or Docker.
+3. Install dependencies using `requirements.txt`.
+4. Configure environment variables if required.
+5. Run locally using FastAPI or Docker.
 
-### Docker-Based Setup
-The project supports Docker-based builds for consistency between local development and deployment.
+### Docker setup
+The project supports Docker-based execution for local parity with deployment.
 
-### Live Setup
-The final deployed version is hosted on Render and uses PostgreSQL as the central database.
+### Deployment setup
+The final version is hosted on Render using a Docker-driven workflow and PostgreSQL for server-side persistence.
 
-## Code Structure
+## Code Structure (Folder Explanation)
 ### `src/ui/`
-Contains the customer and bank/admin interfaces, route bindings for template pages, Jinja templates, and static styling assets.
+Contains customer and bank/admin routes, page templates, and static assets.
 
 ### `src/server/`
-Contains the structured server-side application logic, database models, session handling, authentication, and API routes.
+Contains central backend application code, database models, authentication logic, and API routes.
 
 ### `src/deploy/`
-Contains the combined deployment entrypoint used to mount the live UI and API together for public hosting.
+Contains the combined deployment entrypoint used on Render.
 
 ### `data/`
-Used for local data storage, imports, demo state, and offline persistence artifacts.
+Contains local demo state and import/export data used in the project flow.
 
 ### `docs/`
-Contains the blueprint, architecture notes, threat model, deployment instructions, stepwise progress history, and Wiki report pack.
+Contains project documentation, progress logs, architecture notes, deployment guides, and the Wiki report pack.
 
 ### `tests/`
-Contains project test files used to verify critical system behavior.
+Contains checks for critical modules and end-to-end reliability.
 
-## Key Implementation Areas
-### Authentication and Session Handling
-The system uses role-aware authentication flows and JWT-based handling for deployed server-side behavior.
+## Key Code Snippets (with Explanation)
+### Example 1: Fraud decision structure
+The fraud engine does not only return a score. It returns a complete decision object including reasons. This is important because the project emphasizes explainability.
 
-### Fraud Engine Implementation
-The fraud engine was implemented with an explainability-first mindset. Instead of hiding logic behind a black box, it stores decisions and reasons in a structured way.
+```python
+{
+  "risk_score": 75,
+  "decision": "HELD",
+  "reasons": ["NEW_DEVICE", "HIGH_AMOUNT"]
+}
+```
 
-### Offline-First Persistence
-SQLite-backed local persistence was implemented to preserve customer actions even without server connectivity.
+**Why this matters:**
+This makes the fraud engine useful not only for automation, but also for bank review, reporting, and customer feedback.
 
-### Synchronization Engine
-The synchronization engine manages the transition from local state to central state. It includes retry logic, selected sync behavior, and state visibility.
+### Example 2: Sync-first local preservation concept
+The project uses a local-first queue so user intent is not lost.
 
-### Admin Analytics and Controls
-The admin portal is not limited to data listing. It includes analytics summaries, graphs, device monitoring, release controls, and user-level actions.
+```text
+create transaction -> save locally -> mark pending -> sync later -> acknowledge centrally
+```
 
-### Multilingual and UX Enhancements
-Language switching, clearer messaging, clickable cards, and product-style pages were implemented to make the system more demo-ready and more user-friendly.
+**Why this matters:**
+This ensures continuity in poor network environments.
 
 ## Integration Details
-The project integrates multiple concerns into one working system:
-- frontend pages communicate with backend routes,
-- auth state influences role-based routing,
-- customer transactions feed into admin review,
-- local and central storage work together through the sync queue,
-- deployment mounts the UI and API under a single live domain.
+The project integrates several layers:
+- customer UI to backend routes,
+- fraud engine to transaction flow,
+- local SQLite state to sync queue,
+- central PostgreSQL to admin analytics,
+- deployed public UI to API docs and health endpoints.
+
+## Comparison with Real Banking Systems
+A real banking backend would usually involve stronger external integrations and central transaction rails, but the structure here is conceptually similar in important ways:
+- role separation
+- centralized monitoring
+- staged transaction handling
+- risk interpretation
+- operational admin controls
 
 ## Repository Link
 Repository Link: https://github.com/bhumishah01/CyberShakti-Banking-Framework
 
-## Implementation Maturity
-While still a student project, the implementation goes meaningfully beyond a typical classroom prototype. It reflects product thinking, operational workflows, and deployment reality in addition to core coding logic.
+## Implementation Strength
+The implementation is stronger than a basic classroom prototype because it includes not only backend logic, but real deployment, multiple user roles, analytics, safety features, and documentation support.
+
+## Navigation
+- Previous: [[Methodology]]
+- Next: [[Results]]

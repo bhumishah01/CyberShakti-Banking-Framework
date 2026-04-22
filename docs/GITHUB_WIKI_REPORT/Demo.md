@@ -1,49 +1,51 @@
 # Demo
 
-## Main Live Demo Link
+## Main Demo Link
 - https://ruralshield.onrender.com/?lang=en
 
-This is the primary link that should be used in the report because it opens the product directly in its main public form.
-
-## Supporting Technical Links
-These are not the main product entry point, but they are useful in evaluation because they prove the deployment is live and the backend is properly exposed.
+## Supporting Links
 - API documentation: https://ruralshield.onrender.com/api/docs
 - Health endpoint: https://ruralshield.onrender.com/health
 - Customer portal: https://ruralshield.onrender.com/customer
 - Bank/Admin portal: https://ruralshield.onrender.com/bank
 
-## Suggested Demo Flow
-### Part 1: Landing page
-Show the project landing page and explain the split between customer and bank/admin experiences.
+## Suggested Video Demo Link
+- Add your YouTube or Google Drive demo link here.
 
-### Part 2: Customer walkthrough
-Show:
-- account overview
-- send money flow
-- transaction result state
+## Screenshots / GIFs to Include
+- landing page
+- customer dashboard
+- send money result
 - transaction history
-- safety settings
-- sync status awareness
-
-### Part 3: Bank/Admin walkthrough
-Show:
-- main dashboard
+- admin dashboard
 - analytics page
-- fraud trends graph
-- high-risk users
-- suspicious alerts
-- sync queue
-- transaction release or review actions
+- sync queue page
+- report export page
 
-### Part 4: Deployment proof
-Open the API docs and health endpoint to show that the live deployment is working as a real hosted system.
+## Real-World Scenario Walkthrough
+### Scenario: weak-network rural transaction
+1. Customer opens the portal.
+2. Customer creates a transfer under poor connectivity.
+3. Fraud engine evaluates the request locally.
+4. Transaction is stored locally and marked appropriately.
+5. Sync happens later when connectivity improves.
+6. Admin can review or release the action if needed.
 
 ## Why the Demo Is Strong
-The demo is strong because it does not rely on static pages alone. It shows customer interaction, security reasoning, admin intervention, analytics, and deployment in one coherent story.
+The demo is strong because it tells a complete story:
+- customer intent is preserved
+- risk is evaluated and explained
+- bank/admin visibility exists
+- deployment proves the system is live
 
-## Recommended Additions
-To make the final presentation even stronger, include:
-- a short video walkthrough
-- screenshots of customer and admin pages
-- one slide on system architecture
-- one slide on fraud logic and explainability
+## Final Presentation Suggestion
+If presenting live, structure the demo as:
+1. landing page and project idea
+2. customer portal flow
+3. fraud explanation
+4. bank analytics and controls
+5. deployment proof via API docs and health
+
+## Navigation
+- Previous: [[References]]
+- Back to start: [[Home]]

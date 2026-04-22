@@ -1,84 +1,114 @@
 # Methodology / Working
 
 ## Methodology Overview
-The development methodology for RuralShield was driven by system constraints rather than by a generic feature list. Instead of beginning with a standard web application model and then adding security, the project began with the realities of rural banking and built upward from them. This led to a methodology centered on offline-first storage, localized fraud decisions, clear UI feedback, and controlled synchronization.
-
-## Core Working Principle
-The key idea behind RuralShield is:
-
-> capture safely first, decide locally, preserve state, and sync centrally later.
-
-This principle is what distinguishes the system from a normal online-only banking demo.
+The methodology of RuralShield is based on constraint-driven engineering. Instead of starting with a standard online-first banking design and then retrofitting security, the project starts from real rural constraints and builds the system around them. This leads to a working method where the transaction is secured locally first, risk is evaluated locally first, and synchronization happens later under controlled conditions.
 
 ## Step-by-Step Working of the System
-
 ### Step 1: User enters the portal
-The customer opens the portal and authenticates through the supported login flow. The bank/admin user enters through a separate role-based entry point.
+A customer or bank/admin user enters through the appropriate portal. Role-aware logic determines what workflows and views are accessible.
 
-### Step 2: Customer initiates a transaction
-The customer provides transaction details manually or through voice-assisted input.
+### Step 2: Transaction details are captured
+The customer enters transaction information manually or via voice-assisted input.
 
-### Step 3: Local validation is performed
-Before any deeper action, the system checks that the input is valid and complete.
+### Step 3: Input validation occurs
+Basic validation ensures the transaction request is complete and sensible before further processing.
 
-### Step 4: Fraud engine evaluates the transaction
-The system computes:
+### Step 4: Fraud engine evaluates the request
+The fraud engine computes:
 - `risk_score`
 - `decision`
 - `reasons`
 
-The decision can be:
+Possible decisions:
 - `ALLOWED`
 - `HELD`
 - `BLOCKED`
 
-### Step 5: Transaction is stored locally
-The transaction is written to the local store so that a network outage does not destroy the operation flow.
+### Step 5: Transaction is saved locally
+The system stores the transaction locally in SQLite so that user intent is preserved even if the connection is lost.
 
-### Step 6: Sync queue is updated
-The outbox records the transaction state and prepares it for future synchronization.
+### Step 6: Sync queue state is created
+The transaction enters the outbox queue and is marked with a sync-related status.
 
-### Step 7: Customer receives understandable feedback
-Instead of ambiguous backend errors, the system explains the result in understandable product language.
+### Step 7: User receives immediate feedback
+The UI explains the transaction result in a product-friendly way so that the user understands what happened.
 
-### Step 8: Admin side receives visibility
-When synchronized or locally processed for monitoring, the bank/admin portal can show:
-- transaction status
-- fraud reasons
-- suspicious patterns
-- sync state
-- user/device risk information
+### Step 8: Synchronization occurs later
+When connectivity is available, queued items are pushed toward the central backend.
 
-### Step 9: Admin actions are applied
-The admin can:
-- approve/reject held transactions
-- freeze/unfreeze users
-- release specific records
-- monitor trends and device state
+### Step 9: Admin views reflect monitored state
+The bank/admin side surfaces trends, suspicious patterns, held items, high-risk users, and device trust details.
 
-## Algorithms / Logic Used
-### Rule-based risk scoring
-Rules include:
-- new device detection
-- high amount threshold
-- odd transaction time
+### Step 10: Admin actions close the loop
+Admins can release held records, reject risky actions, freeze users, unfreeze them, or selectively sync items.
+
+## Algorithms Used
+### 1. Rule-Based Fraud Scoring
+The project uses explicit rules such as:
+- new device usage
+- high transaction amount
+- unusual time of activity
 - rapid repeated activity
-- suspicious behavioral deviation
+- amount significantly above average
 
-### Behavior profiling
-The system compares a current transaction with:
+### 2. Behavior Profiling
+The project tracks user-related behavior indicators such as:
 - average transaction amount
-- transaction count/frequency
-- usage time patterns
+- frequency of transactions
+- preferred transaction timing
 
-### Suspicious pattern detection
-The system aggregates event patterns such as:
-- repeated failed logins
-- high-risk bursts
-- 5 transactions in 2 minutes
+A new transaction is compared against these patterns.
+
+### 3. Suspicious Pattern Detection
+The system also looks for higher-level risk events such as:
+- multiple failed logins
+- repeated high-risk decisions
+- burst-like transaction behavior
 
 ## Data Flow Explanation
-Customer Input -> Local Validation -> Fraud Engine -> SQLite Save -> Sync Queue -> Central API -> PostgreSQL -> Admin Analytics and Review
+```text
+Customer Input
+   -> Validation
+   -> Fraud Engine
+   -> SQLite Local Save
+   -> Sync Queue / Outbox
+   -> FastAPI Server API
+   -> PostgreSQL
+   -> Admin Dashboard / Analytics / Controls
+```
 
-## Why This Methodology Fits the Problem
-This methodology directly addresses the challenge of rural banking security. It avoids dependence on ideal internet conditions, preserves explainability, and ensures that both users and bank staff remain part of the security process.
+## Data Flow Deep Dive
+### Customer-side flow
+The customer interacts with the UI, but behind the scenes the system is creating local state, risk metadata, and sync metadata simultaneously.
+
+### Admin-side flow
+The admin side consumes both direct transaction state and aggregated data. This means the admin experience is not just operational, but also analytical.
+
+## Real-World Scenario Walkthrough
+Imagine a rural user trying to send money during low connectivity:
+1. The user initiates a transfer.
+2. The internet is weak, so the transaction cannot safely depend on immediate central confirmation.
+3. The system stores the action locally.
+4. Fraud scoring still happens.
+5. The user receives a clear result: allowed, held, or blocked.
+6. The item waits in the sync queue.
+7. Later, once connectivity improves, it syncs to the server.
+8. The bank portal can now review it if needed.
+
+## User Experience Strategy
+The methodology also includes UX decisions:
+- use simple page structures
+- avoid silent failures
+- display state clearly
+- keep fraud explanations understandable
+- provide recovery paths instead of dead ends
+
+## Failure Handling
+- no internet -> preserve locally
+- risky action -> hold or block with explanation
+- sync failure -> queue and retry
+- suspicious user behavior -> escalate in admin analytics
+
+## Navigation
+- Previous: [[Technologies-Used]]
+- Next: [[Implementation]]
