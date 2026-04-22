@@ -1,7 +1,4 @@
-# System Architecture
-
-## Architecture Overview
-RuralShield uses a layered architecture that separates customer interaction, local state management, fraud evaluation, synchronization, central persistence, and bank/admin visibility. This structure was chosen so that the system can continue working even when the network is unavailable, while still preserving a strong central review model once synchronization occurs.
+# System-Architecture
 
 ## Architecture Diagram
 ```mermaid
@@ -47,65 +44,52 @@ flowchart TB
   Controls --> API
 ```
 
-## Explanation of the Architecture
+## Explanation of Architecture
+RuralShield uses a layered architecture so that customer actions, local persistence, fraud evaluation, synchronization, and bank/admin control remain clearly separated. This makes the system easier to reason about and better suited to low-connectivity environments.
+
 ### Customer Layer
-This is the visible product layer. It includes the customer dashboard, send money flow, history, alerts, and safety features. Its goal is to keep the experience simple and confidence-building.
+Handles user-facing actions such as viewing balance, creating transactions, checking history, and using safety features.
 
 ### Local Device Layer
-This layer is central to the project’s rural-first design.
-- **SQLite** stores local-first data.
-- **Fraud Engine** computes risk before sync.
-- **Outbox Queue** tracks pending synchronization.
-- **Device Trust State** adds contextual signals into risk evaluation.
+This is the offline-first layer. It stores transaction state locally and allows fraud evaluation before synchronization.
 
 ### Server Layer
-The server is the authoritative central backend. It is built as a combined FastAPI deployment and exposes authenticated APIs for transactions, review actions, analytics, and data retrieval.
+This is the central authority layer. It stores synchronized data and serves admin operations and analytics.
 
 ### Admin Layer
-The admin side provides monitoring, analytics, release controls, freeze/unfreeze operations, device visibility, and suspicious pattern handling.
+This layer gives bank/admin users visibility into risky behavior, held transactions, suspicious patterns, and device state.
 
 ## Modules / Components Description
-- **Authentication module**: session management, JWT, role-based routing
-- **Fraud module**: scoring logic, behavioral comparison, reason generation
-- **Storage module**: local and central persistence handling
-- **Sync module**: pending, retrying, synced, held, blocked states
-- **Safety module**: trusted contacts, panic freeze, device trust
-- **Analytics module**: charts, summaries, fraud trends, risk distribution
-- **UI module**: customer and admin templates with multilingual controls
+- Authentication module
+- Fraud engine
+- Local storage module
+- Sync queue module
+- Device trust module
+- Analytics module
+- Customer UI module
+- Admin UI module
 
-## Data Flow Deep Dive
-### Customer transaction path
-1. User initiates a transaction.
+## Extra: Data Flow Deep Dive
+1. User creates a transaction.
 2. Input is validated.
-3. Fraud engine computes score, decision, and reasons.
-4. Record is stored locally.
-5. Sync queue receives the item.
-6. When conditions allow, the record is pushed to the server.
-7. Server stores it in PostgreSQL.
-8. Admin dashboards and analytics reflect the synchronized state.
+3. Fraud engine evaluates risk.
+4. Transaction is saved locally.
+5. Sync queue tracks pending state.
+6. Server receives synchronized data later.
+7. Admin portal reflects the result and allows review actions.
 
-### Admin review path
-1. Admin opens dashboard or analytics.
-2. Data is fetched from server or prepared from available state.
-3. Held transactions are reviewed.
-4. Admin action updates transaction/user state.
-5. Result is reflected across the monitoring views.
+## Extra: Security Layers
+- Authentication and access control
+- Local persistence protection
+- Fraud analysis layer
+- Sync/retry handling layer
+- Admin review and intervention layer
 
-## Security Layers
-- authentication layer
-- local persistence layer
-- fraud analysis layer
-- synchronization integrity layer
-- admin review and control layer
-
-## Failure Handling Strategy
-- local save prevents data loss on weak networks
-- queue state prevents disappearing transactions
-- retry tracking provides controlled recovery
-- admin release/review flow prevents irreversible mistakes
-
-## Comparison with Real Banking Systems
-Real banking systems often centralize nearly all decision-making at the backend. RuralShield differs by pushing some trust-preserving logic closer to the user while still maintaining bank-side authority. This makes it more suitable for connectivity-constrained environments.
+## Extra: Failure Handling
+- weak internet -> local save
+- risky event -> hold/block
+- sync failure -> retry and queue
+- suspicious user -> admin visibility and control
 
 ## Navigation
 - Previous: [[Literature-Survey]]

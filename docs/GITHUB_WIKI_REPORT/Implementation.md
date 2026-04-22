@@ -1,42 +1,34 @@
 # Implementation
 
 ## Project Setup Steps
-### Local setup
 1. Clone the repository.
 2. Create and activate a Python virtual environment.
-3. Install dependencies using `requirements.txt`.
-4. Configure environment variables if required.
-5. Run locally using FastAPI or Docker.
-
-### Docker setup
-The project supports Docker-based execution for local parity with deployment.
-
-### Deployment setup
-The final version is hosted on Render using a Docker-driven workflow and PostgreSQL for server-side persistence.
+3. Install dependencies from `requirements.txt`.
+4. Configure required environment variables if needed.
+5. Run the application locally using FastAPI or Docker.
+6. Deploy the project using Render for live hosting.
 
 ## Code Structure (Folder Explanation)
 ### `src/ui/`
-Contains customer and bank/admin routes, page templates, and static assets.
+Customer and bank/admin templates, route bindings, and static assets.
 
 ### `src/server/`
-Contains central backend application code, database models, authentication logic, and API routes.
+Backend APIs, database models, authentication logic, and central server functionality.
 
 ### `src/deploy/`
-Contains the combined deployment entrypoint used on Render.
+Combined deployment entrypoint used for the live Render app.
 
 ### `data/`
-Contains local demo state and import/export data used in the project flow.
+Local demo data, imports, exports, and offline persistence files.
 
 ### `docs/`
-Contains project documentation, progress logs, architecture notes, deployment guides, and the Wiki report pack.
+Architecture, deployment, progress logs, and report files.
 
 ### `tests/`
-Contains checks for critical modules and end-to-end reliability.
+Automated checks for important system behavior.
 
 ## Key Code Snippets (with Explanation)
-### Example 1: Fraud decision structure
-The fraud engine does not only return a score. It returns a complete decision object including reasons. This is important because the project emphasizes explainability.
-
+### Fraud decision object
 ```python
 {
   "risk_score": 75,
@@ -44,41 +36,23 @@ The fraud engine does not only return a score. It returns a complete decision ob
   "reasons": ["NEW_DEVICE", "HIGH_AMOUNT"]
 }
 ```
+This matters because the system does not only classify a transaction; it explains the classification.
 
-**Why this matters:**
-This makes the fraud engine useful not only for automation, but also for bank review, reporting, and customer feedback.
-
-### Example 2: Sync-first local preservation concept
-The project uses a local-first queue so user intent is not lost.
-
+### Local-first sync concept
 ```text
-create transaction -> save locally -> mark pending -> sync later -> acknowledge centrally
+create transaction -> save locally -> mark pending -> sync later -> central acknowledgement
 ```
-
-**Why this matters:**
-This ensures continuity in poor network environments.
+This matters because the system preserves user intent under low-connectivity conditions.
 
 ## Integration Details
-The project integrates several layers:
-- customer UI to backend routes,
-- fraud engine to transaction flow,
-- local SQLite state to sync queue,
-- central PostgreSQL to admin analytics,
-- deployed public UI to API docs and health endpoints.
-
-## Comparison with Real Banking Systems
-A real banking backend would usually involve stronger external integrations and central transaction rails, but the structure here is conceptually similar in important ways:
-- role separation
-- centralized monitoring
-- staged transaction handling
-- risk interpretation
-- operational admin controls
+- customer UI connects to backend route logic
+- fraud engine connects to transaction creation
+- SQLite connects to the sync queue
+- PostgreSQL supports the deployed central system
+- admin analytics depend on monitored transaction and risk data
 
 ## Repository Link
 Repository Link: https://github.com/bhumishah01/CyberShakti-Banking-Framework
-
-## Implementation Strength
-The implementation is stronger than a basic classroom prototype because it includes not only backend logic, but real deployment, multiple user roles, analytics, safety features, and documentation support.
 
 ## Navigation
 - Previous: [[Methodology]]

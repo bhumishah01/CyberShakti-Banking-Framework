@@ -3,7 +3,7 @@
 ## Research Papers / Conceptual References
 - NIST Cybersecurity Framework (CSF)
 - OWASP Security Guidance for Application and Mobile Systems
-- Offline-first application design concepts used in resilient field systems
+- Offline-first application design concepts
 - Explainable fraud detection concepts in financial systems
 - Device trust and suspicious activity modeling approaches
 
@@ -22,12 +22,6 @@
 - `docs/DEPLOY_RENDER.md`
 - `docs/DEMO_RUNBOOK.md`
 - `docs/STEPWISE PROGRESS/`
-
-## Project Links
-- Repository: https://github.com/bhumishah01/CyberShakti-Banking-Framework
-- Main page: https://ruralshield.onrender.com/?lang=en
-- API docs: https://ruralshield.onrender.com/api/docs
-- Health endpoint: https://ruralshield.onrender.com/api/health
 
 ## Navigation
 - Previous: [[Conclusion]]

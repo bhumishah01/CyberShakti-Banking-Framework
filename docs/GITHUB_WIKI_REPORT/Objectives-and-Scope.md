@@ -1,60 +1,40 @@
-# Objectives & Scope
+# Objectives-and-Scope
 
 ## Project Objectives
-The project objectives were defined to balance technical depth, usability, and realism.
-
-- To create an offline-first secure transaction framework.
-- To ensure that transactions can be stored safely before synchronization.
-- To implement fraud scoring with explainable outputs.
-- To provide customer-side safety tools such as panic freeze and trusted contacts.
-- To provide bank/admin-side dashboards, analytics, and review controls.
-- To support a live deployment model using Docker and Render.
-- To structure the project as a complete, evaluation-ready system rather than as isolated modules.
+- To design an offline-first transaction workflow for rural banking use.
+- To secure local transaction storage before synchronization.
+- To implement fraud detection with explainable outputs.
+- To provide separate customer and bank/admin experiences.
+- To support analytics, monitoring, and review actions for risky activity.
+- To deploy the project publicly for demonstration and evaluation.
 
 ## Scope of the Project
 ### In Scope
-- Customer portal and bank/admin portal
-- Local SQLite storage and deployed PostgreSQL storage
-- JWT-based authentication and role-aware routing
-- Offline-first transaction capture and outbox sync queue
-- Fraud scoring, fraud reasons, suspicious alerts, analytics
-- Voice-assisted transaction input and feedback support
-- Live Render deployment and GitHub Wiki reporting
+- Customer portal
+- Bank/admin portal
+- Local SQLite-based persistence
+- Central PostgreSQL-backed server storage
+- JWT-based role-aware access
+- Fraud scoring, alerts, sync queue, and device monitoring
+- Docker-based deployment and public hosting
 
 ### Out of Scope
-- Real bank core or UPI integration
-- Production biometric identity verification
-- Enterprise-grade fraud ML pipelines
-- Regulatory-grade KYC and AML integration
-- Real SMS, IVR, or telecom gateway services
+- Real UPI or core banking integration
+- Production-grade biometric identity verification
+- Full KYC/AML workflow
+- Telecom-based SMS/OTP infrastructure
 
 ## Applications / Use Cases
-### Customer-side use cases
-- creating a transaction under weak internet conditions
-- understanding why a transaction is risky
-- checking pending sync or held transaction status
-- using safety features to reduce personal risk
-
-### Admin-side use cases
-- reviewing held transactions
-- monitoring fraud trends and suspicious patterns
-- analyzing high-risk users and device states
-- controlling sync release and freeze/unfreeze actions
-
-### Academic/demo use cases
-- demonstrating a live full-stack project
-- showing end-to-end system architecture
-- presenting explainable fraud handling rather than black-box output
+- Customer creates a transaction in weak-network conditions
+- Bank/admin reviews held transactions
+- Admin monitors suspicious patterns and high-risk users
+- System preserves local state until sync becomes possible
 
 ## Expected Outcomes
-The expected outcomes include both technical and presentation outcomes:
-- a reliable prototype for rural banking security workflows
-- a deployed live application accessible through a public URL
-- a system with clear fraud explanation and operational controls
-- a project strong enough for viva/demo/report evaluation
-
-## What Makes the Scope Appropriate
-The project does not attempt to solve every part of modern banking. Instead, it chooses one difficult and relevant slice: secure rural digital banking under offline-first conditions. That makes the scope focused, defensible, and meaningful.
+- A working live deployment with both customer and admin portals
+- A secure transaction workflow that handles low-connectivity conditions
+- A readable and explainable fraud monitoring framework
+- A project that is technically strong and academically presentable
 
 ## Navigation
 - Previous: [[Introduction]]
