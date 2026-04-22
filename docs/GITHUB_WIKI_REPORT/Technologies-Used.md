@@ -1,101 +1,75 @@
-# Technologies-Used
+# Technologies Used
 
 ## Programming Languages
 ### Python
-**Python** is the main backend programming language used in the project. It powers authentication, routing, fraud logic, synchronization logic, analytics processing, and deployment entrypoints.
+**Python** is the primary backend language. It powers routing, business logic, fraud scoring, sync handling, data access, and deployment entrypoints.
 
 ### HTML
-**HTML (HyperText Markup Language)** is used to structure customer and admin templates.
+**HTML (HyperText Markup Language)** structures the customer and admin templates.
 
 ### CSS
-**CSS (Cascading Style Sheets)** is used for layout, styling, tables, dashboards, alerts, and page presentation.
+**CSS (Cascading Style Sheets)** controls layout, tables, dashboards, cards, alerts, and page styling.
 
 ### JavaScript
-**JavaScript** is used for interactive frontend behavior such as language switching, button actions, and voice-related handling.
+**JavaScript** is used for UI interactivity such as AJAX requests, language switching, speech recognition, and dynamic customer actions.
 
 ## Frameworks / Libraries
 ### FastAPI
-**FastAPI** is the main backend web framework. It is used to build API routes and mounted web application flows.
+**FastAPI** is the main web framework. It is used for both the central API and the mounted web interface.
 
 ### Jinja2
-**Jinja2** is a template engine used to render dynamic HTML pages for the customer and admin portals.
+**Jinja2** is the template engine used to render dynamic HTML pages.
 
 ### SQLAlchemy
-**SQLAlchemy** is an ORM (Object Relational Mapper). It helps the application interact with the PostgreSQL database using structured Python models.
+**SQLAlchemy** is an ORM (Object Relational Mapper). It helps define and access PostgreSQL-backed server models using Python objects.
 
 ### Pydantic
-**Pydantic** is used for typed validation of inputs and structured request/response handling.
+**Pydantic** is used for input validation and typed API schemas.
 
 ### python-jose
-Used for JWT handling.
+Used for working with **JWT (JSON Web Tokens)**.
 
-### JWT
-**JWT (JSON Web Token)** is used for token-based authentication and secure role-aware access.
-
-### passlib[bcrypt]
-Used for hashing credentials securely.
-
-### bcrypt
-**bcrypt** is a password hashing algorithm designed to store credentials securely.
+### passlib / bcrypt
+Used for secure password hashing in the server-side auth layer.
 
 ### cryptography
-Used for encryption-related operations and sensitive data handling.
+Used for AES-GCM encryption and other cryptographic operations.
 
 ### Pillow
-**Pillow** is an image-processing library used in the face-capture related parts of the project.
-
-## Tools
-### Docker
-**Docker** is a containerization platform. It packages the application so it can run consistently across systems and deployment environments.
-
-### docker-compose
-**docker-compose** is used to run multiple local services together during development.
-
-### Git
-**Git** is the version control system used to track changes in the project.
-
-### GitHub
-**GitHub** is used to host the repository, commits, and documentation.
-
-### GitHub Wiki
-The GitHub Wiki is used to publish the final report in the required structured format.
-
-### Render
-**Render** is the cloud platform used to deploy the application on a live public URL.
+Used for image handling in the prototype face-capture flow.
 
 ## Databases
 ### SQLite
-**SQLite** is the local database used for offline-first storage and pending sync state.
+Used as the local offline-first operational database.
 
 ### PostgreSQL
-**PostgreSQL** is the central server-side relational database used in the deployed system.
+Used as the central shared database for the deployed API.
 
-## Hardware (if applicable)
-- Low-end smartphone assumption for user-side design
-- Webcam-capable development device for face capture simulation
-- Standard development laptop for coding, testing, and deployment
+## Tools
+### Docker
+Used for containerized local/dev deployment and Render-friendly packaging.
 
-## Tech Stack Summary Table
-| Category | Technology | Meaning / Purpose |
-|---|---|---|
-| Backend Language | Python | Core application logic |
-| Frontend | HTML, CSS, JavaScript | UI structure, style, interaction |
-| Web Framework | FastAPI | API and mounted app routing |
-| Template Engine | Jinja2 | Dynamic page rendering |
-| Local Database | SQLite | Offline-first storage |
-| Central Database | PostgreSQL | Deployed server persistence |
-| ORM | SQLAlchemy | Structured database access |
-| Validation | Pydantic | Typed validation |
-| Auth | JWT, python-jose, passlib | Secure access control |
-| Encryption | cryptography | Sensitive data handling |
-| Image Handling | Pillow | Face-capture support |
-| Containerization | Docker, docker-compose | Deployment consistency |
-| Hosting | Render | Live deployment |
-| Version Control | Git, GitHub | Code management |
-| Report Hosting | GitHub Wiki | Final documentation |
+### Docker Compose
+Used to run multiple local services together, such as UI, API, and database.
 
-## Why This Tech Stack Was Chosen
-This stack was chosen because it is practical, deployable, academically presentable, and strong enough to support both the product demo and the backend security logic.
+### Git and GitHub
+Used for version control, documentation, and Wiki publishing.
+
+### Render
+Used for live public deployment.
+
+## Hardware / Runtime Context
+- Laptop/webcam for face capture demo
+- browser-based portals for customer and bank roles
+- low-end/rural-device constraints simulated through offline-first architecture rather than requiring special hardware
+
+## Why This Stack Fits the Project
+This tech stack is strong for RuralShield because it supports:
+- lightweight deployment
+- clear backend control
+- offline-first local persistence
+- public live hosting
+- security-focused business logic without unnecessary frontend complexity
 
 ## Navigation
 - Previous: [[System-Architecture]]

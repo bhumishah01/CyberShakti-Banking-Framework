@@ -1,36 +1,36 @@
-# Results
+# Results & Output
 
 ## Screenshots of Output
-Recommended screenshots:
-- home page
+Recommended screenshots for this page:
+- main landing page
 - customer dashboard
-- send money result page
-- transaction history page
+- send money result
+- transaction history
 - bank dashboard
 - analytics page
 - sync queue page
 - report/export page
 
-## Performance Metrics (if applicable)
-This project is evaluated more through architectural strength and workflow completeness than raw performance benchmarks. Still, it shows:
-- continuity under low connectivity
-- visible fraud explainability
-- operational admin controls
-- live deployment availability
+## Performance / System Outcome Indicators
+This project is better judged through workflow completeness and architecture quality than raw benchmark numbers. Key outcomes include:
+- working local-first transaction flow
+- visible fraud scoring and reasons
+- admin-side review and analytics capabilities
+- public live deployment
 
 ## Observations
-- Offline-first design improves reliability.
-- Explainable fraud output improves clarity and trust.
-- Admin-side visibility turns the system into an operational framework.
-- Deployment increases the credibility of the final project.
+- Offline-first design improves continuity.
+- Explainable fraud output improves trust and presentation quality.
+- Admin tooling makes the system feel operational rather than superficial.
+- Sync visibility makes the architecture easy to demonstrate.
 
 ## Sample Outputs
 - allowed transaction
 - held transaction
 - blocked transaction
-- pending sync transaction
-- suspicious alert
-- high-risk user listing
+- pending sync record
+- suspicious alert record
+- high-risk user record
 
 ## Navigation
 - Previous: [[Implementation]]

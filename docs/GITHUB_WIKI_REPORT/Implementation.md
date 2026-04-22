@@ -2,33 +2,39 @@
 
 ## Project Setup Steps
 1. Clone the repository.
-2. Create and activate a Python virtual environment.
+2. Create and activate a Python virtual environment if running locally.
 3. Install dependencies from `requirements.txt`.
-4. Configure required environment variables if needed.
-5. Run the application locally using FastAPI or Docker.
-6. Deploy the project using Render for live hosting.
+4. Configure environment variables where needed.
+5. Run locally using FastAPI or Docker Compose.
+6. Deploy using Render.
 
-## Code Structure (Folder Explanation)
+## Code Structure
 ### `src/ui/`
-Customer and bank/admin templates, route bindings, and static assets.
+Contains the main UI controller, templates, and static assets.
 
 ### `src/server/`
-Backend APIs, database models, authentication logic, and central server functionality.
+Contains the central FastAPI API, models, routers, services, and server configuration.
+
+### `src/auth/`
+Contains local authentication and biometric hash support.
+
+### `src/fraud/`
+Contains the local fraud engine.
+
+### `src/database/`
+Contains local SQLite initialization, transaction storage, device/profile/monitoring stores.
+
+### `src/sync/`
+Contains sync manager and client logic.
 
 ### `src/deploy/`
-Combined deployment entrypoint used for the live Render app.
-
-### `data/`
-Local demo data, imports, exports, and offline persistence files.
+Contains the combined mounted app used for live deployment.
 
 ### `docs/`
-Architecture, deployment, progress logs, and report files.
+Contains project documentation, report content, wiki content, and system reference files.
 
-### `tests/`
-Automated checks for important system behavior.
-
-## Key Code Snippets (with Explanation)
-### Fraud decision object
+## Key Code Snippets
+### Example fraud decision object
 ```python
 {
   "risk_score": 75,
@@ -36,23 +42,21 @@ Automated checks for important system behavior.
   "reasons": ["NEW_DEVICE", "HIGH_AMOUNT"]
 }
 ```
-This matters because the system does not only classify a transaction; it explains the classification.
+This shows that the project stores not just a score, but an explainable decision payload.
 
-### Local-first sync concept
-```text
-create transaction -> save locally -> mark pending -> sync later -> central acknowledgement
+### Example sync states
+```python
+PENDING -> RETRYING -> SYNCED
 ```
-This matters because the system preserves user intent under low-connectivity conditions.
+This demonstrates the operational state transitions of the offline-first outbox.
 
 ## Integration Details
-- customer UI connects to backend route logic
-- fraud engine connects to transaction creation
-- SQLite connects to the sync queue
-- PostgreSQL supports the deployed central system
-- admin analytics depend on monitored transaction and risk data
+- Customer UI uses local SQLite and selective AJAX endpoints.
+- Admin UI uses local analytics helpers plus optional central API data.
+- Render deployment mounts UI at `/` and API at `/api`.
 
 ## Repository Link
-Repository Link: https://github.com/bhumishah01/CyberShakti-Banking-Framework
+Repository Link: [https://github.com/bhumishah01/CyberShakti-Banking-Framework](https://github.com/bhumishah01/CyberShakti-Banking-Framework)
 
 ## Navigation
 - Previous: [[Methodology]]

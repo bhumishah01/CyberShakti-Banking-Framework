@@ -1,22 +1,22 @@
-# Future-Scope
+# Future Scope
 
 ## Possible Improvements
-- real biometric verification
-- stronger OTP/SMS fallback flows
-- richer analytics and longer-term fraud trends
-- stronger multi-device sync conflict handling
+- stronger biometric verification or liveness detection
+- more automated background sync scheduling
+- richer trust scoring signals
+- more complete ledger/account model
 
 ## Extensions
-- agent-side assisted workflows
 - multilingual voice guidance
-- richer audit export and compliance reporting
-- configurable fraud rule packs
+- richer customer support / dispute flow
+- external alerts through SMS or WhatsApp
+- stronger compliance-oriented export/report modules
 
 ## Research Opportunities
-- explainable fraud detection in low-resource environments
+- explainable fraud detection for low-resource environments
 - rural-first cybersecurity UX
-- synchronization safety under unreliable networks
-- trust modeling for shared-device banking
+- trust scoring for shared-device financial systems
+- safer conflict handling in delayed-sync architectures
 
 ## Navigation
 - Previous: [[Challenges]]

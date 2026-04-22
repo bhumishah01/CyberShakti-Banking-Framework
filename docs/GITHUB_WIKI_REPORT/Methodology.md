@@ -1,57 +1,56 @@
-# Methodology
+# Methodology / Working
 
-## Step-by-Step Working of System
-1. User enters the customer or bank/admin portal.
-2. Customer provides transaction details.
-3. Input is validated.
-4. Fraud engine computes risk score, decision, and reasons.
-5. Transaction is stored locally.
-6. Sync queue tracks the transaction state.
-7. User receives immediate result feedback.
-8. Central sync happens later.
-9. Admin dashboards and analytics reflect monitored state.
-10. Admin actions complete the review cycle.
+## Step-by-Step Working of the System
+1. User enters the customer or bank portal.
+2. Authentication and trust checks run.
+3. Customer submits a transaction.
+4. Input is validated.
+5. Fraud engine computes score, level, reasons, and intervention.
+6. Transaction is encrypted and stored locally.
+7. An outbox row is created for later sync unless the transaction is blocked.
+8. Alerts, notifications, audit entries, and change logs are recorded.
+9. Sync later pushes the data to the central API.
+10. Admin portal reflects the resulting operational state.
 
-## Algorithms Used (if any)
+## Algorithms / Logic Used
 ### Rule-Based Fraud Scoring
-Rules check for conditions such as:
+The fraud engine checks conditions such as:
 - new device
 - high amount
+- amount above user average
+- odd hour
 - unusual time
-- rapid repeated activity
-- amount above expected average
+- rapid burst activity
+- repeated authentication failures
 
 ### Behavior Profiling
-The system compares current transactions against:
-- average transaction amount
-- frequency of transactions
-- timing pattern of usage
+The system tracks:
+- transaction count
+- total amount
+- average amount
+- preferred hours
+- rolling user risk score
 
-### Suspicious Pattern Detection
-The system also detects broader risk indicators such as repeated failed logins or bursts of risky transactions.
+### Retry and Sync Logic
+The sync engine uses:
+- outbox states
+- retry counts
+- next retry timestamps
+- idempotency keys
 
-## Flowchart / Diagram
-```text
-User Action
- -> Validation
- -> Fraud Evaluation
- -> Local Save
- -> Sync Queue
- -> Central Server
- -> Admin Monitoring / Review
+## Data Flow Diagram
+```mermaid
+flowchart LR
+    A["User Action"] --> B["Validation"]
+    B --> C["Fraud Evaluation"]
+    C --> D["Local Save"]
+    D --> E["Outbox Queue"]
+    E --> F["Server Sync"]
+    F --> G["Admin Monitoring / Analytics"]
 ```
 
 ## Data Flow Explanation
-Customer actions first create local state. That local state is then turned into synchronization state. Once synced, it becomes central operational data visible in the admin portal.
-
-## Extra: Real-World Scenario Walkthrough
-A user in a weak-network rural area creates a transaction. The app cannot depend on immediate backend confirmation, so it stores the transaction locally, evaluates it for risk, and gives the user an immediate understandable result. Later, when internet becomes available, the transaction is synchronized and becomes visible to the bank/admin layer.
-
-## Extra: User Experience Strategy
-- keep important actions clear
-- avoid silent failures
-- explain risk states simply
-- give recovery paths instead of dead ends
+The project is intentionally local-first. A transaction does not begin by calling the server. Instead, the local device handles fraud checks and secure storage first. Synchronization happens later, which is what makes the system appropriate for rural connectivity conditions.
 
 ## Navigation
 - Previous: [[Technologies-Used]]

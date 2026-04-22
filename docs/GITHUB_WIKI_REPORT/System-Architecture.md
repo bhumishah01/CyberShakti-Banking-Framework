@@ -1,95 +1,72 @@
-# System-Architecture
+# System Architecture
 
 ## Architecture Diagram
 ```mermaid
 flowchart TB
-  subgraph CustomerLayer[Customer Layer]
-    UI[Customer Portal UI]
-    Safety[Safety Controls]
-    Voice[Voice Input / Feedback]
+  subgraph Customer["Customer / Device Layer"]
+    UI["Customer Portal UI"]
+    FACE["Face Capture + Device Trust"]
+    FRAUD["Local Fraud Engine"]
+    LOCALDB["SQLite Local Store"]
+    OUTBOX["Outbox / Sync Queue"]
   end
 
-  subgraph LocalLayer[Local Device Layer]
-    SQLite[SQLite Local Store]
-    Fraud[Fraud Engine]
-    Outbox[Sync Queue / Outbox]
-    DeviceTrust[Device Trust State]
+  subgraph Bank["Bank / Admin Layer"]
+    DASH["Admin Dashboard"]
+    ANALYTICS["Analytics + Alerts"]
+    CONTROL["Approve / Reject / Freeze / Sync"]
   end
 
-  subgraph ServerLayer[Central Server Layer]
-    FastAPI[FastAPI Combined App]
-    Auth[JWT + Role Access]
-    API[API Routes]
+  subgraph Server["Central Server Layer"]
+    APP["FastAPI Combined Runtime"]
+    API["JWT + Role-Based API"]
     PG[(PostgreSQL)]
   end
 
-  subgraph AdminLayer[Bank/Admin Layer]
-    Dashboard[Monitoring Dashboard]
-    Analytics[Fraud Analytics]
-    Controls[Approve / Reject / Freeze / Sync]
-  end
-
-  UI --> SQLite
-  UI --> Fraud
-  UI --> Safety
-  UI --> Voice
-  Fraud --> SQLite
-  SQLite --> Outbox
-  DeviceTrust --> Fraud
-  Outbox --> API
-  FastAPI --> Auth
+  UI --> FACE
+  UI --> FRAUD
+  FRAUD --> LOCALDB
+  LOCALDB --> OUTBOX
+  OUTBOX --> API
+  DASH --> API
+  ANALYTICS --> API
+  CONTROL --> API
   API --> PG
-  Dashboard --> API
-  Analytics --> API
-  Controls --> API
 ```
 
 ## Explanation of Architecture
-RuralShield uses a layered architecture so that customer actions, local persistence, fraud evaluation, synchronization, and bank/admin control remain clearly separated. This makes the system easier to reason about and better suited to low-connectivity environments.
-
-### Customer Layer
-Handles user-facing actions such as viewing balance, creating transactions, checking history, and using safety features.
-
-### Local Device Layer
-This is the offline-first layer. It stores transaction state locally and allows fraud evaluation before synchronization.
-
-### Server Layer
-This is the central authority layer. It stores synchronized data and serves admin operations and analytics.
-
-### Admin Layer
-This layer gives bank/admin users visibility into risky behavior, held transactions, suspicious patterns, and device state.
+RuralShield uses a hybrid architecture. Customer operations begin locally, where fraud evaluation, encryption, and persistence happen first. This local-first model protects continuity under weak connectivity. Later, a sync mechanism pushes pending records to the central FastAPI server and PostgreSQL database. The bank/admin side can then inspect, review, and analyze those records.
 
 ## Modules / Components Description
-- Authentication module
-- Fraud engine
-- Local storage module
-- Sync queue module
-- Device trust module
-- Analytics module
-- Customer UI module
-- Admin UI module
+### Customer Layer
+- registration and login
+- send money flow
+- transaction history
+- safety settings
+- offline visibility
 
-## Extra: Data Flow Deep Dive
-1. User creates a transaction.
-2. Input is validated.
-3. Fraud engine evaluates risk.
-4. Transaction is saved locally.
-5. Sync queue tracks pending state.
-6. Server receives synchronized data later.
-7. Admin portal reflects the result and allows review actions.
+### Local Security Layer
+- SQLite database
+- local auth and lockout tracking
+- face-hash support
+- device trust handling
+- fraud scoring
+- transaction encryption/signing
+- outbox queue
 
-## Extra: Security Layers
-- Authentication and access control
-- Local persistence protection
-- Fraud analysis layer
-- Sync/retry handling layer
-- Admin review and intervention layer
+### Server Layer
+- JWT auth
+- central transaction APIs
+- sync ingestion
+- fraud/trust services
+- PostgreSQL persistence
 
-## Extra: Failure Handling
-- weak internet -> local save
-- risky event -> hold/block
-- sync failure -> retry and queue
-- suspicious user -> admin visibility and control
+### Bank/Admin Layer
+- monitoring dashboard
+- analytics page
+- sync queue tools
+- held transaction review
+- exports and reports
 
 ## Navigation
 - Previous: [[Literature-Survey]]

@@ -1,27 +1,27 @@
 # References
 
-## Research Papers / Conceptual References
+## Research / Conceptual References
 - NIST Cybersecurity Framework (CSF)
-- OWASP Security Guidance for Application and Mobile Systems
-- Offline-first application design concepts
-- Explainable fraud detection concepts in financial systems
-- Device trust and suspicious activity modeling approaches
+- OWASP application and mobile security guidance
+- offline-first application architecture concepts
+- explainable fraud detection concepts in finance
+- device trust and behavioral anomaly concepts
 
 ## Websites
-- FastAPI Documentation: https://fastapi.tiangolo.com/
-- SQLAlchemy Documentation: https://docs.sqlalchemy.org/
-- PostgreSQL Documentation: https://www.postgresql.org/docs/
-- SQLite Documentation: https://www.sqlite.org/docs.html
-- Docker Documentation: https://docs.docker.com/
-- Render Documentation: https://render.com/docs
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [SQLAlchemy Documentation](https://docs.sqlalchemy.org/)
+- [PostgreSQL Documentation](https://www.postgresql.org/docs/)
+- [SQLite Documentation](https://www.sqlite.org/docs.html)
+- [Docker Documentation](https://docs.docker.com/)
+- [Render Documentation](https://render.com/docs)
 
-## Documentation Links
+## Project Documentation Links
 - `docs/ARCHITECTURE.md`
 - `docs/PROJECT_BLUEPRINT.md`
 - `docs/THREAT_MODEL.md`
 - `docs/DEPLOY_RENDER.md`
 - `docs/DEMO_RUNBOOK.md`
-- `docs/STEPWISE PROGRESS/`
+- `docs/SYSTEM_EXPLANATION_FULL.md`
 
 ## Navigation
 - Previous: [[Conclusion]]

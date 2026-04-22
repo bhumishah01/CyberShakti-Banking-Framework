@@ -1,60 +1,55 @@
-# Home
+# RuralShield
 
 ## Project Title
 **RuralShield: Offline-First Cybersecurity Framework for Rural Digital Banking**
 
 ## Team Members
 - **Bhumi Shah** — Roll No: **2307883**  
-  GitHub Profile: https://github.com/bhumishah01
+  GitHub: [bhumishah01](https://github.com/bhumishah01)
 
 ## Guide / Faculty Name
 - **Dr. Yogesh Jadhav**
 
 ## Project Domain
 - Cybersecurity
-- FinTech (Financial Technology)
+- FinTech
 - Web Development
 - Offline-First Systems
-- Fraud Detection and Risk Monitoring
+- Fraud Detection
 
 ## Short Description
-RuralShield is a full-stack cybersecurity framework built for rural digital banking environments where internet connectivity is weak, devices are low-end, and users need simple, trustworthy interactions. The system supports local-first transaction handling, adaptive fraud scoring, explainable decisions, delayed synchronization, and bank-side monitoring. It includes both a customer portal and a bank/admin portal, making it suitable as a realistic prototype rather than a basic technical demo.
+RuralShield is a rural-first digital banking security system designed for environments where internet connectivity is unreliable and devices are low-end. It uses local SQLite storage, explainable fraud scoring, delayed synchronization, and bank-side monitoring to keep transactions secure and understandable. The system includes separate customer and bank/admin portals, a sync queue, analytics, alerts, and a live public deployment.
 
 ## Problem Statement
-Rural users often face unstable networks, shared or low-resource devices, and limited digital literacy, which increases the risk of fraud and failed banking interactions. Most online banking systems assume continuous connectivity and immediate backend verification, making them unsuitable for rural conditions. RuralShield addresses this gap by building a banking security framework that remains useful and safe even when internet access is unreliable.
+Most banking systems assume stable internet, immediate server access, and digitally confident users. In rural settings, those assumptions often fail. This increases the risk of incomplete transactions, fraud exposure, and user confusion. RuralShield addresses this by making transaction workflows work locally first, evaluating risk before sync, and giving both customers and bank officers clear visibility into what happened and why.
 
 ## Objectives
-- Build a secure banking workflow that works under weak or no internet conditions.
-- Preserve user actions locally so that transaction intent is never lost.
-- Apply fraud detection before synchronization using interpretable logic.
-- Provide clear explanations for why a transaction is allowed, held, or blocked.
-- Support bank/admin workflows for monitoring, release, review, and analytics.
-- Deploy the system on a live public URL using a Docker-based setup.
+- Build a transaction workflow that remains functional under weak or no internet.
+- Detect suspicious behavior before synchronization using explainable fraud rules.
+- Maintain a secure local record of user activity and transaction state.
+- Provide role-based customer and bank/admin portals.
+- Support sync, review, analytics, and audit visibility.
+- Deploy the project publicly using a Docker-friendly setup.
 
 ## Key Features
-- Offline-first transaction workflow
-- Adaptive fraud scoring
-- Explainable fraud engine
-- Customer portal with safety controls
-- Bank/admin portal with analytics and controls
-- Sync queue with retry and release workflows
-- Live deployment on Render
+- Offline-first local transaction handling
+- Explainable fraud detection with risk score and reasons
+- Sync queue with retry, selected sync, and one-record sync
+- Customer safety controls: trusted contact and panic freeze
+- Admin analytics: fraud trends, top reasons, high-risk users, device monitoring
+- Audit chain, change log, alerts, and notifications
+- Render deployment with live links
 
-## Primary Live Link
-- Main Page: https://ruralshield.onrender.com/?lang=en
+## Main Links
+- Main page: [https://ruralshield.onrender.com/?lang=en](https://ruralshield.onrender.com/?lang=en)
+- Customer portal: [https://ruralshield.onrender.com/customer](https://ruralshield.onrender.com/customer)
+- Bank/Admin portal: [https://ruralshield.onrender.com/bank](https://ruralshield.onrender.com/bank)
+- API docs: [https://ruralshield.onrender.com/api/docs](https://ruralshield.onrender.com/api/docs)
+- Health endpoint: [https://ruralshield.onrender.com/api/health](https://ruralshield.onrender.com/api/health)
 
-## Supporting Links
-- API Documentation: https://ruralshield.onrender.com/api/docs
-- Health Endpoint: https://ruralshield.onrender.com/api/health
-- Customer Portal: https://ruralshield.onrender.com/customer
-- Bank/Admin Portal: https://ruralshield.onrender.com/bank
-
-## Repository Link
-- GitHub Repository: https://github.com/bhumishah01/CyberShakti-Banking-Framework
-
-## Navigation
-- Next: [[Introduction]]
-
-## Technical System Reference
-
-For a deeper implementation-level explanation beyond the formal report, see `docs/GITHUB_WIKI_SYSTEM_REFERENCE/` and the Wiki page `System-Reference`.
+## Quick Navigation
+- Start report: [[Introduction]]
+- Jump to architecture: [[System-Architecture]]
+- Jump to implementation: [[Implementation]]
+- Jump to live demo section: [[Demo]]
+- Technical cheat sheet: [[Project-Cheat-Sheet]]
