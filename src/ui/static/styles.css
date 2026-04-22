@@ -111,9 +111,11 @@ header p {
 .stat-card-link {
   text-decoration: none;
   color: inherit;
+  display: block;
 }
 .stat-card-link .stat-card {
   transition: transform 0.12s ease, box-shadow 0.12s ease;
+  cursor: pointer;
 }
 .stat-card-link:hover .stat-card {
   transform: translateY(-2px);

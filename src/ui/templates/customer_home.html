@@ -47,21 +47,31 @@
     <section class="card">
       <h2>{{ i18n.cust_account_overview }}</h2>
       <section class="stats-grid">
-        <article class="stat-card">
-          <h3>{{ i18n.cust_balance_demo_label }}</h3>
-          <p id="rs-balance">{{ "%.2f"|format(local_balance) }}</p>
-          <div class="muted small" id="rs-balance-note">
-            {% if server.connected %}
-              {{ i18n.cust_server_balance_label }}: {{ "%.2f"|format(server.balance) }}
-            {% else %}
-              {{ i18n.cust_offline_first_label }}
-            {% endif %}
-          </div>
-        </article>
-        <article class="stat-card"><h3>{{ i18n.transactions }}</h3><p>{{ customer_stats.total }}</p></article>
-        <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p id="rs-pending">{{ customer_stats.pending }}</p></article>
-        <article class="stat-card"><h3>{{ i18n.held }}</h3><p id="rs-held">{{ customer_stats.held }}</p></article>
-        <article class="stat-card"><h3>{{ i18n.cust_last_activity_label }}</h3><p id="rs-last">{{ profile.last_tx_at }}</p></article>
+        <a class="stat-card-link" href="#safety" data-scroll="#safety">
+          <article class="stat-card">
+            <h3>{{ i18n.cust_balance_demo_label }}</h3>
+            <p id="rs-balance">{{ "%.2f"|format(local_balance) }}</p>
+            <div class="muted small" id="rs-balance-note">
+              {% if server.connected %}
+                {{ i18n.cust_server_balance_label }}: {{ "%.2f"|format(server.balance) }}
+              {% else %}
+                {{ i18n.cust_offline_first_label }}
+              {% endif %}
+            </div>
+          </article>
+        </a>
+        <a class="stat-card-link" href="#history" data-scroll="#history">
+          <article class="stat-card"><h3>{{ i18n.transactions }}</h3><p>{{ customer_stats.total }}</p></article>
+        </a>
+        <a class="stat-card-link" href="#sync-status" data-scroll="#sync-status">
+          <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p id="rs-pending">{{ customer_stats.pending }}</p></article>
+        </a>
+        <a class="stat-card-link" href="#rs-last-tx" data-scroll="#rs-last-tx">
+          <article class="stat-card"><h3>{{ i18n.held }}</h3><p id="rs-held">{{ customer_stats.held }}</p></article>
+        </a>
+        <a class="stat-card-link" href="#history" data-scroll="#history">
+          <article class="stat-card"><h3>{{ i18n.cust_last_activity_label }}</h3><p id="rs-last">{{ profile.last_tx_at }}</p></article>
+        </a>
       </section>
       <div style="margin-top:10px;">
         {% if user_risk_badge == "warning" %}
@@ -145,7 +155,7 @@
       </div>
     </section>
 
-    <section class="card">
+    <section id="sync-status" class="card">
       <h2>{{ i18n.cust_sync_status }}</h2>
       <div class="stats-grid">
         <article class="stat-card"><h3>{{ i18n.pending_sync }}</h3><p id="rs-pending2">{{ customer_stats.pending }}</p></article>
@@ -479,17 +489,16 @@
         recBtn.addEventListener("click", async () => {
           try {
             if (!listening) {
-              // Some browsers require a getUserMedia call before SpeechRecognition works reliably.
-              try {
-                await navigator.mediaDevices.getUserMedia({ audio: true });
-              } catch (e) {
-                showMsg('error', "{{ i18n.voice_mic_denied }}");
-                return;
-              }
               recog = new SpeechRecognition();
               recog.lang = sttLang;
-              recog.interimResults = true;
+              recog.interimResults = false;
               recog.continuous = false;
+              recog.maxAlternatives = 1;
+              recog.onstart = () => {
+                listening = true;
+                setBtn();
+                showMsg('warn', "{{ i18n.voice_listening }}");
+              };
               recog.onresult = (ev) => {
                 const parts = [];
                 for (let i = ev.resultIndex; i < ev.results.length; i++) {
@@ -498,16 +507,20 @@
                 const text = parts.join(" ").trim();
                 if (text) cmd.value = text;
               };
-              recog.onerror = () => {
-                showMsg('error', "{{ i18n.voice_record_failed }}");
+              recog.onerror = (ev) => {
+                const code = String((ev && ev.error) || '').trim();
+                if (code === 'not-allowed' || code === 'service-not-allowed') {
+                  showMsg('error', "{{ i18n.voice_mic_denied }}");
+                } else if (code === 'no-speech' || code === 'audio-capture') {
+                  showMsg('error', "{{ i18n.voice_record_failed }}");
+                } else {
+                  showMsg('error', "{{ i18n.voice_record_failed }}");
+                }
               };
               recog.onend = () => {
                 listening = false;
                 setBtn();
               };
-              listening = true;
-              setBtn();
-              showMsg('warn', "{{ i18n.voice_listening }}");
               recog.start();
             } else {
               listening = false;
