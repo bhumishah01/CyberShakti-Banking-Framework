@@ -431,6 +431,23 @@ def _api_call(
     return data if isinstance(data, dict) else {"data": data}
 
 
+def _is_networkish_error(exc: Exception) -> bool:
+    """Return True when the server API is unreachable or timed out."""
+    try:
+        import requests
+
+        return isinstance(
+            exc,
+            (
+                requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.RequestException,
+            ),
+        )
+    except Exception:
+        return False
+
+
 def _ensure_server_session_for_customer(user_id: str, pin: str, device_id: str) -> tuple[str, str]:
     """Return (jwt, role) for server dashboards.
 
@@ -441,18 +458,23 @@ def _ensure_server_session_for_customer(user_id: str, pin: str, device_id: str) 
             "POST",
             "/auth/login",
             json_body={"user_id": user_id, "password": pin, "device_id": device_id},
+            timeout=1.5,
         )
         return str(out.get("access_token", "")), str(out.get("role", "customer"))
-    except Exception:
+    except Exception as exc:
+        if _is_networkish_error(exc):
+            return "", "customer"
         _api_call(
             "POST",
             "/auth/register",
             json_body={"user_id": user_id, "phone": "+910000000000", "password": pin, "role": "customer"},
+            timeout=1.5,
         )
         out = _api_call(
             "POST",
             "/auth/login",
             json_body={"user_id": user_id, "password": pin, "device_id": device_id},
+            timeout=1.5,
         )
         return str(out.get("access_token", "")), str(out.get("role", "customer"))
 
@@ -469,18 +491,23 @@ def _ensure_server_session_for_bank() -> tuple[str, str]:
             "POST",
             "/auth/login",
             json_body={"user_id": user_id, "password": password, "device_id": ""},
+            timeout=1.5,
         )
         return str(out.get("access_token", "")), str(out.get("role", "bank_officer"))
-    except Exception:
+    except Exception as exc:
+        if _is_networkish_error(exc):
+            return "", "bank_officer"
         _api_call(
             "POST",
             "/auth/register",
             json_body={"user_id": user_id, "phone": "+910000000001", "password": password, "role": "bank_officer"},
+            timeout=1.5,
         )
         out = _api_call(
             "POST",
             "/auth/login",
             json_body={"user_id": user_id, "password": password, "device_id": ""},
+            timeout=1.5,
         )
         return str(out.get("access_token", "")), str(out.get("role", "bank_officer"))
 
